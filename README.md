@@ -1,13 +1,10 @@
-# Rebuilders
+# Rebuilders Public Demo
 
-Brand site for **Rebuilders — Food Tracker**.
+The public browser demo for **Rebuilders — Food Tracker**.
 
-The interface preview uses fictional sample data.
+- Uses the same responsive frontend as the working prototype.
+- Stores each visitor's edits in that browser with IndexedDB.
+- Starts with fictional sample meals on first use.
+- Contains no Python server, agent integration, credentials, or personal meal data.
 
-## Local preview
-
-Open `index.html` directly, or serve this directory with any static web server.
-
-## Publishing
-
-This repository is designed for GitHub Pages. The custom domain is configured through `CNAME`.
+This repository is published with GitHub Pages. The custom domain is configured through `CNAME`.
