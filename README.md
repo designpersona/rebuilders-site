@@ -1,8 +1,8 @@
 # Rebuilders
 
-Public brand site for **Rebuilders — Food Tracker**.
+Brand site for **Rebuilders — Food Tracker**.
 
-The interface shown on this site uses fictional sample data. The full working prototype and its development documentation are maintained separately for private review.
+The interface preview uses fictional sample data.
 
 ## Local preview
 
