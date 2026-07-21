@@ -11627,3 +11627,47 @@ body.meal-page-open .bottom-nav {
   right: 1px;
   width: 45px;
 }
+
+/* Public web shell: keep the app at a mobile reading width on desktop. */
+@media (min-width: 481px) {
+  html,
+  body {
+    background: #eeeeee;
+  }
+
+  body {
+    display: flex;
+    justify-content: center;
+  }
+
+  .phone-frame,
+  .storage-unavailable {
+    width: 480px;
+    max-width: 100%;
+    border-inline: 1px solid #dddddd;
+    background: var(--bg);
+  }
+
+  .modal-overlay,
+  .agent-help-overlay {
+    right: auto;
+    left: 50%;
+    width: 480px;
+    max-width: 100%;
+    transform: translateX(-50%);
+  }
+
+  .food-dex,
+  .foodex-library:not(.is-page) {
+    right: auto;
+    left: 50%;
+    width: 480px;
+    max-width: 100%;
+    transform: translate(-50%, 12px);
+  }
+
+  .food-dex.open,
+  .foodex-library:not(.is-page).open {
+    transform: translate(-50%, 0);
+  }
+}
