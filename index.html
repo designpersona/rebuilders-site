@@ -14,6 +14,14 @@
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="Rebuilders — Food Tracker" />
   <meta name="twitter:description" content="Track, review, and manage the meals that rebuild you. Design your body." />
+  <!-- Microsoft Clarity: public demo analytics. Personal meal and profile regions are explicitly masked below. -->
+  <script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "xu0ic0ztxo");
+  </script>
   <link rel="icon" href="assets/logo/Logo.png" type="image/png" />
   <!-- 외부 폰트 요청 없음: 시스템 폰트만 사용 (추적·네트워크 최소화) -->
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
@@ -57,7 +65,7 @@
       </header>
 
       <!-- 오늘 영양 요약 -->
-      <section class="day-summary" aria-label="영양소 현황">
+      <section class="day-summary" aria-label="영양소 현황" data-clarity-mask="true">
         <header class="date-header">
           <button class="nav-btn" id="prev-day" aria-label="이전 날">
             <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
@@ -154,7 +162,7 @@
       </div>
 
       <!-- Meal timeline -->
-      <section class="meals-section" aria-label="식사 기록">
+      <section class="meals-section" aria-label="식사 기록" data-clarity-mask="true">
 
         <!-- 간식: 아침 전 -->
         <div class="snack-card" id="snack-slot-0" data-slot="0" data-drop-kind="snack">
@@ -377,7 +385,7 @@
     </div>
 
     <!-- 끼니 음식 관리: 홈 카드 대신 별도 페이지로 표시 -->
-    <div class="app-content view-panel meal-detail-page" id="view-meal-detail" hidden>
+    <div class="app-content view-panel meal-detail-page" id="view-meal-detail" data-clarity-mask="true" hidden>
       <header class="meal-page-header">
         <button type="button" class="meal-page-back" id="meal-page-back" aria-label="식단으로 돌아가기">
           <svg width="10" height="18" viewBox="0 0 10 18" fill="none" aria-hidden="true">
@@ -416,7 +424,7 @@
     </div>
 
     <!-- 통계: 달력 + 요약 -->
-    <div class="app-content view-panel" id="view-stats" hidden>
+    <div class="app-content view-panel" id="view-stats" data-clarity-mask="true" hidden>
       <header class="stats-page-head">
         <div class="stats-brand-row">
           <div class="stats-brand-logo-wrap">
@@ -582,7 +590,7 @@
             <h2>내 제품</h2>
             <p>직접 등록한 제품을 여기서 찾고 다시 기록할 수 있어요.</p>
           </header>
-          <div class="collection-products" id="collection-products-list"></div>
+          <div class="collection-products" id="collection-products-list" data-clarity-mask="true"></div>
         </div>
       </section>
       <section class="search-hub-panel search-inline-custom-panel" data-search-panel="custom"
@@ -647,7 +655,7 @@
             </div>
           </div>
           <div class="search-index-categories" id="search-index-categories" aria-label="음식 카테고리"></div>
-          <div class="search-index-grid" id="search-index-grid"></div>
+          <div class="search-index-grid" id="search-index-grid" data-clarity-mask="true"></div>
         </div>
         <div class="foodex-library-scroll" data-foodex-panel="recipe" hidden>
           <div class="collection-section">
@@ -669,7 +677,7 @@
                   <button type="button" id="collection-add-demo">오늘 식단에 기록</button>
                 </div>
               </article>
-              <div class="collection-list" id="collection-user-list"></div>
+              <div class="collection-list" id="collection-user-list" data-clarity-mask="true"></div>
               <button type="button" id="collection-create" aria-label="새 레시피 만들기" title="새 레시피 만들기">
                 <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                   <path d="M7 1V13M1 7H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -737,7 +745,7 @@
           </div>
           <div class="shopping-group shopping-fridge">
             <h3>보유 중 <span id="shopping-fridge-count">0</span></h3>
-            <div id="shopping-fridge-list">
+            <div id="shopping-fridge-list" data-clarity-mask="true">
               <p class="shopping-fridge-empty">아직 창고에 담긴 식품이 없어요. 장보기에서 ○를 누르거나 직접 추가해 보세요.</p>
             </div>
           </div>
@@ -774,7 +782,7 @@
         </div>
       </header>
 
-      <div class="agent-log" id="agent-log" aria-live="polite">
+      <div class="agent-log" id="agent-log" aria-live="polite" data-clarity-mask="true">
         <div class="agent-message is-agent is-greeting" aria-label="AI 식단관리사 안내">
           <img class="agent-avatar" src="assets/icon/buttons/robot.svg" width="40" height="40" alt=""
             aria-hidden="true" />
@@ -800,7 +808,7 @@
     </div>
 
     <!-- 내정보 페이지 -->
-    <div class="app-content view-panel" id="view-profile" hidden>
+    <div class="app-content view-panel" id="view-profile" data-clarity-mask="true" hidden>
       <div class="stats-page-head profile-page-head">
         <h1 class="stats-page-title">내정보</h1>
         <p class="stats-page-sub">신체 정보와 목표 칼로리를 관리해요</p>
@@ -943,7 +951,7 @@
   </div>
 
   <!-- Add Food Modal -->
-  <div class="modal-overlay" id="modal-overlay" role="dialog" aria-modal="true" aria-label="음식 추가">
+  <div class="modal-overlay" id="modal-overlay" role="dialog" aria-modal="true" aria-label="음식 추가" data-clarity-mask="true">
     <div class="modal-sheet food-modal-sheet" id="modal-sheet">
       <div class="modal-handle"></div>
       <button type="button" class="modal-x-btn" id="food-modal-x" aria-label="음식 추가 창 닫기">×</button>
@@ -1141,7 +1149,7 @@
   </div>
 
   <!-- 음식 영양 수정 (가벼운 시트 — 목록은 카드 펼침으로 처리) -->
-  <div class="modal-overlay" id="meal-detail-modal" role="dialog" aria-modal="true" aria-label="음식 수정">
+  <div class="modal-overlay" id="meal-detail-modal" role="dialog" aria-modal="true" aria-label="음식 수정" data-clarity-mask="true">
     <div class="modal-sheet meal-detail-sheet food-edit-sheet">
       <div class="modal-handle"></div>
       <button type="button" class="modal-x-btn" id="meal-detail-x" aria-label="음식 수정 창 닫기">×</button>
@@ -1155,7 +1163,7 @@
   </div>
 
   <!-- 섭취 시간 수정 -->
-  <div class="modal-overlay" id="time-edit-modal" role="dialog" aria-modal="true" aria-label="섭취 시간 수정">
+  <div class="modal-overlay" id="time-edit-modal" role="dialog" aria-modal="true" aria-label="섭취 시간 수정" data-clarity-mask="true">
     <div class="modal-sheet time-edit-sheet">
       <div class="modal-handle"></div>
       <h3 class="modal-title" id="time-edit-title">섭취 시간</h3>
