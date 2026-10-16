@@ -365,5 +365,45 @@
     }
   }
 
-  global.NiliriStorage = { StorageRepository, IndexedDbStorage, LocalApiStorage, emptyDay, MIGRATIONS };
+  /*
+   * 저장소 교체 지점.
+   * 앱은 StorageRepository 인터페이스(위 메서드들)에만 의존합니다. 이후 Capacitor SQLite 로
+   * 옮길 때는 StorageRepository 를 구현한 클래스(예: SqliteStorage)를 만들고
+   * registerRepository('sqlite', options => new SqliteStorage(options)) 로 등록한 뒤
+   * createRepository('sqlite') 를 쓰면 됩니다. 이번 버전은 IndexedDB 를 그대로 씁니다.
+   * 데이터 형태는 getAll()/replaceAll() 이 주고받는 단일 상태 객체이며 백업 파일(backup.js)도
+   * 같은 형태를 쓰므로, 저장소를 바꿔도 백업 파일은 호환됩니다.
+   */
+  const REPOSITORY_FACTORIES = {
+    indexeddb: options => new IndexedDbStorage(options),
+    localapi: options => new LocalApiStorage(options),
+  };
+
+  function registerRepository(kind, factory) {
+    if (typeof factory !== 'function') throw new TypeError('factory must be a function');
+    REPOSITORY_FACTORIES[kind] = factory;
+  }
+
+  function createRepository(kind = 'indexeddb', options = {}) {
+    const factory = REPOSITORY_FACTORIES[kind];
+    if (!factory) throw new Error(`알 수 없는 저장소 종류: ${kind}`);
+    return factory(options);
+  }
+
+  /** 브라우저가 저장 공간을 임의로 지우지 않도록 요청합니다. 실패해도 앱은 계속 동작합니다. */
+  async function requestPersistentStorage() {
+    try {
+      const storage = global.navigator?.storage;
+      if (!storage?.persist) return { supported: false, persisted: false };
+      if (storage.persisted && await storage.persisted()) return { supported: true, persisted: true };
+      return { supported: true, persisted: Boolean(await storage.persist()) };
+    } catch (error) {
+      return { supported: true, persisted: false, error };
+    }
+  }
+
+  global.NiliriStorage = {
+    StorageRepository, IndexedDbStorage, LocalApiStorage, emptyDay, MIGRATIONS,
+    registerRepository, createRepository, requestPersistentStorage,
+  };
 })(globalThis);

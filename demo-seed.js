@@ -1,4 +1,4 @@
-(function seedRebuildersPublicDemo(global) {
+(function rebuildersSampleData(global) {
   'use strict';
 
   const round = value => Math.round(value * 10) / 10;
@@ -58,38 +58,37 @@
     },
   });
 
-  global.REBUILDERS_DEMO_READY = (async () => {
-    const repository = new global.NiliriStorage.IndexedDbStorage();
-    await repository.initialize();
-    const existing = await repository.getAll();
-    const alreadyUsed = Object.keys(existing).some(key => /^\d{4}-\d{2}-\d{2}$/.test(key));
-    if (alreadyUsed) {
-      repository.close();
-      return;
-    }
-
+  /*
+   * 샘플 식단은 자동으로 들어가지 않습니다. 설정 > 내 데이터 > "샘플 식단 불러오기"에서
+   * 사용자가 확인한 뒤에만 buildSampleDays() 결과가 기존 기록에 추가됩니다.
+   * 기존에 기록이 있는 날짜, 설정, 내 음식은 건드리지 않고 비어 있는 날짜에만 채웁니다.
+   */
+  function buildSampleDays() {
     const breakfast = [scale('그릭요거트', 150), scale('블루베리', 50)];
     const lunch = [scale('닭가슴살', 120), scale('현미밥', 150), scale('방울토마토', 80)];
     const snack = [scale('프로틴바', 60)];
     const dinner = [{ ...customPasta }];
-
-    const demoState = {
-      ...existing,
-      settings: { height: 169, weight: 56, targetCal: 1800, locale: 'ko' },
-      customFoods: {
-        ...(existing.customFoods || {}),
-        [customPasta.name]: { ...customPasta, foodId: 'demo-homemade-tomato-pasta', unlocked: true },
-      },
-      recentFoods: [customPasta, ...lunch, ...breakfast],
+    return {
       [dayKey(-3)]: day([scale('오트밀', 180)], [scale('닭가슴살', 100), scale('현미밥', 140)], [scale('사과', 150)], [scale('두부', 180), scale('로메인', 100)]),
       [dayKey(-2)]: day([scale('삶은 달걀', 100), scale('아메리카노', 250, 'ml')], [scale('초밥', 220)], [scale('아몬드', 25)], [scale('닭고기', 140), scale('방울토마토', 100)]),
       [dayKey(-1)]: day([scale('그릭요거트', 150), scale('딸기', 80)], [scale('두부', 160), scale('현미밥', 150)], [scale('바나나', 110)], [scale('샐러드', 250), scale('삶은 달걀', 100)]),
       [dayKey(0)]: day(breakfast, lunch, snack, dinner),
     };
+  }
 
-    await repository.replaceAll(demoState);
-    repository.close();
-  })().catch(error => {
-    console.warn('Demo data could not be prepared:', error);
-  });
+  /** 기존 상태에 샘플 날짜를 비어 있는 날짜에만 추가한 새 상태와 추가된 날짜 수를 돌려줍니다. */
+  function addSampleDays(existing) {
+    const next = { ...(existing || {}) };
+    let added = 0;
+    for (const [key, value] of Object.entries(buildSampleDays())) {
+      const current = next[key];
+      const hasMeals = current && ['breakfast', 'lunch', 'snack', 'dinner'].some(meal => (current[meal] || []).length);
+      if (hasMeals) continue;
+      next[key] = value;
+      added += 1;
+    }
+    return { state: next, added };
+  }
+
+  global.RebuildersDemo = { buildSampleDays, addSampleDays };
 })(globalThis);

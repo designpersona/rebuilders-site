@@ -128,7 +128,7 @@ const UI_COPY = {
     statsSelectedDay: '선택한 날', statsCalories: '칼로리', statsCarbs: '탄수화물', statsProtein: '단백질', statsFat: '지방', statsUnder: '여유', statsOnTarget: '적정', statsOver: '초과', statsEmpty: '이 날에는 기록이 없어요.', statsWeekTitle: '최근 7일 섭취 칼로리', statsWeekHint: '진한 선 최근 7일 · 연한 선 이전 7일 · 점선 목표', statsMonthTitle: '이번 달 요약', statsLoggedDays: '기록 일수', statsAverage: '평균 kcal', statsUnderDays: '목표 이내 기록일',
     collectionRecipes: '내 레시피', collectionProducts: '내 제품', collectionFridge: '내 냉장고', collectionMacros: '탄·단·지', collectionDelete: '삭제', collectionDeleteTitle: '컬렉션 삭제', collectionExpand: '재료 펼쳐보기', collectionCollapse: '재료 접어두기', foodexClose: 'Foodex 닫기', foodexViewOptions: 'Foodex 정렬과 보기 방식', foodexSort: '정렬', foodexFoodSort: '음식 정렬',
     beforeBreakfast: '아침 전', afterBreakfast: '아침 후', afterLunch: '점심 후', afterDinner: '저녁 후',
-    aiCoach: 'AI 식단 기록 도우미', aiReady: '웹 데모', aiWelcome: '말로 식단 기록',
+    aiCoach: 'AI 식단 기록 도우미', aiReady: '이 기기에 저장', aiWelcome: '말로 식단 기록',
   },
   en: {
     appTitle: 'Rebuilders — Food Tracker',
@@ -170,7 +170,7 @@ const UI_COPY = {
     statsSelectedDay: 'Selected day', statsCalories: 'Calories', statsCarbs: 'Carbs', statsProtein: 'Protein', statsFat: 'Fat', statsUnder: 'Under', statsOnTarget: 'On target', statsOver: 'Over', statsEmpty: 'No meal log for this day.', statsWeekTitle: 'Calories eaten in the last 7 days', statsWeekHint: 'Dark: last 7 days · Light: previous 7 days · Dashed: target', statsMonthTitle: 'This month', statsLoggedDays: 'Days logged', statsAverage: 'Average kcal', statsUnderDays: 'Days at or under target',
     collectionRecipes: 'My recipes', collectionProducts: 'My products', collectionFridge: 'My fridge', collectionMacros: 'Carbs·Protein·Fat', collectionDelete: 'Delete', collectionDeleteTitle: 'Delete collection', collectionExpand: 'Expand ingredients', collectionCollapse: 'Collapse ingredients', foodexClose: 'Close Foodex', foodexViewOptions: 'Foodex sorting and view options', foodexSort: 'Sort', foodexFoodSort: 'Sort foods',
     beforeBreakfast: 'Before breakfast', afterBreakfast: 'After breakfast', afterLunch: 'After lunch', afterDinner: 'After dinner',
-    aiCoach: 'AI meal logging assistant', aiReady: 'Web demo', aiWelcome: 'Log meals by chat',
+    aiCoach: 'AI meal logging assistant', aiReady: 'Saved on this device', aiWelcome: 'Log meals by chat',
   },
 };
 
@@ -336,7 +336,7 @@ function applyLanguage(render = true) {
   if (profileEditTitle) profileEditTitle.textContent = t('profileEdit');
   const profileAvatar = document.querySelector('#view-profile .profile-avatar');
   if (profileAvatar) profileAvatar.textContent = ACTIVE_LOCALE === 'en' ? 'N' : '니';
-  document.querySelectorAll('.language-option').forEach(button => {
+  document.querySelectorAll('.language-option[data-language]').forEach(button => {
     const active = button.dataset.language === ACTIVE_LOCALE;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
@@ -458,17 +458,28 @@ function escapeHtml(str) {
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const FORCE_INDEXEDDB = new URLSearchParams(globalThis.location?.search || '')
   .get('storage') === 'indexeddb';
-const LOCAL_MODE = globalThis.location?.protocol === 'http:'
+const APP_CONFIG = globalThis.REBUILDERS_CONFIG || {};
+// Capacitor 네이티브 앱 안에서 실행 중인지.
+const IS_NATIVE_APP = Boolean(globalThis.Capacitor?.isNativePlatform?.());
+const IS_STANDALONE_PWA = Boolean(
+  globalThis.navigator?.standalone
+  || globalThis.matchMedia?.('(display-mode: standalone)')?.matches,
+);
+// 앱 모드: 스토어 앱·홈 화면 앱·앱 빌드 번들. 데모/로컬서버 전용 UI를 숨깁니다.
+const APP_MODE = IS_NATIVE_APP || IS_STANDALONE_PWA || APP_CONFIG.buildTarget === 'app';
+// LOCAL_MODE(로컬 서버 연동)는 명시적으로 허용된 웹 빌드에서만, 네이티브가 아닐 때, localhost 에서만 켜집니다.
+// 앱 번들의 app-config.js 는 allowLocalMode:false 이므로 앱에서는 절대 켜지지 않습니다.
+const LOCAL_MODE = APP_CONFIG.allowLocalMode === true
+  && !IS_NATIVE_APP
+  && globalThis.location?.protocol === 'http:'
   && LOCAL_HOSTS.has(globalThis.location?.hostname)
   && !FORCE_INDEXEDDB;
-let storageRepository = LOCAL_MODE
-  ? new NiliriStorage.LocalApiStorage()
-  : new NiliriStorage.IndexedDbStorage();
+let storageRepository = NiliriStorage.createRepository(LOCAL_MODE ? 'localapi' : 'indexeddb');
 
 async function initializeStorageRepository() {
   if (LOCAL_MODE) {
     try {
-      const localRepo = new NiliriStorage.LocalApiStorage();
+      const localRepo = NiliriStorage.createRepository('localapi');
       await localRepo.initialize();
       storageRepository = localRepo;
       return 'local';
@@ -476,7 +487,7 @@ async function initializeStorageRepository() {
       console.warn('Local API unavailable, falling back to IndexedDB:', error);
     }
   }
-  const idbRepo = new NiliriStorage.IndexedDbStorage();
+  const idbRepo = NiliriStorage.createRepository('indexeddb');
   await idbRepo.initialize();
   storageRepository = idbRepo;
   return LOCAL_MODE ? 'offline' : 'web';
@@ -488,7 +499,7 @@ function updateLocalModeStatus(state) {
   const copy = {
     local: ACTIVE_LOCALE === 'en' ? 'Local server connected' : '로컬 서버 연결됨',
     offline: ACTIVE_LOCALE === 'en' ? 'Local server disconnected' : '로컬 서버 연결 안 됨',
-    web: ACTIVE_LOCALE === 'en' ? 'Public demo · saved in this browser' : '공개 데모 · 이 브라우저에만 저장',
+    web: ACTIVE_LOCALE === 'en' ? 'Saved on this device only' : '이 기기에만 저장',
   };
   status.textContent = copy[state] || copy.web;
   status.dataset.state = state;
@@ -793,20 +804,30 @@ function applyExtendedStaticCopy() {
   set('#data-transfer-title', '내 데이터', 'My data');
   set('.data-transfer-sub', '기록을 파일로 백업하고 복원해요', 'Back up and restore your records with a file.');
   set('.local-data-badge', '이 기기에 저장', 'Saved on this device');
-  set('.data-transfer-coming strong', '파일 백업 · 복원', 'File backup · restore');
-  set('.data-transfer-coming small', 'Excel · CSV 지원 준비 중', 'Excel · CSV support coming soon');
-  set('#export-xlsx strong', '엑셀로 내보내기 · 준비 중', 'Export to Excel · Coming soon');
-  set('#export-xlsx small', '다음 단계에서 제공 예정', 'Planned for a later update');
-  set('.data-import-copy strong', '파일에서 가져오기', 'Import from a file');
-  set('.data-import-copy small', '엑셀(.xlsx) 또는 CSV · 날짜, 끼니, 음식명 열 필요', 'Excel (.xlsx) or CSV · Requires date, meal, and food name columns');
-  set('.data-mode-label', '같은 날짜의 기존 기록', 'Existing records on the same date');
-  set('#import-mode option[value="replace"]', '가져온 내용으로 교체', 'Replace with imported records');
-  set('#import-mode option[value="append"]', '기존 기록 뒤에 추가', 'Append to existing records');
-  set('#choose-import-file strong', '파일 가져오기 · 준비 중', 'Import file · Coming soon');
-  set('#choose-import-file small', '다음 단계에서 제공 예정', 'Planned for a later update');
+  set('#export-backup strong', '백업 파일로 내보내기', 'Export a backup file');
+  set('#export-backup small', '식단·설정·내 음식을 JSON 파일 하나로 저장해요', 'Save meals, settings, and custom foods as one JSON file');
+  set('.data-import-copy strong', '백업 파일에서 가져오기', 'Import from a backup file');
+  set('.data-import-copy small', '이 앱에서 내보낸 JSON(.json) 파일만 가져올 수 있어요', 'Only JSON (.json) files exported from this app can be imported');
+  set('.data-mode-label', '가져오는 방법', 'Import method');
+  set('#import-mode option[value="replace"]', '전체를 백업 내용으로 교체', 'Replace everything with the backup');
+  set('#import-mode option[value="merge"]', '기존 기록과 합치기 (같은 날짜는 백업 우선)', 'Merge with current records (backup wins on the same date)');
+  set('#choose-import-file strong', '백업 파일 선택', 'Choose a backup file');
+  set('#choose-import-file small', '선택 후 내용을 확인하고 가져와요', 'Review the contents before importing');
   set('#confirm-import', '이 내용 가져오기', 'Import these records');
   set('#cancel-import', '취소', 'Cancel');
-  set('.data-transfer-note', '엑셀·CSV 가져오기와 내보내기는 다음 단계에서 브라우저 방식으로 제공할 예정이에요.', 'Excel and CSV import and export are planned for a later browser update.');
+  set('#load-sample strong', '샘플 식단 불러오기', 'Load sample meals');
+  set('#load-sample small', '가상의 4일치 식단을 추가해 앱을 둘러봐요', 'Add four fictional days of meals to look around');
+  set('#data-transfer-note', '백업 파일은 직접 보관해 주세요(예: iCloud Drive, 파일 앱). 앱을 삭제하거나 기기를 바꾸면 이 기기의 기록은 사라져요.', 'Keep your backup file somewhere safe (for example iCloud Drive or the Files app). Deleting the app or changing devices removes the records on this device.');
+  set('#data-source-note', '내장 음식의 영양 정보는 USDA FoodData Central(fdc.nal.usda.gov)을 참고했고, 일부는 추정값이에요. 직접 등록한 음식은 입력한 값 그대로 사용돼요. 영양 정보는 참고용이며 의학적 조언이 아니에요.', 'Built-in nutrition information is based on USDA FoodData Central (fdc.nal.usda.gov); some values are estimates. Foods you add use the values you enter. Nutrition information is for reference only and is not medical advice.');
+  set('#privacy-link', '개인정보 처리방침', 'Privacy policy');
+  set('#reminder-title', '식사 기록 알림', 'Meal logging reminders');
+  set('#reminder-copy', '정해진 시간에 이 기기에서 알려드려요. 서버를 거치지 않아요.', 'Reminders are scheduled on this device. Nothing goes through a server.');
+  set('[data-reminder-enabled="off"]', '끄기', 'Off');
+  set('[data-reminder-enabled="on"]', '켜기', 'On');
+  set('label[for="reminder-breakfast"]', '아침', 'Breakfast');
+  set('label[for="reminder-lunch"]', '점심', 'Lunch');
+  set('label[for="reminder-dinner"]', '저녁', 'Dinner');
+  set('#reminder-save', '알림 저장', 'Save reminders');
 
   label('.bottom-nav', '하단 네비게이션', 'Bottom navigation');
   label('#nav-home', '홈', 'Home');
@@ -3255,7 +3276,7 @@ document.getElementById('settings-save')?.addEventListener('click', async () => 
   btn.textContent = ACTIVE_LOCALE === 'en' ? 'Saving…' : '저장 중…';
   try {
     await saveSettings(nextProfile);
-    PROFILE = nextProfile;
+    PROFILE = { ...PROFILE, ...nextProfile };
     TARGETS = calcTargets(cal);
     updateProfileUI();
     renderAll(true);
@@ -3277,7 +3298,7 @@ document.getElementById('settings-save')?.addEventListener('click', async () => 
   }
 });
 
-document.querySelectorAll('.language-option').forEach(button => {
+document.querySelectorAll('.language-option[data-language]').forEach(button => {
   button.addEventListener('click', async () => {
     const nextLocale = button.dataset.language;
     if (nextLocale !== 'ko' && nextLocale !== 'en' || nextLocale === ACTIVE_LOCALE) return;
@@ -3287,6 +3308,8 @@ document.querySelectorAll('.language-option').forEach(button => {
     applyLanguage();
     try {
       await saveSettings({ locale: ACTIVE_LOCALE });
+      renderReminderForm(reminderDraft || currentReminderConfig());
+      if (currentReminderConfig().enabled) NiliriReminders.apply(currentReminderConfig(), ACTIVE_LOCALE);
     } catch (error) {
       ACTIVE_LOCALE = previousLocale;
       PROFILE = { ...PROFILE, locale: previousLocale };
@@ -5026,6 +5049,270 @@ function updateLevelMessage(state = 'hungry') {
 }
 
 /* ============================
+   앱 모드 · 서비스 워커
+   ============================ */
+function setupAppModeUi() {
+  if (!APP_MODE) return;
+  // 텔레그램 데모·AI 메시지 앱 안내는 스토어 앱에서 사용하지 않습니다.
+  document.getElementById('telegram-mark-connected')?.remove();
+  document.querySelectorAll('#agent-help-dialog dl > div')[3]?.remove();
+  document.querySelectorAll('#telegram-open-btn, #telegram-share-btn, #telegram-help-btn, .chat-action-banners')
+    .forEach(el => el.remove());
+  // WKWebView 에서는 웹 음성 인식을 신뢰할 수 없고 마이크/음성 권한 문구가 필요해져 앱에서는 숨깁니다.
+  if (IS_NATIVE_APP && agentVoiceButton) agentVoiceButton.style.display = 'none';
+}
+
+function registerServiceWorker() {
+  if (IS_NATIVE_APP || LOCAL_MODE || !('serviceWorker' in navigator)) return;
+  if (!(location.protocol === 'https:' || location.hostname === 'localhost')) return;
+  navigator.serviceWorker.register('sw.js').catch(error => console.warn('Service worker 등록 실패:', error));
+}
+
+/* ============================
+   식사 기록 알림 (앱에서만 표시)
+   ============================ */
+let reminderDraft = null;
+
+function currentReminderConfig() {
+  return NiliriReminders.normalize(PROFILE.mealReminders);
+}
+
+function renderReminderForm(config) {
+  document.querySelectorAll('[data-reminder-enabled]').forEach(button => {
+    const active = (button.dataset.reminderEnabled === 'on') === config.enabled;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  const times = document.getElementById('reminder-times');
+  if (times) times.hidden = !config.enabled;
+  for (const meal of NiliriReminders.MEALS) {
+    const input = document.getElementById(`reminder-${meal}`);
+    if (input) input.value = config.times[meal];
+  }
+}
+
+function setupReminderUi() {
+  const card = document.getElementById('reminder-card');
+  if (!card) return;
+  if (!NiliriReminders.isSupported()) {
+    card.hidden = true; // 웹/PWA: 로컬 알림 플러그인이 없으므로 숨김(아무 동작 없음)
+    return;
+  }
+  card.hidden = false;
+  reminderDraft = currentReminderConfig();
+  renderReminderForm(reminderDraft);
+  // 앱을 열 때 저장된 설정으로 알림을 다시 맞춥니다(권한 팝업은 띄우지 않음).
+  NiliriReminders.apply(reminderDraft, ACTIVE_LOCALE);
+}
+
+document.querySelectorAll('[data-reminder-enabled]').forEach(button => {
+  button.addEventListener('click', () => {
+    reminderDraft = { ...(reminderDraft || currentReminderConfig()), enabled: button.dataset.reminderEnabled === 'on' };
+    renderReminderForm(reminderDraft);
+  });
+});
+
+document.getElementById('reminder-save')?.addEventListener('click', async event => {
+  const btn = event.currentTarget;
+  if (btn.dataset.actionLocked === 'true') return;
+  btn.dataset.actionLocked = 'true';
+  setButtonPending(btn, true);
+  const hint = document.getElementById('reminder-hint');
+  const showHint = text => {
+    if (!hint) return;
+    hint.textContent = text;
+    hint.hidden = false;
+    clearTimeout(hint._timer);
+    hint._timer = setTimeout(() => { hint.hidden = true; }, 3200);
+  };
+  try {
+    const draft = reminderDraft || currentReminderConfig();
+    const times = {};
+    for (const meal of NiliriReminders.MEALS) times[meal] = document.getElementById(`reminder-${meal}`)?.value || '';
+    let config = NiliriReminders.normalize({ enabled: draft.enabled, times });
+    const result = await NiliriReminders.apply(config, ACTIVE_LOCALE, { requestPermission: true });
+    let message = ACTIVE_LOCALE === 'en' ? 'Saved' : '저장됐어요';
+    if (result.status === 'denied') {
+      config = { ...config, enabled: false };
+      message = ACTIVE_LOCALE === 'en'
+        ? 'Notifications are off. Allow them in iOS Settings > Rebuilders.'
+        : '알림 권한이 꺼져 있어요. iOS 설정 > 리빌더스에서 알림을 허용해 주세요.';
+    } else if (result.status === 'error') {
+      config = { ...config, enabled: false };
+      message = ACTIVE_LOCALE === 'en' ? 'Could not schedule reminders.' : '알림을 예약하지 못했어요.';
+    } else if (result.status === 'scheduled') {
+      message = ACTIVE_LOCALE === 'en' ? 'Reminders scheduled' : '알림을 예약했어요';
+    }
+    await saveSettings({ mealReminders: config });
+    PROFILE = { ...PROFILE, mealReminders: config };
+    reminderDraft = config;
+    renderReminderForm(config);
+    showHint(message);
+  } catch (error) {
+    showStorageFailure(error);
+  } finally {
+    setButtonPending(btn, false);
+    setTimeout(() => { delete btn.dataset.actionLocked; }, 400);
+  }
+});
+
+/* ============================
+   JSON 백업 · 가져오기 · 샘플
+   ============================ */
+let pendingImport = null; // { state, summary }
+
+const tx = (ko, en) => (ACTIVE_LOCALE === 'en' ? en : ko);
+
+function describeSummary(summary) {
+  const range = summary.firstDate
+    ? `${summary.firstDate} ~ ${summary.lastDate}`
+    : tx('식단 기록 없음', 'No meal records');
+  return ACTIVE_LOCALE === 'en'
+    ? `${summary.days} days · ${summary.foods} foods · ${summary.customFoods} custom foods · ${range}`
+    : `${summary.days}일 · 음식 ${summary.foods}개 · 내 음식 ${summary.customFoods}개 · ${range}`;
+}
+
+function hideImportPreview() {
+  pendingImport = null;
+  const preview = document.getElementById('import-preview');
+  if (preview) preview.hidden = true;
+  const fileInput = document.getElementById('import-file');
+  if (fileInput) fileInput.value = '';
+}
+
+function showImportPreview(result) {
+  const preview = document.getElementById('import-preview');
+  const title = document.getElementById('import-preview-title');
+  const meta = document.getElementById('import-preview-meta');
+  const issues = document.getElementById('import-preview-issues');
+  const confirmButton = document.getElementById('confirm-import');
+  if (!preview || !title || !meta || !issues || !confirmButton) return;
+  issues.textContent = '';
+  const addIssue = text => { const li = document.createElement('li'); li.textContent = text; issues.appendChild(li); };
+  if (result.ok) {
+    title.textContent = tx('백업 파일을 확인했어요', 'Backup file checked');
+    const exported = result.exportedAt ? new Date(result.exportedAt) : null;
+    const exportedText = exported && !Number.isNaN(exported.getTime())
+      ? `${tx('내보낸 시각', 'Exported')}: ${exported.toLocaleString(ACTIVE_LOCALE === 'en' ? 'en-US' : 'ko-KR')}`
+      : '';
+    meta.textContent = [describeSummary(result.summary), exportedText].filter(Boolean).join('\n');
+    (result.warnings || []).forEach(addIssue);
+    confirmButton.hidden = false;
+  } else {
+    title.textContent = tx('가져올 수 없는 파일이에요', 'This file cannot be imported');
+    meta.textContent = tx('현재 기록은 바뀌지 않았어요.', 'Your current records were not changed.');
+    (result.errors || []).forEach(addIssue);
+    if (result.moreErrors) addIssue(tx(`그 외 ${result.moreErrors}건`, `${result.moreErrors} more`));
+    confirmButton.hidden = true;
+  }
+  preview.hidden = false;
+}
+
+document.getElementById('export-backup')?.addEventListener('click', async event => {
+  const btn = event.currentTarget;
+  if (btn.dataset.actionLocked === 'true') return;
+  btn.dataset.actionLocked = 'true';
+  setButtonPending(btn, true);
+  try {
+    const state = await storageRepository.getAll();
+    const result = await NiliriBackup.exportBackup(state);
+    if (result.method === 'download') {
+      showToast(tx(`${result.fileName} 파일을 저장했어요. 파일 앱에서 확인하세요.`, `Saved ${result.fileName}. Check your Files app.`), 'success');
+    } else if (result.method !== 'cancelled') {
+      showToast(tx('백업 파일을 내보냈어요.', 'Backup file exported.'), 'success');
+    }
+  } catch (error) {
+    console.warn('백업 내보내기 실패:', error);
+    showToast(tx('백업 파일을 만들지 못했어요.', 'Could not create the backup file.'), 'error');
+  } finally {
+    setButtonPending(btn, false);
+    setTimeout(() => { delete btn.dataset.actionLocked; }, 400);
+  }
+});
+
+document.getElementById('choose-import-file')?.addEventListener('click', () => {
+  document.getElementById('import-file')?.click();
+});
+
+document.getElementById('import-file')?.addEventListener('change', async event => {
+  const file = event.target.files?.[0];
+  pendingImport = null;
+  if (!file) return;
+  if (file.size > NiliriBackup.MAX_FILE_BYTES) {
+    showImportPreview({ ok: false, errors: [tx('파일이 너무 커요(최대 20MB).', 'The file is too large (max 20MB).')] });
+    return;
+  }
+  let text;
+  try {
+    text = await file.text();
+  } catch (_) {
+    showImportPreview({ ok: false, errors: [tx('파일을 읽지 못했어요.', 'Could not read the file.')] });
+    return;
+  }
+  const result = NiliriBackup.parseBackup(text);
+  if (result.ok) pendingImport = { state: result.state, summary: result.summary };
+  showImportPreview(result);
+});
+
+document.getElementById('cancel-import')?.addEventListener('click', hideImportPreview);
+
+document.getElementById('confirm-import')?.addEventListener('click', async event => {
+  const btn = event.currentTarget;
+  if (!pendingImport || btn.dataset.actionLocked === 'true') return;
+  btn.dataset.actionLocked = 'true';
+  setButtonPending(btn, true);
+  try {
+    const mode = document.getElementById('import-mode')?.value === 'merge' ? 'merge' : 'replace';
+    const current = await storageRepository.getAll();
+    const currentSummary = NiliriBackup.summarize(current);
+    const message = mode === 'replace'
+      ? tx(
+        `현재 기록(${describeSummary(currentSummary)})이 모두 지워지고 백업 내용(${describeSummary(pendingImport.summary)})으로 바뀌어요.\n되돌릴 수 없어요. 계속할까요?`,
+        `Your current records (${describeSummary(currentSummary)}) will be erased and replaced with the backup (${describeSummary(pendingImport.summary)}).\nThis cannot be undone. Continue?`,
+      )
+      : tx(
+        `백업 내용(${describeSummary(pendingImport.summary)})을 현재 기록과 합쳐요. 같은 날짜는 백업 내용으로 바뀌어요. 계속할까요?`,
+        `The backup (${describeSummary(pendingImport.summary)}) will be merged into your current records. Days that exist in both are replaced by the backup. Continue?`,
+      );
+    if (!confirm(message)) return;
+    const next = mode === 'replace' ? pendingImport.state : NiliriBackup.mergeStates(current, pendingImport.state);
+    await storageRepository.replaceAll(next);
+    hideImportPreview();
+    showToast(tx('가져왔어요. 화면을 새로 불러와요.', 'Imported. Reloading.'), 'success');
+    setTimeout(() => globalThis.location.reload(), 700);
+  } catch (error) {
+    showStorageFailure(error);
+  } finally {
+    setButtonPending(btn, false);
+    setTimeout(() => { delete btn.dataset.actionLocked; }, 400);
+  }
+});
+
+document.getElementById('load-sample')?.addEventListener('click', async event => {
+  const btn = event.currentTarget;
+  if (btn.dataset.actionLocked === 'true' || !globalThis.RebuildersDemo) return;
+  btn.dataset.actionLocked = 'true';
+  try {
+    if (!confirm(tx(
+      '가상의 샘플 식단 4일치를 기록이 비어 있는 날짜에 추가해요. 실제 기록이 아니며, 필요 없으면 날짜별로 직접 지워야 해요. 추가할까요?',
+      'This adds four fictional sample days to dates with no records. They are not real records, and you must delete them day by day if you do not want them. Add them?',
+    ))) return;
+    const { state, added } = RebuildersDemo.addSampleDays(await storageRepository.getAll());
+    if (!added) {
+      showToast(tx('오늘 기준 최근 4일에 이미 기록이 있어 추가하지 않았어요.', 'The last four days already have records, so nothing was added.'), 'info');
+      return;
+    }
+    await storageRepository.replaceAll(state);
+    showToast(tx('샘플 식단을 추가했어요. 화면을 새로 불러와요.', 'Sample meals added. Reloading.'), 'success');
+    setTimeout(() => globalThis.location.reload(), 700);
+  } catch (error) {
+    showStorageFailure(error);
+  } finally {
+    setTimeout(() => { delete btn.dataset.actionLocked; }, 400);
+  }
+});
+
+/* ============================
    초기화
    ============================ */
 function showStorageUnavailable(error) {
@@ -5046,9 +5333,10 @@ function showAppScreen() {
 }
 
 async function initializeApp() {
-  if (globalThis.REBUILDERS_DEMO_READY) await globalThis.REBUILDERS_DEMO_READY;
   const modeState = await initializeStorageRepository();
   updateLocalModeStatus(modeState);
+  // 브라우저가 저장 공간을 임의로 지우지 않도록 요청(결과와 상관없이 앱은 계속 동작).
+  NiliriStorage.requestPersistentStorage();
   await loadSettings();
   await loadCustomFoods();
   await loadCurrentDay();
@@ -5063,8 +5351,11 @@ async function initializeApp() {
   displayedCalories = 0;
   setRingVisual(0);
   renderAll(false);
+  setupAppModeUi();
+  setupReminderUi();
   showAppScreen();
   document.body.classList.add('app-ready');
+  registerServiceWorker();
 }
 
 async function refreshLocalDay() {
