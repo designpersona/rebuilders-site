@@ -1,2 +1,15 @@
 .DS_Store
 *.log
+node_modules/
+www/
+# Capacitor iOS: 생성·빌드 산출물
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+ios/App/**/xcuserdata/
+ios/App/*.xcworkspace/xcuserdata/
+ios/**/*.xcuserstate
+ios/.build/
