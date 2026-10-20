@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=1150" />
+  <link rel="stylesheet" href="style.css?v=11151" />
 </head>
 
 <body>
@@ -46,11 +46,11 @@
 
     <!-- 홈: 식단 기록 -->
     <nav class="page-tabs" id="page-tabs" aria-label="페이지">
-      <button type="button" class="nav-item page-tab" id="nav-shopping" data-view="fridge" aria-label="그로서리"><span>그로서리</span></button>
-      <button type="button" class="nav-item page-tab" id="nav-search" data-view="foodex" aria-label="식도감"><span>식도감</span></button>
-      <button type="button" class="nav-item page-tab active" id="nav-home" data-view="home" aria-label="식단" aria-current="page"><span>식단</span></button>
-      <button type="button" class="nav-item page-tab" id="nav-stats" data-view="stats" aria-label="리포트"><span>리포트</span></button>
-      <button type="button" class="nav-item page-tab" id="nav-settings" data-view="profile" aria-label="설정"><span>설정</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-shopping" data-view="fridge" aria-label="그로서리"><svg class="page-tab-icon" width="15" height="15" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M5 7H17L16 18H6L5 7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 7V5.5C8 3.8 9.3 2.5 11 2.5C12.7 2.5 14 3.8 14 5.5V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>그로서리</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-search" data-view="foodex" aria-label="식도감"><img class="page-tab-icon" src="assets/icon/buttons/note.svg" width="15" height="15" alt="" aria-hidden="true" /><span>식도감</span></button>
+      <button type="button" class="nav-item page-tab active" id="nav-home" data-view="home" aria-label="식단" aria-current="page"><img class="page-tab-icon" src="assets/icon/buttons/home.svg" width="15" height="15" alt="" aria-hidden="true" /><span>식단</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-stats" data-view="stats" aria-label="리포트"><img class="page-tab-icon" src="assets/icon/buttons/Calendar.svg" width="15" height="15" alt="" aria-hidden="true" /><span>리포트</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-settings" data-view="profile" aria-label="설정"><img class="page-tab-icon" src="assets/icon/buttons/settings.svg" width="15" height="15" alt="" aria-hidden="true" /><span>설정</span></button>
     </nav>
     <div class="app-content view-panel" id="view-home">
 
@@ -339,6 +339,7 @@
             <svg class="kcal-gauge-svg" viewBox="0 0 220 122" aria-hidden="true">
               <path class="kcal-gauge-track" d="M 18 112 A 92 92 0 0 1 202 112" pathLength="100" />
               <path class="kcal-gauge-fill" id="kcal-gauge-fill" d="M 18 112 A 92 92 0 0 1 202 112" pathLength="100" style="stroke-dashoffset: 100" />
+            <path class="kcal-gauge-over" id="kcal-gauge-over" d="M 18 112 A 92 92 0 0 1 202 112" pathLength="100" style="stroke-dasharray: 0 100; opacity: 0" />
             </svg>
             <span class="kcal-gauge-center">
               <span class="kcal-gauge-label" id="kcal-gauge-label">먹은 칼로리</span>
@@ -460,6 +461,11 @@
           </button>
         </div>
       </header>
+      <div class="report-range" id="report-range" role="tablist" aria-label="리포트 기간">
+        <button type="button" role="tab" class="report-range-btn active" data-report-range="day" aria-selected="true">일</button>
+        <button type="button" role="tab" class="report-range-btn" data-report-range="week" aria-selected="false">주</button>
+        <button type="button" role="tab" class="report-range-btn" data-report-range="month" aria-selected="false">월</button>
+      </div>
       <section class="cal-card" aria-label="월간 달력">
         <div class="cal-month-bar">
           <button type="button" class="nav-btn" id="cal-prev-month" aria-label="이전 달">
@@ -658,6 +664,11 @@
               </svg>
               <input id="foodex-search-input" type="search" placeholder="Foodex에서 음식 검색" autocomplete="off" />
             </label>
+          </div>
+          <div class="foodex-filter-chips" id="foodex-filter-chips" role="group" aria-label="식도감 필터">
+            <button type="button" class="foodex-chip active" data-foodex-filter="all" aria-pressed="true">전체</button>
+            <button type="button" class="foodex-chip" data-foodex-filter="recent" aria-pressed="false">최근 먹은</button>
+            <button type="button" class="foodex-chip" data-foodex-filter="frequent" aria-pressed="false">자주 먹은</button>
           </div>
           <div class="search-index-viewbar" role="group" aria-label="Foodex 정렬과 보기 방식">
             <label class="search-index-sort" for="search-index-sort">
@@ -1280,7 +1291,7 @@
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=3"></script>
-  <script src="app.js?v=103"></script>
+  <script src="app.js?v=104"></script>
 </body>
 
 </html>

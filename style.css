@@ -9846,7 +9846,7 @@ body.meal-page-open .bottom-nav {
   z-index: 2;
   top: 0;
   bottom: 0;
-  background: #e23d3d;
+  background: #E5484D;
   border-radius: 0 999px 999px 0;
 }
 
@@ -9862,11 +9862,11 @@ body.meal-page-open .bottom-nav {
 
 #view-home .kcal-over-fill,
 #view-home .kcal-over-bubble {
-  background: #e23d3d !important;
+  background: #E5484D !important;
 }
 
 #view-home .kcal-over-bubble::after {
-  border-top-color: #e23d3d !important;
+  border-top-color: #E5484D !important;
 }
 
 #view-home .food-item {
@@ -9973,8 +9973,8 @@ body.meal-page-open .bottom-nav {
   top: 0;
   bottom: 0;
   border-radius: 0 3px 3px 0;
-  background: #e23d3d;
-  box-shadow: -1px 0 0 #e23d3d;
+  background: #E5484D;
+  box-shadow: -1px 0 0 #E5484D;
   transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -12347,11 +12347,11 @@ body.no-character #view-home .kcal-gauge {
 .kcal-gauge-track, .kcal-gauge-fill { fill: none; stroke-width: 16; stroke-linecap: round; }
 .kcal-gauge-track { stroke: #dedfe2; }
 .kcal-gauge-fill { stroke: var(--accent); stroke-dasharray: 100 100; transition: stroke-dashoffset .7s cubic-bezier(.22, 1, .36, 1), stroke .3s ease; }
-.kcal-gauge.is-over .kcal-gauge-fill { stroke: #e23d3d; }
+.kcal-gauge.is-over .kcal-gauge-fill { stroke: #E5484D; }
 .kcal-gauge-center { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; line-height: 1.15; pointer-events: none; }
 .kcal-gauge-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
 .kcal-gauge-value { font-size: 36px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--text-primary); line-height: 1.05; }
-.kcal-gauge.is-over[data-mode="left"] .kcal-gauge-value { color: #e23d3d; }
+.kcal-gauge.is-over[data-mode="left"] .kcal-gauge-value { color: #E5484D; }
 .kcal-gauge-goal { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 body.no-character #view-home .macros-panel {
   display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 12px !important;
@@ -12418,4 +12418,75 @@ body.no-character #view-home .kcal-gauge:active { scale: 0.97; }
   .stagger-in, .food-item.newly-added { animation: none !important; }
   .page-tab-indicator, .kcal-gauge-fill { transition: none !important; }
   :where(button, [role="button"]):active, .page-tabs .nav-item.page-tab:active, .kcal-gauge:active, .ai-dock-send:active { scale: none !important; }
+}
+
+/* =====================================================================
+   다듬기: 연회색 바탕 + 흰 카드 + 부드러운 그림자, 굵은 검정 테두리 대신 가는 선
+   (검정 강조: 고른 탭·보내기·시간 배지는 그대로)
+   ===================================================================== */
+:root {
+  --bg: #F4F5F7; --card: #FFFFFF; --bg2: #FFFFFF;
+  --text-primary: #111216; --text-secondary: #5E6470;
+  --track: #E8E9ED; --danger: #E5484D;
+  --hairline: rgba(17, 18, 22, 0.06);
+  --shadow-soft: 0 4px 16px rgba(17, 18, 22, 0.06);
+  --r-card: 20px; --r-inner: 14px;
+}
+html, body, .phone-frame, .app-content.view-panel, .page-tabs { background: var(--bg) !important; }
+/* 카드 */
+#view-home .meal-card, #view-home .snack-card, #view-home .snack-card.has-items, #view-home .day-summary,
+#view-stats .cal-card, #view-stats .stats-day-card, #view-stats .stats-week-card, #view-stats .stats-month-summary,
+.search-index-grid:not(.is-list-layout) .search-category-card,
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card,
+.search-index-grid.is-list-layout .search-index-item,
+#view-search[data-hub-mode="fridge"] .shopping-group article, .store-placeholder, .data-transfer-coming {
+  background: var(--card) !important; border: 1px solid var(--hairline) !important;
+  border-radius: var(--r-card) !important; box-shadow: var(--shadow-soft) !important;
+}
+#view-home .meal-card.expanded { border-color: var(--hairline) !important; }
+.search-index-grid:not(.is-list-layout) .search-category-card::before,
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card::before { display: none !important; }
+/* 카드 안 요소 */
+#view-home .player-card { border-radius: var(--r-inner) !important; background: #F7F8FA !important; border: 0 !important; box-shadow: none !important; }
+#view-stats .stats-month-summary > div > *, #view-stats .stats-day-metrics > * { border-radius: var(--r-inner) !important; }
+/* 막대·게이지 트랙 */
+#view-home .macro-bar-track { background: var(--track) !important; border: 0 !important; box-shadow: none !important; }
+.kcal-gauge-track { stroke: var(--track); }
+/* 글자 */
+.kcal-gauge-label, .macro-val, .kcal-gauge-goal { color: var(--text-secondary) !important; }
+/* 알약 */
+.search-hub-input-wrap { border-radius: 999px !important; border: 1px solid var(--hairline) !important; background: var(--card) !important; box-shadow: var(--shadow-soft) !important; }
+.ai-dock-capsule { border: 1px solid var(--hairline) !important; background: var(--card) !important; box-shadow: var(--shadow-soft) !important; }
+.ai-dock-capsule .ai-dock-input { background: transparent !important; }
+.home-ai-dock { background: var(--bg) !important; }
+/* 게이지: 넘친 만큼만 빨강, 나머지 검정 그대로 */
+.kcal-gauge.is-over .kcal-gauge-fill { stroke: var(--accent); }
+.kcal-gauge-over { fill: none; stroke: var(--danger); stroke-width: 16; stroke-linecap: round; transition: stroke-dasharray 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease; }
+.kcal-gauge.is-over[data-mode="left"] .kcal-gauge-value { color: var(--danger); }
+
+/* 위쪽 탭: 고른 탭만 왼쪽에 아이콘 */
+.page-tabs .nav-item.page-tab { flex-direction: row !important; align-items: center !important; justify-content: center; }
+.page-tabs .nav-item.page-tab .page-tab-icon { display: none; width: 15px; height: 15px; flex: 0 0 15px; margin-right: 4px; color: var(--text-primary); }
+.page-tabs .nav-item.page-tab.active .page-tab-icon { display: block; animation: rb-tab-icon-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes rb-tab-icon-in { from { opacity: 0; transform: scale(0.6) translateX(4px); } to { opacity: 1; transform: none; } }
+
+/* 리포트 일/주/월 */
+.report-range { display: flex; gap: 2px; padding: 3px; margin: 2px 0 14px; border-radius: 999px; background: var(--track); }
+.report-range-btn { flex: 1 1 0; height: 32px; border: 0; border-radius: 999px; background: transparent; color: var(--text-secondary); font: 600 14px/1 var(--font); cursor: pointer; transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, scale 0.15s ease-out; }
+.report-range-btn.active { background: #fff; color: var(--text-primary); font-weight: 700; box-shadow: 0 1px 2px rgba(17, 18, 22, 0.08), 0 2px 8px rgba(17, 18, 22, 0.08); }
+#view-stats[data-report-range="day"] .stats-week-card,
+#view-stats[data-report-range="day"] .stats-month-summary,
+#view-stats[data-report-range="week"] .stats-day-card,
+#view-stats[data-report-range="week"] .stats-month-summary,
+#view-stats[data-report-range="month"] .stats-day-card,
+#view-stats[data-report-range="month"] .stats-week-card { display: none !important; }
+
+/* 식도감 필터 칩 */
+.foodex-filter-chips { display: flex; gap: 8px; margin: 12px 0 4px; overflow-x: auto; scrollbar-width: none; }
+.foodex-filter-chips::-webkit-scrollbar { display: none; }
+.foodex-chip { flex: 0 0 auto; height: 32px; padding: 0 14px; border: 1px solid var(--hairline); border-radius: 999px; background: var(--card); color: var(--text-secondary); font: 600 13px/1 var(--font); box-shadow: 0 1px 3px rgba(17, 18, 22, 0.05); cursor: pointer; transition: background 0.2s ease, color 0.2s ease, scale 0.15s ease-out; }
+.foodex-chip.active { background: #111216; border-color: #111216; color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .page-tabs .nav-item.page-tab.active .page-tab-icon { animation: none; }
+  .kcal-gauge-over { transition: none; }
 }

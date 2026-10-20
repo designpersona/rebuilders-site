@@ -1326,7 +1326,15 @@ function setKcalGaugeVisual(cal) {
   const isLeft = kcalGaugeMode === 'left';
   const ratio = goal > 0 ? Math.min(Math.max(cal, 0) / goal, 1) : 0;
   const fill = document.getElementById('kcal-gauge-fill');
-  if (fill) fill.style.strokeDashoffset = String(Math.round((100 - ratio * 100) * 100) / 100);
+  // 막대와 같은 방식: 넘으면 전체 = 먹은 양, 목표까지 검정·넘친 만큼 빨강
+  const basePct = isOver && cal > 0 ? (goal / cal) * 100 : ratio * 100;
+  const round2 = v => Math.round(v * 100) / 100;
+  if (fill) fill.style.strokeDashoffset = String(round2(100 - basePct));
+  const over = document.getElementById('kcal-gauge-over');
+  if (over) {
+    over.style.opacity = isOver ? '1' : '0';
+    over.style.strokeDasharray = isOver ? `0 ${round2(basePct)} ${round2(100 - basePct)} 100` : '0 100';
+  }
   const labelText = isLeft ? t(isOver ? 'calorieOver' : 'calorieRemaining') : t('calorieEaten');
   const valueText = (isLeft ? Math.abs(diff) : eaten).toLocaleString();
   const label = document.getElementById('kcal-gauge-label');
@@ -3967,6 +3975,7 @@ const FOOD_CATEGORY_COPY = Object.freeze({
 });
 
 let searchIndexCategory = null;
+let foodexFilter = 'all';
 let searchIndexLayout = 'cards';
 let searchIndexSort = 'latest';
 let activePurposeKey = null;
@@ -4043,7 +4052,20 @@ function renderSearchHub() {
   const matchQuery = (name, data, q) =>
     !q || `${name} ${displayFoodName({ name, ...data })} ${data.serving || ''}`.toLowerCase().includes(q);
   const filtered = entries.filter(([name, data]) => matchQuery(name, data, query));
-  const indexEntries = entries.filter(([name, data]) => matchQuery(name, data, foodexQuery));
+  let indexEntries = entries.filter(([name, data]) => matchQuery(name, data, foodexQuery));
+  // 식도감 필터: 최근 먹은(최근 음식 순서) · 자주 먹은(2번 이상, 많이 먹은 순)
+  if (foodexFilter === 'recent') {
+    const order = RECENT_FOODS.map(food => food?.name);
+    indexEntries = indexEntries.filter(([name]) => order.includes(name)).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+  } else if (foodexFilter === 'frequent') {
+    const counts = new Map(indexEntries.map(([name]) => [name, foodLogCount(name)]));
+    indexEntries = indexEntries.filter(([name]) => counts.get(name) >= 2).sort((a, b) => counts.get(b[0]) - counts.get(a[0]));
+  }
+  document.querySelectorAll('[data-foodex-filter]').forEach(button => {
+    const on = button.dataset.foodexFilter === foodexFilter;
+    button.classList.toggle('active', on);
+    button.setAttribute('aria-pressed', String(on));
+  });
 
   const createIndexButton = ([name, data], compact = false) => {
     const food = { name, ...data };
@@ -4108,6 +4130,19 @@ function renderSearchHub() {
     categories.hidden = true;
     if (!indexEntries.length) {
       indexGrid.innerHTML = `<p class="search-hub-empty">${ACTIVE_LOCALE === 'en' ? 'No matching food in Foodex.' : 'Foodex에서 일치하는 음식이 없어요.'}</p>`;
+      return;
+    }
+    indexEntries.forEach(entry => indexGrid.appendChild(createIndexButton(entry, true)));
+    return;
+  }
+
+  if (foodexFilter !== 'all') {
+    categories.hidden = true;
+    if (!indexEntries.length) {
+      const empty = foodexFilter === 'recent'
+        ? (ACTIVE_LOCALE === 'en' ? 'No recently eaten foods yet.' : '아직 최근 먹은 음식이 없어요.')
+        : (ACTIVE_LOCALE === 'en' ? 'No food eaten twice or more yet.' : '두 번 이상 먹은 음식이 아직 없어요.');
+      indexGrid.innerHTML = `<p class="search-hub-empty">${empty}</p>`;
       return;
     }
     indexEntries.forEach(entry => indexGrid.appendChild(createIndexButton(entry, true)));
@@ -4445,8 +4480,8 @@ function renderStatsCalendar() {
 
   const selectedIndex = cells.findIndex(cell => cell.key === statsSelectedKey);
   const selectedWeekStart = selectedIndex >= 0 ? Math.floor(selectedIndex / 7) * 7 : 14;
-  const compactStart = Math.max(0, Math.min(21, selectedWeekStart - 7));
-  const visibleCells = statsCalendarExpanded ? cells : cells.slice(compactStart, compactStart + 21);
+  const compactStart = Math.max(0, Math.min(28, selectedWeekStart - 7)); // 접으면 지난주 + 이번 주(고른 날의 주)
+  const visibleCells = statsCalendarExpanded ? cells : cells.slice(compactStart, compactStart + 14);
   const expandToggle = document.getElementById('cal-expand-toggle');
   const legend = document.getElementById('cal-legend');
   if (legend) legend.hidden = !statsCalendarExpanded;
@@ -7048,3 +7083,42 @@ function motionOnReady() {
   document.fonts?.ready?.then(() => movePageTabIndicator(true)).catch?.(() => {});
 }
 addEventListener('resize', () => movePageTabIndicator(true));
+
+/* 식도감 필터 칩 */
+document.querySelectorAll('[data-foodex-filter]').forEach(button => {
+  button.addEventListener('click', () => {
+    foodexFilter = ['recent', 'frequent'].includes(button.dataset.foodexFilter) ? button.dataset.foodexFilter : 'all';
+    searchIndexCategory = null;
+    renderSearchHub();
+  });
+});
+/* 리포트 일/주/월: 일 = 달력+고른 날, 주 = 달력(2주)+최근 7일, 월 = 달력 전체+이번 달 요약. 고른 기간은 기기에 기억 */
+const REPORT_RANGE_KEY = 'rebuilders.reportRange.v1';
+let reportRange = (() => { try { const v = localStorage.getItem(REPORT_RANGE_KEY); return ['day', 'week', 'month'].includes(v) ? v : 'day'; } catch { return 'day'; } })();
+function applyReportRange(range = reportRange, save = false) {
+  reportRange = ['day', 'week', 'month'].includes(range) ? range : 'day';
+  if (save) { try { localStorage.setItem(REPORT_RANGE_KEY, reportRange); } catch {} }
+  const view = document.getElementById('view-stats');
+  if (view) view.dataset.reportRange = reportRange;
+  document.querySelectorAll('[data-report-range]').forEach(button => {
+    const on = button.dataset.reportRange === reportRange;
+    button.classList.toggle('active', on);
+    button.setAttribute('aria-selected', String(on));
+  });
+  statsCalendarExpanded = reportRange === 'month';
+  try { renderStatsCalendar(); } catch {}
+}
+document.querySelectorAll('[data-report-range]').forEach(button => {
+  button.addEventListener('click', () => applyReportRange(button.dataset.reportRange, true));
+});
+{
+  const labels = { day: ['일', 'Day'], week: ['주', 'Week'], month: ['월', 'Month'] };
+  const chips = { all: ['전체', 'All'], recent: ['최근 먹은', 'Recent'], frequent: ['자주 먹은', 'Frequent'] };
+  const en = typeof ACTIVE_LOCALE !== 'undefined' && ACTIVE_LOCALE === 'en';
+  document.querySelectorAll('[data-report-range]').forEach(b => { b.textContent = labels[b.dataset.reportRange][en ? 1 : 0]; });
+  document.querySelectorAll('[data-foodex-filter]').forEach(b => { b.textContent = chips[b.dataset.foodexFilter][en ? 1 : 0]; });
+  const view = document.getElementById('view-stats');
+  if (view) view.dataset.reportRange = reportRange;
+  document.querySelectorAll('[data-report-range]').forEach(b => { const on = b.dataset.reportRange === reportRange; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
+  statsCalendarExpanded = reportRange === 'month';
+}

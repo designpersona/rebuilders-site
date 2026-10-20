@@ -36,7 +36,7 @@ try {
   await load(URL);
   await evaluate(`await saveSettings({ locale: 'ko' }); localStorage.removeItem('rebuilders.kcalGaugeMode.v1'); return 1;`);
   await load();
-  const read = `const g = document.getElementById('kcal-gauge'); const r = g.getBoundingClientRect(); return { mode: g.dataset.mode, label: document.getElementById('kcal-gauge-label').textContent, value: document.getElementById('kcal-gauge-value').textContent, goal: document.getElementById('kcal-gauge-goal').textContent, off: parseFloat(document.getElementById('kcal-gauge-fill').style.strokeDashoffset), over: g.classList.contains('is-over'), saved: localStorage.getItem('rebuilders.kcalGaugeMode.v1'), shown: r.width > 0 && r.height > 0, meterHidden: getComputedStyle(document.getElementById('calorie-summary-toggle')).display === 'none', avatar: getComputedStyle(document.querySelector('#view-home .main-avatar')).display };`;
+  const read = `const g = document.getElementById('kcal-gauge'); const r = g.getBoundingClientRect(); return { mode: g.dataset.mode, label: document.getElementById('kcal-gauge-label').textContent, value: document.getElementById('kcal-gauge-value').textContent, goal: document.getElementById('kcal-gauge-goal').textContent, off: parseFloat(document.getElementById('kcal-gauge-fill').style.strokeDashoffset), overDash: document.getElementById('kcal-gauge-over').style.strokeDasharray, overOn: document.getElementById('kcal-gauge-over').style.opacity === '1', fillColor: getComputedStyle(document.getElementById('kcal-gauge-fill')).stroke, over: g.classList.contains('is-over'), saved: localStorage.getItem('rebuilders.kcalGaugeMode.v1'), shown: r.width > 0 && r.height > 0, meterHidden: getComputedStyle(document.getElementById('calorie-summary-toggle')).display === 'none', avatar: getComputedStyle(document.querySelector('#view-home .main-avatar')).display };`;
   const goal = await evaluate(`return TARGETS.cal;`);
   await evaluate(`updateRing({ cal: 500, carbs: 60, protein: 20, fat: 10 }, false); return 1;`);
   const a = await evaluate(read);
@@ -51,7 +51,9 @@ try {
   check('다시 열어도 남은 칼로리 보기 유지', c.mode === 'left' && c.label === '남은 칼로리', JSON.stringify(c));
   await evaluate(`updateRing({ cal: ${goal} + 200, carbs: 0, protein: 0, fat: 0 }, false); return 1;`);
   const d = await evaluate(read);
-  check('목표 넘으면 초과 칼로리 200, 게이지 가득', d.label === '초과 칼로리' && d.value === '200' && d.over && d.off === 0, JSON.stringify(d));
+  const basePct = goal / (goal + 200) * 100; const overParts = String(d.overDash).split(/[ ,]+/).map(parseFloat);
+  check('목표 넘으면 초과 칼로리 200, 막대처럼 목표까지 검정·넘친 만큼만 빨강', d.label === '초과 칼로리' && d.value === '200' && d.over && d.overOn && Math.abs(d.off - (100 - basePct)) < 0.1 && Math.abs(overParts[1] - basePct) < 0.1 && Math.abs(overParts[2] - (100 - basePct)) < 0.1 && !/229, 72, 77|226, 61, 61/.test(d.fillColor), JSON.stringify(d));
+  check('목표 안이면 빨간 구간 없음', !a.overOn && !b.overOn, JSON.stringify({ a: a.overDash, b: b.overDash }));
   await evaluate(`document.getElementById('kcal-gauge').click(); return 1;`);
   const e = await evaluate(read);
   check('다시 탭 → 먹은 칼로리로 돌아옴', e.mode === 'eaten' && e.label === '먹은 칼로리' && e.value === (goal + 200).toLocaleString() && e.saved === 'eaten', JSON.stringify(e));
