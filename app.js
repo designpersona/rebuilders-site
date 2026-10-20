@@ -99,11 +99,11 @@ const UI_COPY = {
     addSnack: '+ 간식',
     searchFood: '음식 이름 검색...',
     quickAdd: '빠른 추가',
-    search: '검색', recent: '최근', custom: '직접 등록', myProducts: '내 제품', library: '음식사전', ai: 'AI', chat: '채팅', shoppingNav: '내 냉장고',
-    home: '홈', stats: '통계', profile: '내정보',
+    search: '검색', recent: '최근', custom: '직접 등록', myProducts: '내 제품', library: '식도감', ai: 'AI', chat: '채팅', shoppingNav: '그로서리',
+    home: '식단', stats: '리포트', profile: '내정보',
     searchOnlyTitle: '음식 검색', searchOnlyKicker: '검색',
-    fridgeTitle: '내 냉장고', fridgeKicker: '냉장고',
-    foodexNav: '음식사전', foodexTab: 'Foodex', recipeTab: '레시피',
+    fridgeTitle: '그로서리', fridgeKicker: '냉장고',
+    foodexNav: '식도감', foodexTab: 'Foodex', recipeTab: '레시피',
     shopping: '장보기', stockTab: '창고', storeTab: '스토어',
     languageTitle: '언어',
     languageDescription: '처음에는 기기 언어에 맞춰 표시됩니다. 여기서 선택하면 이 기기에 저장됩니다.',
@@ -141,11 +141,11 @@ const UI_COPY = {
     addSnack: '+ Snack',
     searchFood: 'Search food name...',
     quickAdd: 'Quick add',
-    search: 'Search', recent: 'Recent', custom: 'Custom', myProducts: 'My products', library: 'Foodpedia', ai: 'AI', chat: 'Chat', shoppingNav: 'My fridge',
-    home: 'Home', stats: 'Stats', profile: 'Profile',
+    search: 'Search', recent: 'Recent', custom: 'Custom', myProducts: 'My products', library: 'Food guide', ai: 'AI', chat: 'Chat', shoppingNav: 'Grocery',
+    home: 'Meals', stats: 'Report', profile: 'Profile',
     searchOnlyTitle: 'Food search', searchOnlyKicker: 'Search',
-    fridgeTitle: 'My fridge', fridgeKicker: 'Fridge',
-    foodexNav: 'Foodpedia', foodexTab: 'Foodex', recipeTab: 'Recipes',
+    fridgeTitle: 'Grocery', fridgeKicker: 'Fridge',
+    foodexNav: 'Food guide', foodexTab: 'Foodex', recipeTab: 'Recipes',
     shopping: 'Shopping', stockTab: 'Stock', storeTab: 'Store',
     languageTitle: 'Language',
     languageDescription: 'The first visit follows your device language. Your choice here is saved on this device.',
@@ -165,7 +165,7 @@ const UI_COPY = {
     mealModalTitle: 'Add food to {meal}',
     mealTime: 'Time', totalCalories: 'Total calories', foodCount: 'Foods', loggedFoods: 'Logged foods',
     foodDetailsHint: 'Tap a food to view nutrition', searchFoodAction: 'Search food', backToMeals: 'Meals',
-    searchHubTitle: 'Foodpedia', foodIndex: 'Foodex', foodIndexAction: 'Go Foodex ↗', collection: 'Collection', shopping: 'Shopping', searchLibraryNote: 'Search built-in foods and foods you registered.',
+    searchHubTitle: 'Food guide', foodIndex: 'Foodex', foodIndexAction: 'Go Foodex ↗', collection: 'Collection', shopping: 'Shopping', searchLibraryNote: 'Search built-in foods and foods you registered.',
     clearDay: 'Delete all', statsTitle: 'Meal report', statsSub: 'Review your records and trends on the calendar', snackWhen: 'When did you eat it?',
     statsSelectedDay: 'Selected day', statsCalories: 'Calories', statsCarbs: 'Carbs', statsProtein: 'Protein', statsFat: 'Fat', statsUnder: 'Under', statsOnTarget: 'On target', statsOver: 'Over', statsEmpty: 'No meal log for this day.', statsWeekTitle: 'Calories eaten in the last 7 days', statsWeekHint: 'Dark: last 7 days · Light: previous 7 days · Dashed: target', statsMonthTitle: 'This month', statsLoggedDays: 'Days logged', statsAverage: 'Average kcal', statsUnderDays: 'Days at or under target',
     collectionRecipes: 'My recipes', collectionProducts: 'My products', collectionFridge: 'My fridge', collectionMacros: 'Carbs·Protein·Fat', collectionDelete: 'Delete', collectionDeleteTitle: 'Delete collection', collectionExpand: 'Expand ingredients', collectionCollapse: 'Collapse ingredients', foodexClose: 'Close Foodex', foodexViewOptions: 'Foodex sorting and view options', foodexSort: 'Sort', foodexFoodSort: 'Sort foods',
@@ -970,11 +970,11 @@ function applyExtendedStaticCopy() {
   label('#page-tabs', '페이지', 'Pages');
   label('#nav-settings', '설정', 'Settings');
   set('#nav-settings span', '설정', 'Settings');
-  label('#nav-home', '홈', 'Home');
-  label('#nav-search', '음식사전', 'Foodpedia');
-  label('#nav-stats', '통계', 'Stats');
+  label('#nav-home', '식단', 'Meals');
+  label('#nav-search', '식도감', 'Food guide');
+  label('#nav-stats', '리포트', 'Report');
   label('#nav-chat', '채팅', 'Chat');
-  label('#nav-shopping', '내 냉장고', 'My fridge');
+  label('#nav-shopping', '그로서리', 'Grocery');
   label('#foodex-tab-index', 'Foodex', 'Foodex');
   label('#foodex-tab-recipe', '레시피', 'Recipes');
 
@@ -1150,7 +1150,7 @@ function applyExtendedStaticCopy() {
   if (storeCopy) {
     storeCopy.textContent = en ? 'Coming soon.' : '곧 출시됩니다.';
   }
-  set('#foodex-library-title', '음식사전', 'Foodpedia');
+  set('#foodex-library-title', '식도감', 'Food guide');
   set('.collection-card-copy h3', '홈메이드 샐러드', 'Homemade Salad');
   set('.collection-card-copy p', '로메인 80g · 방울토마토 60g · 블루베리 30g · 삶은 달걀 1개', 'Romaine 80g · Cherry tomatoes 60g · Blueberries 30g · Boiled egg 1');
   set('#collection-add-demo', '오늘 식단에 기록', 'Log today');
@@ -5643,10 +5643,26 @@ document.getElementById('fab-toggle')?.addEventListener('click', () => {
 document.getElementById('fab-backdrop')?.addEventListener('click', () => setFabMenu(false));
 document.addEventListener('keydown', event => { if (event.key === 'Escape') setFabMenu(false); });
 
+/* 입력창 밖을 누르거나 화면을 밀면 키보드 닫기(누른 것은 그대로 동작: 이벤트를 막지 않음).
+   입력창·보내기 버튼(#home-ai-dock 안)은 제외 */
+function dismissAiDockKeyboard() {
+  const input = document.getElementById('agent-input');
+  if (!input || document.activeElement !== input) return false;
+  input.blur();
+  try { globalThis.Capacitor?.isNativePlatform?.() && globalThis.Capacitor.Plugins?.Keyboard?.hide?.()?.catch?.(() => {}); } catch { /* ignore */ }
+  return true;
+}
+function outsideAiDock(target) {
+  return !(target && target.closest && target.closest('#home-ai-dock'));
+}
+document.addEventListener('pointerdown', event => { if (outsideAiDock(event.target)) dismissAiDockKeyboard(); }, { capture: true, passive: true });
+document.addEventListener('touchmove', event => { if (outsideAiDock(event.target)) dismissAiDockKeyboard(); }, { capture: true, passive: true });
+document.addEventListener('wheel', event => { if (outsideAiDock(event.target)) dismissAiDockKeyboard(); }, { capture: true, passive: true });
+
 /* ============================
    위쪽 글자 탭 + 좌우로 밀어 옆 페이지로
    ============================ */
-const PAGE_ORDER = ['fridge', 'home', 'foodex', 'stats', 'profile'];
+const PAGE_ORDER = ['fridge', 'foodex', 'home', 'stats', 'profile']; // 그로서리 · 식도감 · 식단 · 리포트 · 설정
 function pageIndexOf(view) {
   if (view === 'shopping') return 0;
   if (view === 'search') return 2;
@@ -5919,6 +5935,9 @@ document.getElementById('ai-photo-input')?.addEventListener('change', async even
   }
 });
 
+// 홈 카드의 픽셀 캐릭터·말풍선: 지금은 숨김(true 로 바꾸면 다시 보임)
+const SHOW_CHARACTER = false;
+document.body?.classList.toggle('no-character', !SHOW_CHARACTER);
 function updateLevelMessage(state = 'hungry') {
   const messagesByState = {
     hungry: ['TIME TO FUEL!', 'ENERGY LOW!', "LET'S EAT!"],

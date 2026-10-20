@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=144" />
+  <link rel="stylesheet" href="style.css?v=146" />
 </head>
 
 <body>
@@ -46,10 +46,10 @@
 
     <!-- 홈: 식단 기록 -->
     <nav class="page-tabs" id="page-tabs" aria-label="페이지">
-      <button type="button" class="nav-item page-tab" id="nav-shopping" data-view="fridge" aria-label="내 냉장고"><span>내 냉장고</span></button>
-      <button type="button" class="nav-item page-tab active" id="nav-home" data-view="home" aria-label="홈" aria-current="page"><span>홈</span></button>
-      <button type="button" class="nav-item page-tab" id="nav-search" data-view="foodex" aria-label="음식사전"><span>음식사전</span></button>
-      <button type="button" class="nav-item page-tab" id="nav-stats" data-view="stats" aria-label="통계"><span>통계</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-shopping" data-view="fridge" aria-label="그로서리"><span>그로서리</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-search" data-view="foodex" aria-label="식도감"><span>식도감</span></button>
+      <button type="button" class="nav-item page-tab active" id="nav-home" data-view="home" aria-label="식단" aria-current="page"><span>식단</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-stats" data-view="stats" aria-label="리포트"><span>리포트</span></button>
       <button type="button" class="nav-item page-tab" id="nav-settings" data-view="profile" aria-label="설정"><span>설정</span></button>
     </nav>
     <div class="app-content view-panel" id="view-home">
@@ -540,7 +540,7 @@
       <div class="content-end-spacer"></div>
     </div>
 
-    <!-- 검색 허브 · 내 냉장고 · 푸드피디아 (data-hub-mode로 역할 분리) -->
+    <!-- 검색 허브 · 그로서리 · 식도감 (data-hub-mode로 역할 분리) -->
     <div class="app-content view-panel" id="view-search" data-hub-mode="search" hidden>
       <header class="search-hub-head" id="search-hub-head">
         <div class="search-brand-row">
@@ -616,7 +616,7 @@
             <div class="foodex-brand-logo-wrap">
               <img class="foodex-brand-logo" src="assets/logo/Logo.png" width="1022" height="224" alt="Rebuilders" />
             </div>
-            <h2 id="foodex-library-title">음식사전</h2>
+            <h2 id="foodex-library-title">식도감</h2>
           </div>
           <div class="home-utilities">
             <button class="home-utility-btn open-profile-btn" type="button" aria-label="설정과 내정보 열기">
@@ -1267,7 +1267,7 @@
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=3"></script>
-  <script src="app.js?v=98"></script>
+  <script src="app.js?v=101"></script>
 </body>
 
 </html>

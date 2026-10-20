@@ -181,17 +181,25 @@ try {
   await evaluate(`closeModal(); return 1`);
   // 위쪽 글자 탭 + 좌우 밀기(CDP 실제 터치)
   const tabs = await evaluate(`setActiveView('home'); await new Promise(r => setTimeout(r, 200)); const t = [...document.querySelectorAll('#page-tabs .page-tab')]; const names = t.map(b => b.textContent.trim()).join('·'); const header = !document.querySelector('#view-home > .home-brand') || getComputedStyle(document.querySelector('#view-home > .home-brand')).display === 'none'; const active = document.querySelector('#page-tabs .page-tab.active')?.id; const grey = getComputedStyle(document.getElementById('nav-stats')).color !== getComputedStyle(document.getElementById('nav-home')).color; document.getElementById('nav-stats').click(); const stats = !document.getElementById('view-stats').hidden && document.getElementById('nav-stats').classList.contains('active') && document.getElementById('home-ai-dock').hidden; document.getElementById('nav-settings').click(); const settings = !document.getElementById('view-profile').hidden; setActiveView('home'); const panel = document.getElementById('ai-dock-panel'); setAiDockPanel(true); const pr = panel.getBoundingClientRect(); const onTop = panel.contains(document.elementFromPoint(pr.left + 20, pr.top + 10)); document.getElementById('view-home').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); const closed = panel.hidden; return { names, header, active, grey, stats, settings, onTop, closed, noFab: getComputedStyle(document.getElementById('fab-menu') || document.body).display === 'none' || !document.getElementById('fab-menu') };`);
-  check('위쪽 글자 탭(머리말 없음·현재 탭 진하게·이동) / 최근 대화 패널 맨 위·바깥 탭 닫힘 / 메뉴 버튼 없음', tabs.names === '내 냉장고·홈·음식사전·통계·설정' && tabs.header && tabs.active === 'nav-home' && tabs.grey && tabs.stats && tabs.settings && tabs.onTop && tabs.closed && tabs.noFab, JSON.stringify(tabs));
+  check('위쪽 글자 탭(머리말 없음·현재 탭 진하게·이동) / 최근 대화 패널 맨 위·바깥 탭 닫힘 / 메뉴 버튼 없음', tabs.names === '그로서리·식도감·식단·리포트·설정' && tabs.header && tabs.active === 'nav-home' && tabs.grey && tabs.stats && tabs.settings && tabs.onTop && tabs.closed && tabs.noFab, JSON.stringify(tabs));
   const swipeTo = async (x0, x1, y) => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y }] }); for (let k = 1; k <= 6; k++) { await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + (x1 - x0) * k / 6, y }] }); await sleep(16); } await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(400); return evaluate('return activeView'); };
   await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await evaluate(`setActiveView('home'); return 1`);
-  const toStats = await (async () => { const a = await swipeTo(300, 150, 600); const b = await swipeTo(300, 150, 600); return [a, b]; })();
-  const back = await swipeTo(100, 260, 600);
+  const toStats = await (async () => { const a = await swipeTo(100, 260, 600); const b = await swipeTo(100, 260, 600); return [a, b]; })();
+  const back = await swipeTo(300, 150, 600);
   const edge = await swipeTo(8, 200, 600);
   const small = await swipeTo(300, 270, 600);
   const vertical = await (async () => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 200 }] }); for (let k = 1; k <= 6; k++) { await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200 - k * 12, y: 200 + k * 40 }] }); await sleep(16); } await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(300); return evaluate('return activeView'); })();
-  check('좌우로 밀면 옆 페이지(홈→음식사전→통계, 오른쪽으로 밀면 되돌아감), 가장자리·짧게·세로는 무시', toStats[0] === 'foodex' && toStats[1] === 'stats' && back === 'foodex' && edge === 'foodex' && small === 'foodex' && vertical === 'foodex', JSON.stringify({ toStats, back, edge, small, vertical }));
+  check('좌우로 밀면 옆 페이지(식단→식도감→그로서리, 왼쪽으로 밀면 되돌아감), 가장자리·짧게·세로는 무시', toStats[0] === 'foodex' && toStats[1] === 'fridge' && back === 'foodex' && edge === 'foodex' && small === 'foodex' && vertical === 'foodex', JSON.stringify({ toStats, back, edge, small, vertical }));
   await evaluate(`setActiveView('home'); return 1`);
+  // 입력창 밖 누르기·밀기 → 키보드 닫힘(누른 것은 그대로 동작), 입력창·보내기는 제외
+  const blur = await evaluate(`setActiveView('home'); const i = document.getElementById('agent-input'); const f = () => document.activeElement === i;
+    i.focus(); document.getElementById('agent-send').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); const sendKeeps = f();
+    i.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); const selfKeeps = f();
+    const tab = document.getElementById('nav-stats'); tab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); const tapBlurs = !f(); tab.click(); const tapActs = !document.getElementById('view-stats').hidden;
+    setActiveView('home'); i.focus(); document.getElementById('view-home').dispatchEvent(new Event('touchmove', { bubbles: true })); const scrollBlurs = !f();
+    return { sendKeeps, selfKeeps, tapBlurs, tapActs, scrollBlurs };`);
+  check('입력창 밖 누르기·화면 밀기 → 키보드 닫힘, 누른 버튼은 그대로 동작, 입력창·보내기는 제외', blur.sendKeeps && blur.selfKeeps && blur.tapBlurs && blur.tapActs && blur.scrollBlurs, JSON.stringify(blur));
   const other = await evaluate(`setActiveView('stats'); const hidden = document.getElementById('home-ai-dock').hidden; setActiveView('ai'); await new Promise(r => setTimeout(r, 100)); return { hidden, back: activeView === 'home' };`);
   check('다른 탭에선 입력창 숨김, 예전 AI 화면 요청은 홈으로', other.hidden && other.back, JSON.stringify(other));
   check('스크립트 오류 없음', !errors.length, errors.slice(0, 3).join(' | '));

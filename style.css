@@ -12310,3 +12310,26 @@ html.kb-native .agent-help-overlay { bottom: var(--kb-h, 0px); transition: botto
 .foodex-library.is-page .foodex-library-header { display: none !important; }
 /* 설정의 × (이전 화면으로) 는 위쪽 탭·좌우 밀기로 대신함 */
 #view-profile .profile-page-head { display: none !important; }
+
+/* 캐릭터 없이: Ht/Wt(왼쪽) · 건강 값(오른쪽) 한 줄 + 아래 Kcal·영양소 막대 */
+body.no-character #view-home .player-card .main-avatar,
+body.no-character #view-home .level-bubble { display: none !important; }
+body.no-character #view-home .player-card {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 12px 14px !important;
+  margin-bottom: 12px !important;
+}
+body.no-character #view-home .player-card > * { position: static !important; inset: auto !important; transform: none !important; margin: 0 !important; }
+body.no-character #view-home .player-card .player-measurements { display: flex !important; flex-direction: row !important; gap: 14px !important; align-items: baseline !important; }
+body.no-character #view-home .player-card .player-measurements p { margin: 0 !important; }
+body.no-character #view-home .player-card .health-glance { display: flex !important; flex-direction: row !important; gap: 12px !important; align-items: center !important; justify-content: flex-end !important; width: auto !important; }
+body.no-character #view-home .day-summary { grid-template-rows: none !important; grid-auto-rows: auto !important; height: auto !important; min-height: 0 !important; row-gap: 10px !important; }
+body.no-character #view-home .player-card { align-self: start !important; margin-bottom: 0 !important; }
+body.no-character #view-home .player-card .player-measurements,
+body.no-character #view-home .player-card .health-glance { height: auto !important; min-height: 0 !important; }
