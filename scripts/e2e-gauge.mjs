@@ -36,7 +36,7 @@ try {
   await load(URL);
   await evaluate(`await saveSettings({ locale: 'ko' }); localStorage.removeItem('rebuilders.kcalGaugeMode.v1'); return 1;`);
   await load();
-  const read = `const g = document.getElementById('kcal-gauge'); const r = g.getBoundingClientRect(); return { mode: g.dataset.mode, label: document.getElementById('kcal-gauge-label').textContent, value: document.getElementById('kcal-gauge-value').textContent, goal: document.getElementById('kcal-gauge-goal').textContent, off: parseFloat(document.getElementById('kcal-gauge-fill').style.strokeDashoffset), overDash: document.getElementById('kcal-gauge-over').style.strokeDasharray, overOn: document.getElementById('kcal-gauge-over').style.opacity === '1', fillColor: getComputedStyle(document.getElementById('kcal-gauge-fill')).stroke, over: g.classList.contains('is-over'), saved: localStorage.getItem('rebuilders.kcalGaugeMode.v1'), shown: r.width > 0 && r.height > 0, meterHidden: getComputedStyle(document.getElementById('calorie-summary-toggle')).display === 'none', avatar: getComputedStyle(document.querySelector('#view-home .main-avatar')).display };`;
+  const read = `const g = document.getElementById('kcal-gauge'); const r = g.getBoundingClientRect(); return { mode: g.dataset.mode, label: document.getElementById('kcal-gauge-label').textContent, value: document.getElementById('kcal-gauge-value').textContent, goal: document.getElementById('kcal-gauge-goal').textContent, off: parseFloat(document.getElementById('kcal-gauge-fill').style.strokeDashoffset), overDash: document.getElementById('kcal-gauge-over').style.strokeDasharray, overOff: parseFloat(document.getElementById('kcal-gauge-over').style.strokeDashoffset), overFirst: document.getElementById('kcal-gauge-over').nextElementSibling?.id === 'kcal-gauge-fill', overOn: document.getElementById('kcal-gauge-over').style.opacity === '1', fillColor: getComputedStyle(document.getElementById('kcal-gauge-fill')).stroke, over: g.classList.contains('is-over'), saved: localStorage.getItem('rebuilders.kcalGaugeMode.v1'), shown: r.width > 0 && r.height > 0, meterHidden: getComputedStyle(document.getElementById('calorie-summary-toggle')).display === 'none', avatar: getComputedStyle(document.querySelector('#view-home .main-avatar')).display };`;
   const goal = await evaluate(`return TARGETS.cal;`);
   await evaluate(`updateRing({ cal: 500, carbs: 60, protein: 20, fat: 10 }, false); return 1;`);
   const a = await evaluate(read);
@@ -52,13 +52,34 @@ try {
   await evaluate(`updateRing({ cal: ${goal} + 200, carbs: 0, protein: 0, fat: 0 }, false); return 1;`);
   const d = await evaluate(read);
   const basePct = goal / (goal + 200) * 100; const overParts = String(d.overDash).split(/[ ,]+/).map(parseFloat);
-  check('목표 넘으면 초과 칼로리 200, 막대처럼 목표까지 검정·넘친 만큼만 빨강', d.label === '초과 칼로리' && d.value === '200' && d.over && d.overOn && Math.abs(d.off - (100 - basePct)) < 0.1 && Math.abs(overParts[1] - basePct) < 0.1 && Math.abs(overParts[2] - (100 - basePct)) < 0.1 && !/229, 72, 77|226, 61, 61/.test(d.fillColor), JSON.stringify(d));
+  check('목표 넘으면 초과 칼로리 200, 막대처럼 목표까지 검정·넘친 만큼만 빨강', d.label === '초과 칼로리' && d.value === '200' && d.over && d.overOn && Math.abs(d.off - (100 - basePct)) < 0.1 && overParts.length === 2 && Math.abs(overParts[0] - (100 - basePct)) < 0.1 && overParts[1] >= 100 && Math.abs(-d.overOff - basePct) < 0.1 && d.overFirst && !/229, 72, 77|226, 61, 61/.test(d.fillColor), JSON.stringify(d));
+  const many = [];
+  for (const extra of [1, 350, 1300, 3700]) {
+    await evaluate(`updateRing({ cal: ${goal} + ${extra}, carbs: 0, protein: 0, fat: 0 }, false); return 1;`);
+    const r = await evaluate(read);
+    const parts = String(r.overDash).split(/[ ,]+/).map(parseFloat);
+    const base = goal / (goal + extra) * 100;
+    // 빨강은 [시작 = -offset, 시작 + 길이] 구간만, 대시가 0 길이로 시작점에 생기지 않음
+    many.push({ extra, ok: r.overOn && parts.length === 2 && parts[0] > 0 && Math.abs(-r.overOff - base) < 0.1 && Math.abs(parts[0] + base - 100) < 0.1 && parts[1] >= 100 });
+  }
+  await evaluate(`updateRing({ cal: ${goal} + 200, carbs: 0, protein: 0, fat: 0 }, false); return 1;`);
+  check('초과 1·350·1300·3700kcal: 빨강은 목표 지점부터 끝까지만(시작점 점 없음)', many.every(m => m.ok), JSON.stringify(many));
   check('목표 안이면 빨간 구간 없음', !a.overOn && !b.overOn, JSON.stringify({ a: a.overDash, b: b.overDash }));
   await evaluate(`document.getElementById('kcal-gauge').click(); return 1;`);
   const e = await evaluate(read);
   check('다시 탭 → 먹은 칼로리로 돌아옴', e.mode === 'eaten' && e.label === '먹은 칼로리' && e.value === (goal + 200).toLocaleString() && e.saved === 'eaten', JSON.stringify(e));
   const m = await evaluate(`const rows = [...document.querySelectorAll('#view-home .macro-row')].map(r => r.getBoundingClientRect()); return { n: rows.length, oneRow: rows.every(r => Math.abs(r.top - rows[0].top) < 2), vals: [...document.querySelectorAll('#view-home .macro-val')].map(v => v.textContent) };`);
   check('탄·단·지 막대 한 줄에 세 개, g / 목표 표시', m.n === 3 && m.oneRow && m.vals.every(v => /\/ \d+g$/.test(v)), JSON.stringify(m));
+  const boxes = [];
+  for (const mode of ['eaten', 'left']) {
+    await evaluate(`kcalGaugeMode = '${mode}'; return 1;`);
+    for (const cal of [0, 820, 1650, 12345]) {
+      boxes.push(await evaluate(`updateRing({ cal: ${cal}, carbs: 0, protein: 0, fat: 0 }, false); const q = s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(v => Math.round(v * 10) / 10).join(','); }; const v = document.getElementById('kcal-gauge-value'); const c = document.querySelector('.kcal-gauge-center').getBoundingClientRect(); return { mode: '${mode}', cal: ${cal}, gauge: q('#kcal-gauge'), svg: q('#kcal-gauge .kcal-gauge-svg'), left: q('#view-home .player-measurements'), right: q('#health-glance'), fits: v.scrollWidth <= c.width + 0.5, text: v.textContent };`));
+    }
+  }
+  await evaluate(`kcalGaugeMode = 'eaten'; return 1;`);
+  const same = k => boxes.every(b => b[k] === boxes[0][k]);
+  check('0·820·1650·12345, 먹은/남은 모두 게이지·양옆 칸 크기·위치 같음, 숫자는 안에 맞음', same('gauge') && same('svg') && same('left') && same('right') && boxes.every(b => b.fits), JSON.stringify(boxes.map(b => [b.mode, b.text, b.gauge, b.fits])));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));

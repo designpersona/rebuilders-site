@@ -12490,3 +12490,21 @@ html, body, .phone-frame, .app-content.view-panel, .page-tabs { background: var(
   .page-tabs .nav-item.page-tab.active .page-tab-icon { animation: none; }
   .kcal-gauge-over { transition: none; }
 }
+
+.kcal-gauge-over { transition: stroke-dasharray 0.3s cubic-bezier(0.22, 1, 0.36, 1), stroke-dashoffset 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease; }
+@media (prefers-reduced-motion: reduce) { .kcal-gauge-over { transition: none; } }
+
+/* 게이지 크기 고정: 가운데 글자 길이와 상관없이 160×89, 양옆 칸도 고정 폭 */
+body.no-character #view-home .player-card .kcal-gauge {
+  flex: 0 0 160px !important; width: 160px !important; max-width: 160px !important; min-width: 160px !important;
+  height: 89px !important; overflow: visible; contain: layout;
+}
+body.no-character #view-home .player-card .kcal-gauge .kcal-gauge-svg { width: 160px; height: 89px; }
+body.no-character #view-home .player-card .player-measurements,
+body.no-character #view-home .player-card .health-glance { flex: 0 0 62px !important; min-width: 62px !important; max-width: 62px !important; overflow: hidden; white-space: nowrap; }
+body.no-character #view-home .player-card .player-measurements { flex-grow: 1 !important; max-width: none !important; }
+body.no-character #view-home .player-card .health-glance { flex-grow: 1 !important; max-width: none !important; }
+.kcal-gauge-center { left: 14px; right: 14px; overflow: hidden; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kcal-gauge-label, .kcal-gauge-goal { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+body.no-character #view-home .kcal-gauge-value.is-long { font-size: 24px; }
+body.no-character #view-home .kcal-gauge-value.is-xlong { font-size: 19px; }

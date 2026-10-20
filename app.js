@@ -1333,7 +1333,9 @@ function setKcalGaugeVisual(cal) {
   const over = document.getElementById('kcal-gauge-over');
   if (over) {
     over.style.opacity = isOver ? '1' : '0';
-    over.style.strokeDasharray = isOver ? `0 ${round2(basePct)} ${round2(100 - basePct)} 100` : '0 100';
+    // 길이 0짜리 대시(둥근 끝 → 시작점 빨간 점)를 쓰지 않고, 넘친 길이만큼 대시를 목표 지점부터 시작
+    over.style.strokeDasharray = isOver ? `${round2(100 - basePct)} 200` : '0 200';
+    over.style.strokeDashoffset = isOver ? String(-round2(basePct)) : '0';
   }
   const labelText = isLeft ? t(isOver ? 'calorieOver' : 'calorieRemaining') : t('calorieEaten');
   const valueText = (isLeft ? Math.abs(diff) : eaten).toLocaleString();
@@ -1341,7 +1343,12 @@ function setKcalGaugeVisual(cal) {
   const value = document.getElementById('kcal-gauge-value');
   const goalEl = document.getElementById('kcal-gauge-goal');
   if (label) label.textContent = labelText;
-  if (value) value.textContent = valueText;
+  if (value) {
+    value.textContent = valueText;
+    // 긴 숫자는 글자를 줄여 게이지 안에 맞춤 (게이지 크기는 고정)
+    value.classList.toggle('is-long', valueText.length >= 6);
+    value.classList.toggle('is-xlong', valueText.length >= 8);
+  }
   if (goalEl) goalEl.textContent = goal.toLocaleString();
   gauge.dataset.mode = kcalGaugeMode;
   gauge.classList.toggle('is-over', isOver);
