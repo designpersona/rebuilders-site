@@ -829,7 +829,9 @@ function applyExtendedStaticCopy() {
   set('label[for="reminder-dinner"]', '저녁', 'Dinner');
   set('#reminder-save', '알림 저장', 'Save reminders');
 
-  label('.bottom-nav', '하단 네비게이션', 'Bottom navigation');
+  label('#fab-menu', '메뉴', 'Menu');
+  label('#nav-settings', '설정', 'Settings');
+  set('#nav-settings .fab-label', '설정', 'Settings');
   label('#nav-home', '홈', 'Home');
   label('#nav-search', '음식사전', 'Foodpedia');
   label('#nav-stats', '통계', 'Stats');
@@ -4136,7 +4138,9 @@ function setActiveView(view) {
 
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === view);
+    if (btn.dataset.view === view) btn.setAttribute('aria-current', 'page'); else btn.removeAttribute('aria-current');
   });
+  setFabMenu(false);
 
   if (view === 'stats') {
     statsMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -5459,6 +5463,37 @@ function refreshAiDockToggle() {
   toggle.textContent = ACTIVE_LOCALE === 'en' ? `Recent messages ${count}` : `최근 대화 ${count}`;
 }
 document.getElementById('ai-dock-toggle')?.addEventListener('click', () => setAiDockPanel(true));
+// 최근 대화 패널 바깥을 누르면 닫기
+document.addEventListener('pointerdown', event => {
+  const panel = document.getElementById('ai-dock-panel');
+  if (!panel || panel.hidden) return;
+  if (panel.contains(event.target) || document.getElementById('ai-dock-toggle')?.contains(event.target)) return;
+  setAiDockPanel(false);
+}, true);
+
+/* 하단 탭바 대신 오른쪽 아래 떠 있는 메뉴 버튼. 누르면 위로 5개 버튼이 펼쳐짐 */
+function setFabMenu(open) {
+  const menu = document.getElementById('fab-menu');
+  const items = document.getElementById('fab-items');
+  const toggle = document.getElementById('fab-toggle');
+  const backdrop = document.getElementById('fab-backdrop');
+  if (!menu || !items || !toggle) return;
+  const en = ACTIVE_LOCALE === 'en';
+  menu.classList.toggle('is-open', open);
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.setAttribute('aria-label', open ? (en ? 'Close menu' : '메뉴 닫기') : (en ? 'Open menu' : '메뉴 열기'));
+  items.setAttribute('aria-hidden', String(!open));
+  items.inert = !open;
+  if (backdrop) backdrop.hidden = !open;
+  document.body.classList.toggle('fab-open', open); // 펼친 동안 최근 대화 칩 숨김(겹침 방지)
+}
+document.getElementById('fab-toggle')?.addEventListener('click', () => {
+  const open = !document.getElementById('fab-menu')?.classList.contains('is-open');
+  if (open) setAiDockPanel(false);
+  setFabMenu(open);
+});
+document.getElementById('fab-backdrop')?.addEventListener('click', () => setFabMenu(false));
+document.addEventListener('keydown', event => { if (event.key === 'Escape') setFabMenu(false); });
 document.getElementById('ai-dock-panel-close')?.addEventListener('click', () => setAiDockPanel(false));
 
 /* 음성 입력: 앱은 @capgo/capacitor-speech-recognition(iOS 음성 인식, 가능하면 기기 안 인식, ko-KR),

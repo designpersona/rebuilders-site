@@ -12079,3 +12079,134 @@ body.has-ai-dock.keyboard-open .toast-host { bottom: 70px; }
 /* 홈 스크롤 영역 끝(전체 삭제 등)이 입력창 경계에 붙거나 걸리지 않게 여유를 둠.
    입력창·탭바·홈 인디케이터(safe area)는 스크롤 영역 밖(아래 형제)이라 겹치지 않음 */
 body.has-ai-dock #view-home { padding-bottom: 28px; scroll-padding-bottom: 28px; }
+
+/* ============================
+   하단 탭바 제거 → 오른쪽 아래 떠 있는 메뉴 버튼(50pt, 입력창과 같은 줄)
+   ============================ */
+.fab-menu {
+  position: fixed;
+  right: max(12px, var(--safe-right));
+  bottom: calc(8px + var(--safe-bottom));
+  width: 50px;
+  height: 50px;
+  z-index: 300;
+}
+body.keyboard-open .fab-menu,
+body.keyboard-open .fab-backdrop,
+body.meal-page-open .fab-menu { display: none !important; }
+.fab-toggle {
+  width: 50px;
+  height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--text-primary);
+  border-radius: 50%;
+  background: var(--text-primary);
+  color: var(--bg2);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.fab-toggle:active { transform: scale(0.94); }
+.fab-toggle .fab-ic-close, .fab-menu.is-open .fab-toggle .fab-ic-open { display: none; }
+.fab-menu.is-open .fab-toggle .fab-ic-close { display: block; }
+.fab-items {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+}
+.fab-menu.is-open .fab-items { pointer-events: auto; }
+.fab-menu .nav-item.fab-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(18px) scale(0.85);
+  transition: opacity 0.16s ease, transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2), visibility 0s linear 0.22s;
+  cursor: pointer;
+}
+.fab-menu.is-open .nav-item.fab-item { opacity: 1; visibility: visible; transform: none; transition: opacity 0.16s ease, transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2), visibility 0s; }
+.fab-menu.is-open .fab-item:nth-last-child(1) { transition-delay: 0ms; }
+.fab-menu.is-open .fab-item:nth-last-child(2) { transition-delay: 30ms; }
+.fab-menu.is-open .fab-item:nth-last-child(3) { transition-delay: 60ms; }
+.fab-menu.is-open .fab-item:nth-last-child(4) { transition-delay: 90ms; }
+.fab-menu.is-open .fab-item:nth-last-child(5) { transition-delay: 120ms; }
+.fab-menu .fab-item .fab-label {
+  display: inline-block;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: var(--bg2);
+  color: var(--text-primary);
+  font: 700 13px/1 var(--font);
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.14);
+}
+.fab-menu .fab-item .fab-circle {
+  width: 50px;
+  height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg2);
+  color: var(--text-primary);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
+}
+.fab-menu .fab-item .fab-circle svg, .fab-menu .fab-item .fab-circle .nav-icon { width: 24px; height: 24px; opacity: 1; filter: none; }
+.fab-menu .fab-item.active .fab-circle { background: var(--accent); border-color: var(--accent); color: var(--bg2); }
+.fab-menu .fab-item.active .fab-circle .nav-icon { filter: invert(1); }
+.fab-menu .fab-item.active .fab-label { background: var(--accent); color: var(--bg2); }
+.fab-backdrop { position: fixed; inset: 0; z-index: 290; background: rgba(15, 15, 20, 0.18); }
+.fab-backdrop[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .fab-menu .nav-item.fab-item, .fab-menu.is-open .nav-item.fab-item { transition: none; }
+}
+/* 설정은 메뉴로 옮김: 머리말의 톱니 버튼 숨김 */
+.home-utility-btn.open-profile-btn { display: none !important; }
+/* 홈: 입력창 오른쪽에 메뉴 버튼 자리(50 + 8), 탭바가 없으니 홈 인디케이터만큼 아래 여백 */
+.home-ai-dock { padding-bottom: calc(8px + var(--safe-bottom)); }
+body:not(.keyboard-open) .ai-dock-bar { padding-right: 58px; }
+/* 다른 화면: 마지막 내용이 메뉴 버튼에 가리지 않게 */
+body:not(.has-ai-dock) .app-content { padding-bottom: calc(80px + var(--safe-bottom)); }
+.toast-host { bottom: calc(76px + var(--safe-bottom)); }
+body.has-ai-dock .toast-host { bottom: calc(150px + var(--safe-bottom)); }
+
+/* 최근 대화: 칩과 패널이 홈 내용·입력창·메뉴 위에 뜨도록 (입력창은 쌓임 맥락을 만들지 않음) */
+.home-ai-dock { z-index: auto; }
+.ai-dock-toggle { z-index: 400; background: var(--bg2); color: var(--text-primary); }
+.ai-dock-panel {
+  position: absolute;
+  left: max(12px, var(--safe-left));
+  right: max(12px, var(--safe-right));
+  bottom: calc(100% + 8px);
+  z-index: 400;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: min(55vh, 460px);
+  background: var(--bg2);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.22);
+}
+.ai-dock-panel .agent-log.ai-dock-log { flex: 1 1 auto; max-height: none; }
+.ai-dock-panel-head .ai-dock-text-btn#ai-dock-panel-close { color: var(--text-primary); font-size: 13px; padding: 6px 4px; }
+body.has-ai-dock #view-home { padding-bottom: 48px; scroll-padding-bottom: 48px; }
+body.fab-open .ai-dock-toggle { display: none !important; }

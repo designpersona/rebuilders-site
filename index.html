@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=135" />
+  <link rel="stylesheet" href="style.css?v=137" />
 </head>
 
 <body>
@@ -948,27 +948,20 @@
       </form>
     </div>
 
-    <nav class="bottom-nav" aria-label="하단 네비게이션">
-      <button class="nav-item" id="nav-shopping" data-view="fridge" aria-label="내 냉장고">
-        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+    <div class="fab-backdrop" id="fab-backdrop" hidden></div>
+    <nav class="fab-menu" id="fab-menu" aria-label="메뉴">
+      <div class="fab-items" id="fab-items" aria-hidden="true" inert>
+        <button type="button" class="nav-item fab-item" id="nav-shopping" data-view="fridge" aria-label="내 냉장고"><span class="fab-label">내 냉장고</span><span class="fab-circle" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
           <path d="M5 7H17L16 18H6L5 7Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
           <path d="M8 7V5.5C8 3.8 9.3 2.5 11 2.5C12.7 2.5 14 3.8 14 5.5V7" stroke="currentColor" stroke-width="1.5"
             stroke-linecap="round" />
-        </svg>
-        <span>내 냉장고</span>
-      </button>
-      <button class="nav-item active" id="nav-home" data-view="home" aria-label="홈">
-        <img class="nav-icon" src="assets/icon/buttons/home.svg" width="27" height="27" alt="" aria-hidden="true" />
-        <span>홈</span>
-      </button>
-      <button class="nav-item" id="nav-search" data-view="foodex" aria-label="음식사전">
-        <img class="nav-icon" src="assets/icon/buttons/note.svg" width="27" height="27" alt="" aria-hidden="true" />
-        <span>음식사전</span>
-      </button>
-      <button class="nav-item" id="nav-stats" data-view="stats" aria-label="통계">
-        <img class="nav-icon" src="assets/icon/buttons/Calendar.svg" width="27" height="27" alt="" aria-hidden="true" />
-        <span>통계</span>
-      </button>
+        </svg></span></button>
+        <button type="button" class="nav-item fab-item" id="nav-home" data-view="home" aria-label="홈"><span class="fab-label">홈</span><span class="fab-circle" aria-hidden="true"><img class="nav-icon" src="assets/icon/buttons/home.svg" width="24" height="24" alt="" /></span></button>
+        <button type="button" class="nav-item fab-item" id="nav-search" data-view="foodex" aria-label="음식사전"><span class="fab-label">음식사전</span><span class="fab-circle" aria-hidden="true"><img class="nav-icon" src="assets/icon/buttons/note.svg" width="24" height="24" alt="" /></span></button>
+        <button type="button" class="nav-item fab-item" id="nav-stats" data-view="stats" aria-label="통계"><span class="fab-label">통계</span><span class="fab-circle" aria-hidden="true"><img class="nav-icon" src="assets/icon/buttons/Calendar.svg" width="24" height="24" alt="" /></span></button>
+        <button type="button" class="nav-item fab-item" id="nav-settings" data-view="profile" aria-label="설정"><span class="fab-label">설정</span><span class="fab-circle" aria-hidden="true"><img class="nav-icon" src="assets/icon/buttons/settings.svg" width="24" height="24" alt="" /></span></button>
+      </div>
+      <button type="button" class="fab-toggle" id="fab-toggle" aria-expanded="false" aria-controls="fab-items" aria-label="메뉴 열기"><svg class="fab-ic-open" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="2" fill="currentColor"/><circle cx="17" cy="7" r="2" fill="currentColor"/><circle cx="7" cy="17" r="2" fill="currentColor"/><circle cx="17" cy="17" r="2" fill="currentColor"/></svg><svg class="fab-ic-close" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
     </nav>
   </div>
 
@@ -1280,7 +1273,7 @@
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=3"></script>
-  <script src="app.js?v=93"></script>
+  <script src="app.js?v=95"></script>
 </body>
 
 </html>
