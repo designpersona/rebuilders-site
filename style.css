@@ -12264,3 +12264,21 @@ body:not(.has-ai-dock) .app-content { padding-bottom: calc(20px + var(--safe-bot
 @media (prefers-reduced-motion: reduce) {
   .app-content.view-panel.page-in-right, .app-content.view-panel.page-in-left { animation: none; }
 }
+
+/* 위쪽 탭: 5개를 화면 너비에 고르게(좁은 화면에서만 가로 스크롤) */
+.page-tabs {
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: max(16px, var(--safe-left));
+  padding-right: max(16px, var(--safe-right));
+}
+/* 로고가 있던 자리 여백 줄이기(통계·내 냉장고·음식사전·내정보 머리) */
+.stats-page-head,
+.search-hub-head,
+.profile-page-head { padding-top: 6px !important; min-height: 0 !important; margin-top: 0 !important; }
+.stats-brand-row,
+.search-brand-row { margin-top: 0 !important; padding-top: 0 !important; min-height: 0 !important; }
+.stats-page-head,
+.search-hub-head { height: auto !important; padding-bottom: 14px !important; }
+#view-profile .profile-page-head { padding-top: 6px !important; height: auto !important; min-height: 0 !important; }
+#view-profile .profile-page-head > .stats-page-title { margin-top: 0 !important; }
