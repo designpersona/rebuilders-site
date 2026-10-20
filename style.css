@@ -12626,3 +12626,14 @@ body.timeline-editing #view-home .section-head .clear-day-btn:disabled { opacity
 .foodex-page-tabs.rb-seg > button { height: 36px !important; font-size: 14px !important; }
 /* 건강 앱 연결 전에는 심박·걸음 칸 숨김([hidden] 이 flex 덮어쓰기에 지지 않게) */
 body.no-character #view-home .player-card .health-glance > [hidden] { display: none !important; }
+
+/* 위쪽 탭: 5칸 같은 폭, 글자가 칸 가운데(가운데 탭 = 화면 가운데), 아이콘은 글자 왼쪽에 띄워서 글자를 밀지 않음 */
+.page-tabs {
+  display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)) !important; gap: 0 !important;
+  padding-left: 16px !important; padding-right: 16px !important; justify-content: stretch !important;
+}
+.page-tabs .nav-item.page-tab { position: relative !important; justify-self: center !important; width: auto !important; }
+.page-tabs .nav-item.page-tab .page-tab-icon,
+.page-tabs .nav-item.page-tab.active .page-tab-icon {
+  position: absolute !important; right: calc(100% + 4px) !important; top: calc(50% - 7.5px) !important; margin: 0 !important;
+}
