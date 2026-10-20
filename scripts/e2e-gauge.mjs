@@ -68,8 +68,8 @@ try {
   await evaluate(`document.getElementById('kcal-gauge').click(); return 1;`);
   const e = await evaluate(read);
   check('다시 탭 → 먹은 칼로리로 돌아옴', e.mode === 'eaten' && e.label === '먹은 칼로리' && e.value === (goal + 200).toLocaleString() && e.saved === 'eaten', JSON.stringify(e));
-  const m = await evaluate(`const rows = [...document.querySelectorAll('#view-home .macro-row')].map(r => r.getBoundingClientRect()); return { n: rows.length, oneRow: rows.every(r => Math.abs(r.top - rows[0].top) < 2), vals: [...document.querySelectorAll('#view-home .macro-val')].map(v => v.textContent) };`);
-  check('탄·단·지 막대 한 줄에 세 개, g / 목표 표시', m.n === 3 && m.oneRow && m.vals.every(v => /\/ \d+g$/.test(v)), JSON.stringify(m));
+  const m = await evaluate(`const rows = [...document.querySelectorAll('#view-home .macro-row')].map(r => r.getBoundingClientRect()); const gr = document.getElementById('kcal-gauge').getBoundingClientRect(); return { n: rows.length, oneRow: rows.every((r, i) => i === 0 || r.top > rows[i - 1].bottom - 1) && rows.every(r => r.left >= gr.right), vitals: (() => { const v = document.getElementById('health-glance').getBoundingClientRect(); return v.top >= gr.bottom - 1 && !!document.querySelector('#health-glance #health-weight') && getComputedStyle(document.querySelector('.dash-card .player-measurements')).display === 'none'; })(), vals: [...document.querySelectorAll('#view-home .macro-val')].map(v => v.textContent) };`);
+  check('게이지 오른쪽에 탄·단·지 막대 세로로, g / 목표 표시, 아래 줄에 심박·몸무게·걸음(키는 숨김)', m.n === 3 && m.oneRow && m.vitals && m.vals.every(v => /\/ \d+g$/.test(v)), JSON.stringify(m));
   const boxes = [];
   for (const mode of ['eaten', 'left']) {
     await evaluate(`kcalGaugeMode = '${mode}'; return 1;`);

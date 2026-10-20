@@ -7138,7 +7138,12 @@ function movePageTabIndicator(instant = false) {
   if (!tab || !tab.offsetWidth) { bar.style.opacity = '0'; return; }
   if (instant) bar.classList.add('no-anim');
   bar.style.opacity = '1';
-  bar.style.transform = `translateX(${tab.offsetLeft}px) scaleX(${tab.offsetWidth / 100})`;
+  // 밑줄: 아이콘 왼쪽 끝 ~ 글자 오른쪽 끝 (글자 위치는 그대로, 밑줄만 왼쪽으로 늘어남)
+  const icon = tab.querySelector('.page-tab-icon');
+  const iconLeft = icon && icon.offsetWidth ? Math.min(0, icon.offsetLeft) : 0;
+  const left = tab.offsetLeft + iconLeft;
+  const width = tab.offsetWidth - iconLeft;
+  bar.style.transform = `translateX(${left}px) scaleX(${width / 100})`;
   if (instant) { void bar.offsetWidth; requestAnimationFrame(() => bar.classList.remove('no-anim')); }
 }
 let motionReadyDone = false;

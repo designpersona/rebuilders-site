@@ -12656,3 +12656,44 @@ body.no-character #view-home .kcal-gauge .kcal-gauge-center { bottom: 12px !impo
 .kcal-gauge.is-over[data-mode="left"] .kcal-gauge-status { color: var(--danger); }
 .kcal-gauge.is-over[data-mode="left"] .kcal-gauge-unit { color: var(--text-secondary) !important; }
 body.no-character #view-home .kcal-gauge .kcal-gauge-center { bottom: 4px !important; }
+
+/* =====================================================================
+   홈 카드 새 배치: 위 [게이지 | 탄단지 세로], 아래 [심박 · 몸무게 · 걸음]
+   ===================================================================== */
+body.no-character #view-home .player-card.dash-card {
+  display: flex !important; flex-direction: column !important; align-items: stretch !important; justify-content: flex-start !important;
+  gap: 10px !important; padding: 12px 12px 10px !important;
+}
+body.no-character #view-home .player-card.dash-card .player-measurements { display: none !important; }
+body.no-character #view-home .dash-card .dash-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+body.no-character #view-home .dash-card .dash-top .kcal-gauge { flex: 0 0 160px !important; margin: 0 !important; }
+body.no-character #view-home .dash-card .macros-panel {
+  flex: 1 1 auto !important; min-width: 0 !important; display: flex !important; flex-direction: column !important;
+  gap: 9px !important; grid-template-columns: none !important; margin: 0 !important; padding: 0 !important;
+}
+body.no-character #view-home .dash-card .macro-row {
+  display: grid !important; grid-template-columns: auto minmax(0, 1fr) !important; grid-template-areas: "label val" "bar bar" !important;
+  align-items: baseline !important; gap: 4px 6px !important; width: 100% !important;
+}
+body.no-character #view-home .dash-card .macro-row .macro-label { font-size: 12px !important; }
+body.no-character #view-home .dash-card .macro-row .macro-val { justify-self: end !important; text-align: right !important; font-size: 10.5px !important; }
+body.no-character #view-home .player-card.dash-card .health-glance.dash-vitals {
+  flex: none !important; width: auto !important; max-width: none !important; min-width: 0 !important; height: auto !important;
+  display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: space-around !important;
+  gap: 8px !important; margin: 0 !important; padding: 9px 4px 0 !important; border-top: 1px solid var(--hairline) !important;
+  overflow: visible !important; text-align: left !important;
+}
+body.no-character #view-home .dash-card .dash-vitals > div,
+body.no-character #view-home .dash-card .dash-vitals > p {
+  display: flex !important; flex-direction: row !important; align-items: center !important; gap: 5px !important;
+  margin: 0 !important; font-size: 14px !important; white-space: nowrap !important;
+}
+body.no-character #view-home .dash-card .dash-vitals > p span { font-weight: 800; }
+body.no-character #view-home .dash-card .dash-vitals .vital-icon { width: 14px; height: 14px; }
+body.no-character #view-home .dash-card .dash-vitals > [hidden] { display: none !important; }
+/* 카드 한 겹으로 정리 + 아래 줄 3칸 균등 */
+body.no-character #view-home .player-card.dash-card { background: transparent !important; box-shadow: none !important; border: 0 !important; padding: 2px 2px 0 !important; }
+body.no-character #view-home .player-card.dash-card .health-glance.dash-vitals { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; justify-items: center !important; }
+body.no-character #view-home .dash-card .dash-vitals:has(> #glance-heart[hidden]) { grid-template-columns: 1fr !important; }
+body.no-character #view-home .dash-card .dash-vitals > p span { font-size: 14px !important; font-weight: 800 !important; color: inherit !important; }
+body.no-character #view-home .dash-card .dash-vitals > .health-glance-link { grid-column: 1 / -1; }
