@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=111158" />
+  <link rel="stylesheet" href="style.css?v=111160" />
 </head>
 
 <body>
@@ -71,24 +71,6 @@
       </header>
 
       <!-- 날짜 이동: 식단 위 맨 위(이 날짜의 식단을 보여줌) -->
-      <header class="date-header home-date-row">
-        <button class="nav-btn" id="prev-day" aria-label="이전 날">
-          <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
-            <path d="M8 1L1 8L8 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" />
-          </svg>
-        </button>
-        <button type="button" class="date-display" id="date-display" aria-label="오늘로 이동">
-          <span class="date-badge" id="date-badge">오늘</span>
-          <span class="date-text" id="current-date">7.19 (일)</span>
-        </button>
-        <button class="nav-btn" id="next-day" aria-label="다음 날">
-          <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
-            <path d="M1 1L8 8L1 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" />
-          </svg>
-        </button>
-      </header>
 
       <div class="section-head">
         <h2 class="section-title">오늘 식단</h2>
@@ -320,6 +302,26 @@
       </div>
 
       <!-- 오늘 영양 요약(캐릭터 카드): 식단 아래 -->
+      <!-- 날짜: 끼니 기록과 그래프 사이 -->
+      <header class="date-header home-date-row">
+        <button class="nav-btn" id="prev-day" aria-label="이전 날">
+          <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
+            <path d="M8 1L1 8L8 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+        </button>
+        <button type="button" class="date-display" id="date-display" aria-label="오늘로 이동">
+          <span class="date-badge" id="date-badge">오늘</span>
+          <span class="date-text" id="current-date">7.19 (일)</span>
+        </button>
+        <button class="nav-btn" id="next-day" aria-label="다음 날">
+          <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
+            <path d="M1 1L8 8L1 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+        </button>
+      </header>
+
       <section class="day-summary" aria-label="영양소 현황">
 
         <div class="player-card">
@@ -1290,7 +1292,7 @@
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=3"></script>
-  <script src="app.js?v=110"></script>
+  <script src="app.js?v=111"></script>
 </body>
 
 </html>

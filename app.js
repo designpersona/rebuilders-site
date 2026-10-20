@@ -1361,6 +1361,9 @@ function setKcalGaugeVisual(cal) {
   const value = document.getElementById('kcal-gauge-value');
   const goalEl = document.getElementById('kcal-gauge-goal');
   if (label) label.textContent = labelText;
+  // 이름 줄 대신 숫자 아래 단위 줄로 보기 구분: kcal / kcal 남음 / kcal 초과
+  const unitEl = gauge.querySelector('.kcal-gauge-unit');
+  if (unitEl) unitEl.textContent = !isLeft ? 'kcal' : (ACTIVE_LOCALE === 'en' ? (isOver ? 'kcal over' : 'kcal left') : (isOver ? 'kcal 초과' : 'kcal 남음'));
   if (value) {
     value.textContent = valueText;
     // 긴 숫자는 글자를 줄여 게이지 안에 맞춤 (게이지 크기는 고정)

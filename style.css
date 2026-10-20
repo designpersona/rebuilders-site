@@ -12637,3 +12637,15 @@ body.no-character #view-home .player-card .health-glance > [hidden] { display: n
 .page-tabs .nav-item.page-tab.active .page-tab-icon {
   position: absolute !important; right: calc(100% + 4px) !important; top: calc(50% - 7.5px) !important; margin: 0 !important;
 }
+
+/* 날짜 줄을 끼니와 그래프 사이로 옮김 */
+#view-home .date-header.home-date-row { margin: 14px 0 0 !important; }
+#view-home .date-header.home-date-row + .day-summary { margin-top: 8px !important; }
+#view-home .section-head { margin-top: 6px !important; }
+
+/* 게이지 가운데: 이름 줄 없이 큰 숫자 + 아래 작은 단위 줄(kcal / kcal 남음 / kcal 초과) */
+.kcal-gauge-label { display: none !important; }
+.kcal-gauge-num { flex-direction: column !important; align-items: center !important; gap: 0 !important; }
+.kcal-gauge-unit { margin-top: 1px; font-size: 11px; line-height: 1.2; }
+body.no-character #view-home .kcal-gauge .kcal-gauge-center { bottom: 12px !important; }
+.kcal-gauge.is-over[data-mode="left"] .kcal-gauge-unit { color: var(--danger); }
