@@ -1390,6 +1390,23 @@ function updateMacroBars(totals, animate = false) {
 /* ============================
    식사 카드 렌더
    ============================ */
+/* 맥 미니 AI가 채운 값(추정) 표시. 사용자가 직접 고치면 sourceTrust 가 'user' 로 바뀌어 사라짐 */
+function isAiEstimate(food) {
+  return Boolean(food?.aiEstimate) && food.sourceTrust !== 'user' && !isNutritionMissing(food);
+}
+function aiEstimateTag(food) {
+  if (!isAiEstimate(food)) return '';
+  return `<span class="macro-tag ai-estimate-tag">${ACTIVE_LOCALE === 'en' ? 'AI est.' : 'AI 추정'}</span>`;
+}
+function aiSourceText(food) {
+  if (!isAiEstimate(food)) return '';
+  const en = ACTIVE_LOCALE === 'en';
+  const head = en ? 'AI estimate (found by the Mac mini AI). Please edit it if it looks wrong.' : 'AI 추정값이에요(맥 미니 AI가 찾음). 틀리면 수정해 주세요.';
+  const source = food.sourceNote ? `\n${en ? 'Source' : '출처'}: ${food.sourceNote}` : '';
+  const url = food.sourceUrl ? `\n${food.sourceUrl}` : '';
+  return `${head}${source}${url}`;
+}
+
 function nutritionTags(food) {
   const tags = [
     ['carbs-tag', ACTIVE_LOCALE === 'en' ? 'C' : '탄', food.carbs, 'g'],
@@ -1436,7 +1453,7 @@ function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
       <span class="food-name">${escapeHtml(visibleName)}</span>
       <div class="food-detail-line">
         <span class="food-cal">${foodCalText(food)}</span>
-        <div class="food-macros">${isNutritionMissing(food) ? `<span class="macro-tag nutrition-missing-tag">${escapeHtml(nutritionMissingLabel())}</span>` : ''}${nutritionTags(food)}</div>
+        <div class="food-macros">${isNutritionMissing(food) ? `<span class="macro-tag nutrition-missing-tag">${escapeHtml(nutritionMissingLabel())}</span>` : ''}${aiEstimateTag(food)}${nutritionTags(food)}</div>
       </div>
     </div>
     <div class="food-actions">
@@ -2709,9 +2726,10 @@ async function submitQuickRecord(query) {
   await addFoods(mealId, foods);
   closeModal();
   const missing = foods.filter(isNutritionMissing).length;
+  const queued = queueBridgeLookup(mealId, foods);
   showToast(ACTIVE_LOCALE === 'en'
-    ? `Saved ${foods.length} to ${mealLabel(mealId)}${missing ? ` · ${missing} missing nutrition` : ''}`
-    : `${mealLabel(mealId)}에 ${foods.length}개 저장${missing ? ` · 영양정보 미입력 ${missing}개` : ''}`, 'info');
+    ? `Saved ${foods.length} to ${mealLabel(mealId)}${missing ? (queued ? ' · AI is finding nutrition…' : ` · ${missing} missing nutrition`) : ''}`
+    : `${mealLabel(mealId)}에 ${foods.length}개 저장${missing ? (queued ? ' · AI가 영양성분 찾는 중…' : ` · 영양정보 미입력 ${missing}개`) : ''}`, 'info');
   return true;
 }
 
@@ -2964,10 +2982,12 @@ function openFoodDex(food) {
     : visibleServing;
   const description = document.getElementById('food-dex-description');
   if (description) {
-    description.hidden = mode === 'meal';
-    description.textContent = ACTIVE_LOCALE === 'en'
+    const aiSource = mode === 'meal' ? aiSourceText(referenceFood) : '';
+    description.hidden = mode === 'meal' && !aiSource;
+    description.classList.toggle('food-dex-ai-source', Boolean(aiSource));
+    description.textContent = aiSource || (ACTIVE_LOCALE === 'en'
       ? (referenceFood.descriptionEn || referenceFood.description || '')
-      : (referenceFood.description || '');
+      : (referenceFood.description || ''));
   }
   const nutritionBasis = referenceFood.basis || visibleServing || (ACTIVE_LOCALE === 'en' ? 'not set' : '1회 제공량');
   document.getElementById('food-dex-nutrition-basis').textContent = ACTIVE_LOCALE === 'en'
@@ -5107,9 +5127,13 @@ async function handleAgentCommand() {
     const indexes = await addFoods(mealId, foods);
     const missing = foods.map((food, i) => ({ food, idx: indexes[i] })).filter(({ food }) => isNutritionMissing(food));
     const summary = foods.map(quickItemSummary).join(', ');
+    const queued = queueBridgeLookup(mealId, foods);
+    const later = queued
+      ? (ACTIVE_LOCALE === 'en' ? ' The Mac mini AI is finding nutrition and will fill it in.' : ' 맥 미니 AI가 영양성분을 찾아서 채워줄게요.')
+      : (ACTIVE_LOCALE === 'en' ? ' You can fill in nutrition later.' : ' 영양정보는 나중에 채워도 돼요.');
     const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? `Saved to ${mealLabel(mealId)}: ${summary}.${missing.length ? ' You can fill in nutrition later.' : ''}`
-      : `${mealLabel(mealId)}에 저장했어요: ${summary}.${missing.length ? ' 영양정보는 나중에 채워도 돼요.' : ''}`);
+      ? `Saved to ${mealLabel(mealId)}: ${summary}.${missing.length ? later : ''}`
+      : `${mealLabel(mealId)}에 저장했어요: ${summary}.${missing.length ? later : ''}`);
     if (missing.length) {
       appendFillNutritionButton(message, mealId, missing[0].idx);
       appendToAgentMessage(message, buildAskAiButton(mealId, missing.map(({ food }) => ({ name: food.name, serving: food.serving || '' })), 'agent-confirm'));
@@ -5824,6 +5848,210 @@ document.getElementById('log-link-cancel')?.addEventListener('click', closeLogLi
 document.getElementById('log-link-x')?.addEventListener('click', closeLogLinkSheet);
 logLinkModal?.addEventListener('click', event => { if (event.target === logLinkModal) closeLogLinkSheet(); });
 
+/* ============================
+   맥 미니 브리지(집 와이파이) 자동 영양 채우기 — bridge.js
+   - 빠른 입력/채팅으로 저장한 '영양정보 미입력' 음식의 이름·양만 맥 미니로 보내고,
+     받은 값(AI 추정)으로 그 기록을 바로 채움. 연결이 안 되면 대기 → 앱을 열거나 다시 볼 때 재시도.
+   - 텔레그램 'AI에게 물어보기'는 그대로 대체 방법으로 남김.
+   ============================ */
+let bridgeProcessing = false;
+let bridgeRerun = false;
+let bridgeListenersReady = false;
+
+function bridgeItemsFrom(foods) {
+  return (foods || [])
+    .filter(food => food?.name && isNutritionMissing(food))
+    .map(food => ({ name: food.name, serving: food.serving || '' }));
+}
+
+/* 저장 직후 호출: 브리지가 설정돼 있고 미입력 음식이 있으면 대기 목록에 넣고 바로 시도. 반환: 넣었는지 */
+function queueBridgeLookup(mealId, foods, date = currentDate) {
+  if (!globalThis.RebuildersBridge?.isConfigured()) return false;
+  const items = bridgeItemsFrom(foods);
+  if (!items.length) return false;
+  const job = RebuildersBridge.enqueue({ date: dateKey(date), meal: mealId, items });
+  if (!job) return false;
+  renderBridgePending();
+  processBridgeQueue({ announce: true });
+  return true;
+}
+
+/* list(해당 끼니 foods 배열)에서 이름이 같은 미입력 기록을 찾아 채움. 반환: 채운 개수 */
+function fillFoodsFromBridge(list, found) {
+  let filled = 0;
+  found.forEach(({ name, fields }) => {
+    const idx = list.findIndex(existing => isNutritionMissing(existing) && compactFoodName(existing.name) === compactFoodName(name));
+    if (idx < 0) return; // 그사이 지웠거나 직접 채웠으면 건드리지 않음
+    const existing = list[idx];
+    const next = { ...existing, ...fields, name: existing.name };
+    if (existing.serving) next.serving = existing.serving;
+    if (existing.slot !== undefined) next.slot = existing.slot;
+    list[idx] = next;
+    filled += 1;
+  });
+  return filled;
+}
+
+async function applyBridgeResult(job, result) {
+  const found = result.items
+    .map(item => ({ name: item?.name, fields: RebuildersBridge.toFoodFields(item) }))
+    .filter(entry => entry.name && entry.fields);
+  if (!found.length) return 0;
+  if (job.date === dateKey(currentDate)) {
+    const before = snapshotMeals();
+    const filled = fillFoodsFromBridge(meals[job.meal].foods, found);
+    if (filled) {
+      renderAll(false);
+      await persistMealsOrRestore(before);
+      if (activeMealPageContext) renderMealPage();
+    }
+    return filled;
+  }
+  const day = await storageRepository.getDay(job.date);
+  const list = (day?.[job.meal] || []).map(food => ({ ...food }));
+  const filled = fillFoodsFromBridge(list, found);
+  if (filled) {
+    const next = { ...day, [job.meal]: list };
+    await storageRepository.saveDay(job.date, next);
+    if (statsCache) statsCache[job.date] = next;
+  }
+  return filled;
+}
+
+function bridgeStopMessage(kind) {
+  const en = ACTIVE_LOCALE === 'en';
+  if (kind === 'unreachable') return en ? 'Cannot reach the Mac mini. It will fill in when you open the app on home Wi-Fi.' : '맥 미니에 연결이 안 돼 대기 중이에요. 집 와이파이에서 앱을 열면 자동으로 채워요.';
+  if (kind === 'unauthorized') return en ? 'The Mac mini token does not match. Check it in Settings.' : '맥 미니 연결 토큰이 맞지 않아요. 설정에서 확인해 주세요.';
+  return en ? 'The AI could not answer right now. It will try again later.' : 'AI가 지금 답을 못 했어요. 조금 뒤에 다시 시도할게요.';
+}
+
+async function processBridgeQueue({ announce = false } = {}) {
+  if (!globalThis.RebuildersBridge) return;
+  if (bridgeProcessing) { bridgeRerun = true; return; }
+  if (!RebuildersBridge.isConfigured() || !RebuildersBridge.getQueue().length) { renderBridgePending(); return; }
+  bridgeProcessing = true;
+  renderBridgePending();
+  let total = 0;
+  let stopKind = '';
+  const failedNames = [];
+  try {
+    for (const job of RebuildersBridge.getQueue()) {
+      try {
+        const result = await RebuildersBridge.lookup(job);
+        total += await applyBridgeResult(job, result);
+        RebuildersBridge.removeJob(job.id);
+        failedNames.push(...result.failed);
+      } catch (error) {
+        const kind = error instanceof RebuildersBridge.BridgeError ? error.kind : 'error';
+        stopKind = kind;
+        // 집 밖(연결 안 됨)·토큰 오류는 그대로 남겨두고 다음에, AI 실패·시간 초과는 몇 번까지만 다시
+        if (kind === 'unreachable' || kind === 'unauthorized') break;
+        RebuildersBridge.bumpAttempt(job.id);
+      }
+    }
+  } finally {
+    bridgeProcessing = false;
+    renderBridgePending();
+  }
+  const en = ACTIVE_LOCALE === 'en';
+  if (total) showToast(en ? `AI filled in nutrition for ${total} (AI estimate)` : `AI가 ${total}개 영양성분을 채웠어요 (AI 추정)`, 'success');
+  if (failedNames.length && announce) {
+    showToast(en ? `Could not find: ${failedNames.join(', ')}. Enter it yourself or ask AI.` : `${failedNames.join(', ')}은(는) 못 찾았어요. 직접 입력하거나 'AI에게 물어보기'를 써주세요.`, 'info');
+  } else if (!total && announce && stopKind) {
+    showToast(bridgeStopMessage(stopKind), stopKind === 'unauthorized' ? 'error' : 'info');
+  }
+  if (bridgeRerun) {
+    bridgeRerun = false;
+    if (stopKind !== 'unreachable' && stopKind !== 'unauthorized') processBridgeQueue({ announce });
+  }
+}
+
+function renderBridgePending() {
+  const el = document.getElementById('bridge-pending');
+  if (!el || !globalThis.RebuildersBridge) return;
+  const count = RebuildersBridge.getQueue().reduce((sum, job) => sum + job.items.length, 0);
+  const en = ACTIVE_LOCALE === 'en';
+  el.hidden = !count;
+  el.classList.toggle('is-working', bridgeProcessing);
+  el.textContent = bridgeProcessing ? (en ? 'AI finding…' : 'AI 찾는 중') : (en ? `AI waiting ${count}` : `AI 대기 ${count}`);
+  el.setAttribute('aria-label', en
+    ? `${count} foods waiting for the Mac mini AI. Tap to try again.`
+    : `맥 미니 AI가 채울 음식 ${count}개 대기 중. 누르면 다시 시도해요.`);
+}
+
+function renderBridgeSettings(message = '') {
+  if (!globalThis.RebuildersBridge) return;
+  const { url, token } = RebuildersBridge.getConfig();
+  const urlInput = document.getElementById('bridge-url');
+  const tokenInput = document.getElementById('bridge-token');
+  const en = ACTIVE_LOCALE === 'en';
+  if (urlInput && document.activeElement !== urlInput) urlInput.value = url;
+  if (tokenInput && document.activeElement !== tokenInput) {
+    tokenInput.value = '';
+    tokenInput.placeholder = token
+      ? (en ? 'Saved (enter a new one to change)' : '저장됨 (바꾸려면 새로 입력)')
+      : (en ? 'Contents of the token file on the Mac' : '맥 미니 token 파일 내용');
+  }
+  const hint = document.getElementById('bridge-hint');
+  if (hint) {
+    hint.hidden = !message;
+    hint.textContent = message;
+  }
+}
+
+function saveBridgeSettingsFromInputs() {
+  const en = ACTIVE_LOCALE === 'en';
+  const rawUrl = document.getElementById('bridge-url')?.value.trim() || '';
+  const rawToken = document.getElementById('bridge-token')?.value.trim() || '';
+  if (rawUrl && !RebuildersBridge.normalizeUrl(rawUrl)) return en ? 'Check the Mac mini address.' : '맥 미니 주소를 확인해 주세요.';
+  if (rawToken && !RebuildersBridge.normalizeToken(rawToken)) return en ? 'Check the token (letters, numbers, - and _).' : '토큰을 확인해 주세요(영문·숫자·-·_).';
+  RebuildersBridge.setConfig({ url: rawUrl, ...(rawToken ? { token: rawToken } : {}) });
+  if (!rawUrl) RebuildersBridge.setConfig({ token: '' });
+  return '';
+}
+
+function setupBridge() {
+  renderBridgeSettings();
+  renderBridgePending();
+  processBridgeQueue();
+  if (bridgeListenersReady) return;
+  bridgeListenersReady = true;
+  const en = () => ACTIVE_LOCALE === 'en';
+  document.getElementById('bridge-save')?.addEventListener('click', () => {
+    const error = saveBridgeSettingsFromInputs();
+    const configured = RebuildersBridge.isConfigured();
+    renderBridgeSettings(error || (configured
+      ? (en() ? 'Saved. New entries will be filled in automatically at home.' : '저장했어요. 이제 집 와이파이에서 기록하면 자동으로 채워져요.')
+      : (RebuildersBridge.getConfig().url
+        ? (en() ? 'Address saved. Enter the token too.' : '주소를 저장했어요. 토큰도 넣어주세요.')
+        : (en() ? 'Mac mini connection removed.' : '맥 미니 연결을 지웠어요.'))));
+    renderBridgePending();
+    if (!error && configured) processBridgeQueue();
+  });
+  document.getElementById('bridge-check')?.addEventListener('click', event => runButtonAction(event.currentTarget, async () => {
+    const error = saveBridgeSettingsFromInputs();
+    if (error) { renderBridgeSettings(error); return; }
+    renderBridgeSettings(en() ? 'Checking…' : '확인 중…');
+    const state = await RebuildersBridge.checkConnection();
+    const messages = {
+      ok: en() ? 'Connected to the Mac mini.' : '맥 미니와 연결됐어요.',
+      unauthorized: en() ? 'Address OK, but the token does not match.' : '주소는 맞는데 토큰이 달라요.',
+      unreachable: en() ? 'Cannot reach it. Check home Wi-Fi, the address, and Local Network permission.' : '연결이 안 돼요. 집 와이파이, 주소, 로컬 네트워크 권한을 확인해 주세요.',
+      timeout: en() ? 'No answer (timeout).' : '응답이 없어요(시간 초과).',
+      not_configured: en() ? 'Enter the address first.' : '주소를 먼저 넣어주세요.',
+    };
+    renderBridgeSettings(messages[state] || (en() ? 'Could not check the connection.' : '연결을 확인하지 못했어요.'));
+    if (state === 'ok') processBridgeQueue({ announce: true });
+  }));
+  document.getElementById('bridge-pending')?.addEventListener('click', () => processBridgeQueue({ announce: true }));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) processBridgeQueue(); });
+  window.addEventListener('online', () => processBridgeQueue());
+  setInterval(() => { if (!document.hidden && RebuildersBridge.getQueue().length) processBridgeQueue(); }, 120000);
+  const cap = globalThis.Capacitor;
+  const appPlugin = cap?.isNativePlatform?.() ? (cap.Plugins?.App || cap.registerPlugin?.('App')) : null;
+  appPlugin?.addListener?.('appStateChange', state => { if (state?.isActive) processBridgeQueue(); });
+}
+
 function setupDeepLinks() {
   renderAiLookupSettings();
   const cap = globalThis.Capacitor;
@@ -5859,6 +6087,7 @@ async function initializeApp() {
   setupReminderUi();
   setupHealthUi();
   setupDeepLinks();
+  setupBridge();
   showAppScreen();
   document.body.classList.add('app-ready');
   registerServiceWorker();

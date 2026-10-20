@@ -11798,3 +11798,41 @@ body.keyboard-open .bottom-nav {
 .log-link-macros, .log-link-source { grid-column: 1 / -1; font: 500 11px/1.4 var(--font); color: var(--text-secondary); }
 .log-link-warnings { margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: #fff8e1; color: #7a5a00; font: 600 11px/1.4 var(--font); }
 .log-link-warnings[hidden] { display: none; }
+
+/* 맥 미니 브리지: AI 추정 배지 · 대기 표시 · 설정 버튼 */
+.macro-tag.ai-estimate-tag {
+  background: #e8f1ff;
+  color: #1d4f91;
+  font-weight: 700;
+}
+.bridge-pending {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #1d4f91;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bridge-pending[hidden] { display: none; }
+.bridge-pending.is-working { opacity: 0.75; }
+.bridge-actions {
+  display: flex;
+  gap: 8px;
+}
+.bridge-actions .settings-save-btn { flex: 1; }
+.bridge-check-btn {
+  background: #fff;
+  color: inherit;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.ai-lookup-fallback { margin-top: 14px; }
+.food-dex-ai-source {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}

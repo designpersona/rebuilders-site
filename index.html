@@ -76,6 +76,7 @@
             <span class="date-badge" id="date-badge">오늘</span>
             <span class="date-text" id="current-date">7.19 (일)</span>
             <button type="button" class="go-today-btn" id="go-today" hidden>오늘로</button>
+            <button type="button" class="bridge-pending" id="bridge-pending" hidden>AI 대기</button>
           </div>
           <button class="nav-btn" id="next-day" aria-label="다음 날">
             <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
@@ -881,8 +882,24 @@
       </section>
 
       <section class="profile-form-card ai-lookup-card" id="ai-lookup-card" aria-labelledby="ai-lookup-title">
-        <h3 class="stats-section-title" id="ai-lookup-title">AI 영양 찾기 (텔레그램)</h3>
-        <p class="profile-save-hint language-settings-copy">DB에 없는 음식을 'AI에게 물어보기'로 맥 미니의 AI 봇에게 물어볼 때 쓰는 봇 아이디예요. 음식 이름·양·끼니만 보내요.</p>
+        <h3 class="stats-section-title" id="ai-lookup-title">AI 영양 찾기</h3>
+        <p class="profile-save-hint language-settings-copy">집 와이파이에서 기록하면 맥 미니의 AI가 영양성분을 찾아 바로 채워요(AI 추정, 나중에 수정 가능). 음식 이름·양·끼니·날짜만 보내요. 집 밖에서 기록한 건 대기했다가 집에서 앱을 열면 채워요.</p>
+        <div class="settings-form profile-settings-form">
+          <div class="form-group">
+            <label for="bridge-url">맥 미니 주소</label>
+            <input type="url" class="settings-input" id="bridge-url" placeholder="예: http://Macui-Macmini.local:3400" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url" />
+          </div>
+          <div class="form-group">
+            <label for="bridge-token">연결 토큰</label>
+            <input type="password" class="settings-input" id="bridge-token" placeholder="맥 미니 token 파일 내용" autocomplete="off" autocapitalize="off" spellcheck="false" />
+          </div>
+        </div>
+        <div class="bridge-actions">
+          <button class="settings-save-btn" id="bridge-save" type="button">저장</button>
+          <button class="settings-save-btn bridge-check-btn" id="bridge-check" type="button">연결 확인</button>
+        </div>
+        <p class="profile-save-hint" id="bridge-hint" hidden></p>
+        <p class="profile-save-hint language-settings-copy ai-lookup-fallback">다른 방법: 'AI에게 물어보기'로 텔레그램 봇에게 물어보기</p>
         <div class="settings-form profile-settings-form">
           <div class="form-group">
             <label for="telegram-bot-id">텔레그램 봇 아이디</label>
@@ -1286,7 +1303,8 @@
   <script src="quick-entry.js?v=1"></script>
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
-  <script src="app.js?v=85"></script>
+  <script src="bridge.js?v=1"></script>
+  <script src="app.js?v=86"></script>
 </body>
 
 </html>

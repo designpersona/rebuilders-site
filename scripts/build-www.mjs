@@ -9,7 +9,7 @@ const out = join(root, 'www');
 
 const FILES = [
   'index.html', 'privacy.html', 'style.css', 'app.js', 'storage.js', 'backup.js',
-  'notifications.js', 'keyboard.js', 'food-catalog.js', 'demo-seed.js', 'quick-entry.js', 'health.js', 'log-link.js', 'manifest.webmanifest',
+  'notifications.js', 'keyboard.js', 'food-catalog.js', 'demo-seed.js', 'quick-entry.js', 'health.js', 'log-link.js', 'bridge.js', 'manifest.webmanifest',
 ];
 const DIRS = ['assets'];
 
@@ -58,6 +58,8 @@ writeFileSync(join(out, 'app-config.js'), `/* 자동 생성: scripts/build-www.m
 `);
 
 // 앱 번들에 외부로 나가는 코드가 없는지 확인합니다.
+// 예외: bridge.js 는 사용자가 설정에 넣은 맥 미니(집 와이파이) 주소로만 요청합니다(분석·광고 도구는 여전히 금지).
+const NETWORK_ALLOWED = new Set(['bridge.js']);
 const bad = [];
 function scan(dir) {
   for (const name of readdirSync(dir)) {
@@ -65,7 +67,10 @@ function scan(dir) {
     if (statSync(path).isDirectory()) { scan(path); continue; }
     if (!/\.(html|js|css|webmanifest)$/.test(name) || path.includes(`${join(out, 'vendor')}`)) continue;
     const text = readFileSync(path, 'utf8');
-    if (/clarity\.ms|googletagmanager|google-analytics|\bgtag\(|sendBeacon|XMLHttpRequest|\bfetch\(/.test(text)) {
+    const pattern = NETWORK_ALLOWED.has(name) && dirname(path) === out
+      ? /clarity\.ms|googletagmanager|google-analytics|\bgtag\(|sendBeacon|XMLHttpRequest/
+      : /clarity\.ms|googletagmanager|google-analytics|\bgtag\(|sendBeacon|XMLHttpRequest|\bfetch\(/;
+    if (pattern.test(text)) {
       bad.push(path);
     }
   }
