@@ -98,6 +98,44 @@ try {
   const sent = await evaluate(`return { opened: window.__opened.length, copied: window.__copied.length }`);
   check('물어보기 → 브리지로 바로 채움(텔레그램·클립보드 안 씀)', askFilled && sent.opened === 0 && sent.copied === 0, JSON.stringify(sent));
 
+  // 3-3) 출처는 짧은 사이트 이름 링크(긴 주소 안 보임)
+  const src = await evaluate(`const f = meals.lunch.foods.find(x => x.aiEstimate); openFoodDex(f, { mode: 'meal' }); const d = document.getElementById('food-dex-description'); const a = d.querySelector('a.ai-source-link'); const out = { text: d.textContent, link: a?.textContent || '', href: a?.href || '', hidden: d.hidden }; document.querySelector('#food-dex .food-dex-close, #food-dex-close, [data-dex-close]')?.click(); return out;`);
+  check('출처: 짧은 이름 링크, 긴 주소 안 보임', src.link === 'FatSecret' && src.href.startsWith('https://www.fatsecret.kr/') && !src.text.includes('https://') && !src.hidden, `${src.link} | ${src.text.slice(0, 60)}`);
+
+  // 3-4) 최근 음식: AI가 채운 값으로 바뀜 + 왼쪽으로 밀어 삭제 + 되돌리기(식단 기록은 그대로)
+  const recent = await evaluate(`return RECENT_FOODS.map(f => ({ name: f.name, cal: f.cal ?? null }))`);
+  check('최근 음식이 AI가 채운 이름·값으로 바뀜', recent.some(f => f.name.includes('햄치즈') && f.cal !== null) && !recent.some(f => f.name === '이삭 햄치즈' && f.cal === null), JSON.stringify(recent.slice(0, 4)));
+  const swipe = await evaluate(`
+    window.__forgot = []; const realForget = RebuildersBridge.forget; RebuildersBridge.forget = async names => { window.__forgot.push(...names); return true; };
+    renderRecentFoods();
+    const name = RECENT_FOODS.find(f => f.aiEstimate)?.name;
+    const rows = [...document.querySelectorAll('#recent-foods .swipe-row')];
+    const row = rows[RECENT_FOODS.findIndex(f => f.name === name)];
+    const content = row.querySelector('.swipe-content');
+    const touch = x => new Touch({ identifier: 1, target: content, clientX: x, clientY: 100 });
+    content.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(300)], bubbles: true, cancelable: true }));
+    content.dispatchEvent(new TouchEvent('touchmove', { touches: [touch(250)], bubbles: true, cancelable: true }));
+    content.dispatchEvent(new TouchEvent('touchmove', { touches: [touch(190)], bubbles: true, cancelable: true }));
+    content.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [touch(190)], bubbles: true, cancelable: true }));
+    const open = row.classList.contains('is-open'); const btn = row.querySelector('.swipe-delete-btn')?.textContent;
+    row.querySelector('.swipe-delete-btn').click();
+    await new Promise(r => setTimeout(r, 400));
+    const stored = await storageRepository.getRecentFoods();
+    const all = await storageRepository.getAll(); const k = dateKey(new Date());
+    const diaryKept = (all[k]?.lunch || []).some(f => f.name === name);
+    const undoBtn = [...document.querySelectorAll('.toast-undo button')].pop();
+    const removed = !stored.some(f => f.name === name);
+    undoBtn?.click(); await new Promise(r => setTimeout(r, 400));
+    const restored = (await storageRepository.getRecentFoods()).some(f => f.name === name);
+    RebuildersBridge.forget = realForget;
+    return { open, btn, removed, diaryKept, undo: !!undoBtn, restored, forgot: window.__forgot };`);
+  check('왼쪽으로 밀면 빨간 "삭제"', swipe.open && swipe.btn === '삭제', JSON.stringify(swipe));
+  check('삭제 → 최근 음식에서만 빠짐(식단 기록 유지)', swipe.removed && swipe.diaryKept);
+  check('되돌리기 토스트로 복구', swipe.undo && swipe.restored);
+  check('AI 음식이면 맥 미니 캐시도 지우기 요청', swipe.forgot.some(n => n.includes('햄치즈')), swipe.forgot.join(', '));
+  const forgetOk = await evaluate(`return await RebuildersBridge.forget(['없는음식테스트'])`);
+  check('브리지 /forget 응답', forgetOk === true);
+
   // 4) 토큰 틀림
   await evaluate(setCfg(BRIDGE, 'wrong-token-wrong-token-123'));
   const unauth = await evaluate(`return await RebuildersBridge.checkConnection()`);

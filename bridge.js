@@ -144,12 +144,19 @@
     }
   }
 
+  /** 브리지 캐시에서 이 이름들 지우기(잘못 찾은 음식을 다음엔 새로 찾게). 실패해도 무시 */
+  async function forget(names) {
+    const clean = [...new Set((names || []).map(n => String(n || '').trim().slice(0, 80)).filter(Boolean))].slice(0, 8);
+    if (!clean.length || !isConfigured()) return false;
+    try { await request('/forget', { method: 'POST', body: { names: clean } }); return true; } catch { return false; }
+  }
+
   async function lookup({ date, meal, items }) {
     const data = await request('/log', { method: 'POST', body: { date, meal, items } });
     return { items: Array.isArray(data.items) ? data.items : [], failed: Array.isArray(data.failed) ? data.failed : [] };
   }
 
-  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, BridgeError, MAX_ATTEMPTS };
+  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, forget, BridgeError, MAX_ATTEMPTS };
   global.RebuildersBridge = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

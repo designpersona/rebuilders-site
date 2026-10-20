@@ -1400,11 +1400,46 @@ function aiEstimateTag(food) {
 }
 function aiSourceText(food) {
   if (!isAiEstimate(food)) return '';
+  return ACTIVE_LOCALE === 'en' ? 'AI estimate (found by the Mac mini AI). Please edit it if it looks wrong.' : 'AI 추정값이에요(맥 미니 AI가 찾음). 틀리면 수정해 주세요.';
+}
+
+/* 출처는 긴 주소 대신 짧은 사이트 이름만(예: FatSecret, USDA). 주소가 있으면 눌러서 열기 */
+const SOURCE_SITE_NAMES = [
+  [/fatsecret/i, 'FatSecret'], [/usda|fdc\.nal/i, 'USDA'], [/foodsafetykorea|mfds|식약처|식품의약품안전처/i, '식약처'],
+  [/calo\.kr|칼로/i, '칼로'], [/pillyze|필라이즈/i, '필라이즈'], [/paris\.co\.kr|파리바게뜨/i, '파리바게뜨'],
+  [/starbucks|스타벅스/i, '스타벅스'], [/myfitnesspal/i, 'MyFitnessPal'], [/nutritionix/i, 'Nutritionix'],
+  [/isaac-toast|isaactoast|이삭토스트/i, '이삭토스트'], [/dietshin|다이어트신/i, '다이어트신'], [/openfoodfacts/i, 'Open Food Facts'],
+];
+function sourceSiteName(food) {
+  let host = '';
+  try { host = new URL(food?.sourceUrl || '').hostname.replace(/^www\./, ''); } catch { /* 주소 없음 */ }
+  for (const [re, label] of SOURCE_SITE_NAMES) if (host && re.test(host)) return label;
+  if (host) {
+    const parts = host.split('.');
+    const main = parts.length > 2 && /^(co|or|go|ac|com|net|ne)$/.test(parts[parts.length - 2]) ? parts[parts.length - 3] : (parts[parts.length - 2] || parts[0]);
+    return main.charAt(0).toUpperCase() + main.slice(1);
+  }
+  const note = String(food?.sourceNote || '');
+  for (const [re, label] of SOURCE_SITE_NAMES) if (re.test(note)) return label;
+  return note.replace(/^추정:\s*/, '').split(/[\s(·,]/)[0].slice(0, 20);
+}
+function appendAiSourceLink(host, food) {
+  const name = sourceSiteName(food);
+  if (!name) return;
   const en = ACTIVE_LOCALE === 'en';
-  const head = en ? 'AI estimate (found by the Mac mini AI). Please edit it if it looks wrong.' : 'AI 추정값이에요(맥 미니 AI가 찾음). 틀리면 수정해 주세요.';
-  const source = food.sourceNote ? `\n${en ? 'Source' : '출처'}: ${food.sourceNote}` : '';
-  const url = food.sourceUrl ? `\n${food.sourceUrl}` : '';
-  return `${head}${source}${url}`;
+  host.appendChild(document.createTextNode(`\n${en ? 'Source' : '출처'}: `));
+  let url = '';
+  try { const u = new URL(food.sourceUrl || ''); if (u.protocol === 'https:') url = u.href; } catch { /* 없음 */ }
+  if (!url) { host.appendChild(document.createTextNode(name)); return; }
+  const link = document.createElement('a');
+  link.className = 'ai-source-link';
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = name;
+  link.setAttribute('aria-label', en ? `Open source: ${name}` : `출처 열기: ${name}`);
+  link.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openExternalUrl(url); });
+  host.appendChild(link);
 }
 
 function nutritionTags(food) {
@@ -2685,6 +2720,106 @@ function renderRecentFoods() {
   }
 
   renderFoodRows(container, RECENT_FOODS.map(food => [food.name, food]), false);
+  const names = RECENT_FOODS.map(food => food.name);
+  container.querySelectorAll('.quick-food-row').forEach((row, i) => {
+    if (names[i]) enableSwipeDelete(row, () => runButtonAction(row, () => deleteRecentFood(names[i])));
+  });
+}
+
+/* 왼쪽으로 밀면 빨간 '삭제' 버튼(iOS WKWebView 터치 이벤트). 세로 스크롤은 그대로(touch-action: pan-y) */
+function enableSwipeDelete(row, onDelete) {
+  const WIDTH = 84;
+  const content = document.createElement('div');
+  content.className = 'swipe-content';
+  while (row.firstChild) content.appendChild(row.firstChild);
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'swipe-delete-btn';
+  del.textContent = ACTIVE_LOCALE === 'en' ? 'Delete' : '삭제';
+  del.tabIndex = -1;
+  del.setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? 'Delete from recent foods' : '최근 음식에서 삭제');
+  row.classList.add('swipe-row');
+  row.append(del, content);
+  let startX = 0; let startY = 0; let base = 0; let x = 0; let mode = null;
+  const set = (value, animate) => {
+    x = value;
+    content.style.transition = animate ? 'transform 0.2s ease' : 'none';
+    content.style.transform = value ? `translateX(${value}px)` : '';
+    row.classList.toggle('is-open', value <= -WIDTH / 2);
+    del.tabIndex = value < 0 ? 0 : -1;
+  };
+  const close = () => set(0, true);
+  row.__swipeClose = close;
+  content.addEventListener('touchstart', event => {
+    const t = event.touches[0];
+    startX = t.clientX; startY = t.clientY; mode = null;
+    base = row.classList.contains('is-open') ? -WIDTH : 0;
+    document.querySelectorAll('.swipe-row.is-open').forEach(other => { if (other !== row) other.__swipeClose?.(); });
+  }, { passive: true });
+  content.addEventListener('touchmove', event => {
+    const t = event.touches[0];
+    const mx = t.clientX - startX; const my = t.clientY - startY;
+    if (!mode) {
+      if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+      mode = Math.abs(mx) > Math.abs(my) ? 'h' : 'v';
+    }
+    if (mode !== 'h') return;
+    event.preventDefault();
+    set(Math.max(-WIDTH - 24, Math.min(0, base + mx)), false);
+  }, { passive: false });
+  content.addEventListener('touchend', () => {
+    if (mode === 'h') { set(x < -WIDTH / 2 ? -WIDTH : 0, true); row.__swipeAt = Date.now(); }
+    mode = null;
+  });
+  content.addEventListener('touchcancel', () => { set(base, true); mode = null; });
+  // 열려 있거나 방금 민 경우엔 탭해도 음식 추가하지 않고 닫기만
+  content.addEventListener('click', event => {
+    if (row.classList.contains('is-open') || Date.now() - (row.__swipeAt || 0) < 350) {
+      event.preventDefault(); event.stopPropagation(); close();
+    }
+  }, true);
+  del.addEventListener('click', event => { event.stopPropagation(); close(); onDelete(); });
+}
+
+/* 최근 음식에서만 지움(지난 식단 기록은 그대로). 되돌리기 토스트 제공. AI가 찾은 음식이면 맥 미니 캐시도 지움 */
+async function deleteRecentFood(name) {
+  const before = RECENT_FOODS.map(food => ({ ...food }));
+  const removed = before.find(food => food.name === name);
+  if (!removed) return;
+  RECENT_FOODS = await storageRepository.replaceRecentFoods(before.filter(food => food.name !== name));
+  renderRecentFoods();
+  if (removed.aiEstimate && globalThis.RebuildersBridge?.isConfigured()) {
+    RebuildersBridge.forget([removed.inputName, removed.name]);
+  }
+  const en = ACTIVE_LOCALE === 'en';
+  showUndoToast(en ? `Removed ${displayFoodName(removed)} from recent foods` : `${displayFoodName(removed)} 최근 음식에서 삭제했어요`, async () => {
+    RECENT_FOODS = await storageRepository.replaceRecentFoods(before);
+    renderRecentFoods();
+  });
+}
+
+function showUndoToast(message, onUndo) {
+  const host = document.getElementById('toast-host');
+  if (!host) return;
+  const el = document.createElement('div');
+  el.className = 'toast toast-info toast-undo';
+  const text = document.createElement('span');
+  text.textContent = message;
+  const undo = document.createElement('button');
+  undo.type = 'button';
+  undo.textContent = ACTIVE_LOCALE === 'en' ? 'Undo' : '되돌리기';
+  let done = false;
+  const hide = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 280); };
+  undo.addEventListener('click', async () => {
+    if (done) return;
+    done = true;
+    hide();
+    try { await onUndo(); } catch (error) { showStorageFailure(error); }
+  });
+  el.append(text, undo);
+  host.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => { if (!done) hide(); }, 5000);
 }
 
 foodSearchInput.addEventListener('input', scheduleFoodSearch);
@@ -2988,6 +3123,7 @@ function openFoodDex(food) {
     description.textContent = aiSource || (ACTIVE_LOCALE === 'en'
       ? (referenceFood.descriptionEn || referenceFood.description || '')
       : (referenceFood.description || ''));
+    if (aiSource) appendAiSourceLink(description, referenceFood);
   }
   const nutritionBasis = referenceFood.basis || visibleServing || (ACTIVE_LOCALE === 'en' ? 'not set' : '1회 제공량');
   document.getElementById('food-dex-nutrition-basis').textContent = ACTIVE_LOCALE === 'en'
@@ -5881,7 +6017,7 @@ function queueBridgeLookup(mealId, foods, date = currentDate) {
 }
 
 /* list(해당 끼니 foods 배열)에서 이름이 같은 미입력 기록을 찾아 채움. 반환: 채운 개수 */
-function fillFoodsFromBridge(list, found) {
+function fillFoodsFromBridge(list, found, records = []) {
   let filled = 0;
   found.forEach(({ name, fields }) => {
     const idx = list.findIndex(existing => isNutritionMissing(existing) && compactFoodName(existing.name) === compactFoodName(name));
@@ -5894,9 +6030,29 @@ function fillFoodsFromBridge(list, found) {
     if (existing.serving) next.serving = existing.serving;
     if (existing.slot !== undefined) next.slot = existing.slot;
     list[idx] = next;
+    records.push(next);
     filled += 1;
   });
   return filled;
+}
+
+/* 이름만 저장됐던 최근 음식을 AI가 채운 값으로 바꿈(같은 이름 중복은 정리) */
+async function refreshRecentAfterBridge(records) {
+  if (!records.length) return;
+  let list = RECENT_FOODS.map(food => ({ ...food }));
+  let changed = false;
+  records.forEach(record => {
+    const original = record.inputName || record.name;
+    const idx = list.findIndex(item => isNutritionMissing(item) && compactFoodName(item.name) === compactFoodName(original));
+    if (idx < 0) return;
+    const { slot, _isNew, ...clean } = record;
+    list[idx] = clean;
+    list = list.filter((item, i) => i === idx || item.name !== clean.name);
+    changed = true;
+  });
+  if (!changed) return;
+  RECENT_FOODS = await storageRepository.replaceRecentFoods(list);
+  renderRecentFoods();
 }
 
 async function applyBridgeResult(job, result) {
@@ -5906,21 +6062,25 @@ async function applyBridgeResult(job, result) {
   if (!found.length) return 0;
   if (job.date === dateKey(currentDate)) {
     const before = snapshotMeals();
-    const filled = fillFoodsFromBridge(meals[job.meal].foods, found);
+    const records = [];
+    const filled = fillFoodsFromBridge(meals[job.meal].foods, found, records);
     if (filled) {
       renderAll(false);
       await persistMealsOrRestore(before);
       if (activeMealPageContext) renderMealPage();
+      await refreshRecentAfterBridge(records);
     }
     return filled;
   }
   const day = await storageRepository.getDay(job.date);
   const list = (day?.[job.meal] || []).map(food => ({ ...food }));
-  const filled = fillFoodsFromBridge(list, found);
+  const records = [];
+  const filled = fillFoodsFromBridge(list, found, records);
   if (filled) {
     const next = { ...day, [job.meal]: list };
     await storageRepository.saveDay(job.date, next);
     if (statsCache) statsCache[job.date] = next;
+    await refreshRecentAfterBridge(records);
   }
   return filled;
 }

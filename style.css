@@ -11805,21 +11805,40 @@ body.keyboard-open .bottom-nav {
   color: #1d4f91;
   font-weight: 700;
 }
+/* 날짜 칸(#view-home .date-display)은 높이 고정 grid라 안에 두면 캐릭터 카드 뒤로 밀려 안 보였음 →
+   화면 위(안전 영역 아래) 가운데에 떠 있는 작은 알약으로 */
 .bridge-pending {
-  margin-left: 6px;
-  padding: 2px 8px;
+  position: fixed;
+  top: calc(var(--safe-top) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 450;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 12px;
   border: 0;
   border-radius: 999px;
-  background: #e8f1ff;
-  color: #1d4f91;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.6;
+  background: #1d4f91;
+  color: #fff;
+  font: 800 12px/1.3 var(--font);
   white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.22);
   cursor: pointer;
 }
-.bridge-pending[hidden] { display: none; }
-.bridge-pending.is-working { opacity: 0.75; }
+.bridge-pending[hidden] { display: none !important; }
+.bridge-pending.is-working::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: bridge-spin 0.9s linear infinite;
+}
+@keyframes bridge-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .bridge-pending.is-working::before { animation: none; } }
 .bridge-actions {
   display: flex;
   gap: 8px;
@@ -11838,3 +11857,52 @@ body.keyboard-open .bottom-nav {
 }
 
 .ask-ai-btn.is-busy { opacity: 0.7; cursor: progress; }
+
+/* AI 출처: 짧은 사이트 이름 링크 */
+.ai-source-link { color: #1d4f91; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+
+/* 최근 음식: 왼쪽으로 밀어 삭제 */
+.swipe-row { position: relative; overflow: hidden; border-radius: var(--radius-sm); }
+.swipe-row .swipe-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+  background: var(--bg, #fff);
+  touch-action: pan-y;
+  will-change: transform;
+}
+.swipe-row .swipe-content .quick-food-chip { flex: 1; }
+.swipe-delete-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  width: 84px;
+  border: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: #dc2626;
+  color: #fff;
+  font: 800 13px/1 var(--font);
+  cursor: pointer;
+}
+.toast.toast-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  pointer-events: auto;
+}
+.toast-undo button {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: #93c5fd;
+  font: 800 13px/1 var(--font);
+  padding: 6px 2px;
+  cursor: pointer;
+}

@@ -76,7 +76,6 @@
             <span class="date-badge" id="date-badge">오늘</span>
             <span class="date-text" id="current-date">7.19 (일)</span>
             <button type="button" class="go-today-btn" id="go-today" hidden>오늘로</button>
-            <button type="button" class="bridge-pending" id="bridge-pending" hidden>AI 대기</button>
           </div>
           <button class="nav-btn" id="next-day" aria-label="다음 날">
             <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
@@ -1292,10 +1291,12 @@
     </div>
   </div>
 
+  <!-- 맥 미니 AI 상태(찾는 중·대기): 홈 카드에 가리지 않게 화면 위에 떠 있음 -->
+  <button type="button" class="bridge-pending" id="bridge-pending" aria-live="polite" hidden>AI 대기</button>
   <div class="toast-host" id="toast-host" aria-live="polite"></div>
   <script src="app-config.js?v=1"></script>
   <script src="food-catalog.js?v=2"></script>
-  <script src="storage.js?v=5"></script>
+  <script src="storage.js?v=6"></script>
   <script src="backup.js?v=2"></script>
   <script src="notifications.js?v=1"></script>
   <script src="keyboard.js?v=1"></script>
@@ -1303,8 +1304,8 @@
   <script src="quick-entry.js?v=1"></script>
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
-  <script src="bridge.js?v=1"></script>
-  <script src="app.js?v=86"></script>
+  <script src="bridge.js?v=2"></script>
+  <script src="app.js?v=88"></script>
 </body>
 
 </html>

@@ -84,6 +84,7 @@
     async saveCustomFood(_name, _food, _previousName) { throw new Error('StorageRepository.saveCustomFood() must be implemented'); }
     async deleteCustomFood(_name) { throw new Error('StorageRepository.deleteCustomFood() must be implemented'); }
     async getRecentFoods() { throw new Error('StorageRepository.getRecentFoods() must be implemented'); }
+    async replaceRecentFoods(_list) { throw new Error('StorageRepository.replaceRecentFoods() must be implemented'); }
     async saveRecentFood(_food) { throw new Error('StorageRepository.saveRecentFood() must be implemented'); }
     async saveDayAndRecent(_dateKey, _day, _food) { throw new Error('StorageRepository.saveDayAndRecent() must be implemented'); }
     async getShopping() { throw new Error('StorageRepository.getShopping() must be implemented'); }
@@ -278,6 +279,13 @@
       return clone((await this.getAll()).recentFoods || []);
     }
 
+    /** 최근 음식 목록만 바꿈(식단 기록은 건드리지 않음) */
+    async replaceRecentFoods(list) {
+      const saved = clone(Array.isArray(list) ? list : []).slice(0, 12);
+      await this._update(all => ({ ...all, recentFoods: saved }));
+      return clone(saved);
+    }
+
     async saveRecentFood(food) {
       const nextFood = clone(food);
       let saved;
@@ -408,6 +416,12 @@
       return clone(all.customFoods);
     }
     async getRecentFoods() { return (await this.getAll()).recentFoods || []; }
+    async replaceRecentFoods(list) {
+      const all = await this.getAll();
+      all.recentFoods = clone(Array.isArray(list) ? list : []).slice(0, 12);
+      await this.replaceAll(all);
+      return clone(all.recentFoods);
+    }
     async saveRecentFood(food) {
       const all = await this.getAll();
       all.recentFoods = [clone(food), ...(all.recentFoods || []).filter(item => item.name !== food.name)].slice(0, 12);
