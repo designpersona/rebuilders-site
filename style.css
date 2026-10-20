@@ -12388,3 +12388,34 @@ body.no-character #view-home .player-card { padding: 12px 10px 10px !important; 
 body.no-character #view-home .day-summary > .player-card { width: auto !important; max-width: none !important; justify-self: stretch !important; align-self: stretch !important; margin: 0 !important; padding: 10px 8px !important; gap: 4px !important; }
 body.no-character #view-home .player-card .player-measurements, body.no-character #view-home .player-card .health-glance { flex-basis: 62px !important; width: 62px !important; }
 body.no-character #view-home .player-card .kcal-gauge { max-width: 200px !important; }
+
+/* ============================
+   가벼운 움직임 (transform·opacity 만)
+   ============================ */
+/* 1. 페이지 들어올 때 차례로 살짝 위로 */
+@keyframes rb-rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.stagger-in { animation: rb-rise-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--stagger, 0) * 40ms); }
+/* 2. 위쪽 탭 밑줄 */
+.page-tabs { position: relative; }
+.page-tab-indicator {
+  position: absolute; left: 0; bottom: 4px; width: 100px; height: 2.5px; border-radius: 2px;
+  background: var(--text-primary); transform-origin: 0 50%; pointer-events: none;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+}
+.page-tab-indicator.no-anim { transition: none; }
+.page-tabs .nav-item.page-tab { transition: color 0.2s ease; }
+/* 3. 누를 때 살짝 작아짐 (scale 속성이라 기존 transform 과 겹치지 않음) */
+:where(button, [role="button"], .kcal-gauge, .ai-dock-send) { transition-property: scale; transition-duration: 0.15s; transition-timing-function: ease-out; }
+:where(button, [role="button"]):not(:disabled):active { scale: 0.97; }
+.page-tabs .nav-item.page-tab:active { scale: 0.97; }
+body.no-character #view-home .kcal-gauge:active { scale: 0.97; }
+.ai-dock-send:active { transform: none; scale: 0.92; }
+.kcal-gauge:active .kcal-gauge-svg { transform: none; }
+/* 4. 게이지는 숫자 애니메이션을 짧게 따라감, 새로 추가된 끼니 줄은 아래에서 스르륵 */
+.kcal-gauge-fill { transition: stroke-dashoffset 0.3s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.3s ease; }
+.food-item.newly-added { animation: rb-rise-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .stagger-in, .food-item.newly-added { animation: none !important; }
+  .page-tab-indicator, .kcal-gauge-fill { transition: none !important; }
+  :where(button, [role="button"]):active, .page-tabs .nav-item.page-tab:active, .kcal-gauge:active, .ai-dock-send:active { scale: none !important; }
+}

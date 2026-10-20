@@ -1436,6 +1436,7 @@ document.getElementById('kcal-gauge')?.addEventListener('click', () => {
 });
 
 function updateRing(totals, animate = false) {
+  if (reduceMotion()) animate = false;
   const t = totals || getTotals();
   const targetCal = Math.round(t.cal);
 
@@ -1449,7 +1450,7 @@ function updateRing(totals, animate = false) {
 
   const startCal = displayedCalories;
   const diff = targetCal - startCal;
-  const duration = 850;
+  const duration = 450;
   const startedAt = performance.now();
 
   function step(now) {
@@ -1518,6 +1519,7 @@ function setMacroVisual(t) {
 }
 
 function updateMacroBars(totals, animate = false) {
+  if (reduceMotion()) animate = false;
   const targetValues = totals || getTotals();
   if (macroAnimationFrame) cancelAnimationFrame(macroAnimationFrame);
 
@@ -1537,7 +1539,7 @@ function updateMacroBars(totals, animate = false) {
     protein: targetValues.protein || 0,
     fat: targetValues.fat || 0,
   };
-  const duration = 850;
+  const duration = 450;
   const startedAt = performance.now();
 
   function step(now) {
@@ -4288,6 +4290,7 @@ function closeFoodexLibrary() {
 }
 
 function setActiveView(view) {
+  const prevPanel = visiblePanel();
   if (view === 'ai') { setActiveView('home'); setTimeout(() => focusAiDock(), 50); return; } // 예전 AI 탭 → 홈 하단 입력창
   if (view !== 'profile') {
     previousView = view;
@@ -4322,6 +4325,9 @@ function setActiveView(view) {
     btn.classList.toggle('active', btn.dataset.view === view);
     if (btn.dataset.view === view) btn.setAttribute('aria-current', 'page'); else btn.removeAttribute('aria-current');
   });
+  movePageTabIndicator();
+  const nowPanel = visiblePanel();
+  if (nowPanel && nowPanel !== prevPanel) playPageEnter(nowPanel);
   setFabMenu(false);
 
   if (view === 'stats') {
@@ -5330,6 +5336,9 @@ document.querySelectorAll('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => {
     const view = btn.dataset.view;
     if (view === 'home' || view === 'stats' || view === 'search' || view === 'profile' || view === 'ai' || view === 'shopping' || view === 'fridge' || view === 'foodex') {
+      // 위쪽 탭을 누르면 밀 때와 같은 방향으로 넘김
+      const from = pageIndexOf(activeView), to = pageIndexOf(view);
+      if (btn.classList.contains('page-tab') && from >= 0 && to >= 0 && from !== to && !document.body.classList.contains('meal-page-open')) { slideToPage(view, to > from ? 1 : -1); return; }
       if (foodDex?.classList.contains('open')) closeFoodDex();
       if (view !== 'foodex') closeFoodexLibrary();
       setActiveView(view);
@@ -6266,7 +6275,7 @@ function showStorageUnavailable(error) {
   if (message) message.textContent = storageErrorMessage(error);
   if (phone) phone.hidden = true;
   if (screen) screen.hidden = false;
-  document.body.classList.add('app-ready');
+  document.body.classList.add('app-ready'); motionOnReady();
 }
 
 function showAppScreen() {
@@ -6945,7 +6954,7 @@ async function initializeApp() {
   setupDeepLinks();
   setupBridge();
   showAppScreen();
-  document.body.classList.add('app-ready');
+  document.body.classList.add('app-ready'); motionOnReady();
   registerServiceWorker();
 }
 
@@ -6992,3 +7001,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     showStorageUnavailable(error);
   }
 });
+
+/* ============================
+   가벼운 움직임: transform·opacity 만 (GPU), 150–350ms, 동작 줄이기 설정이면 끔
+   ============================ */
+function reduceMotion() {
+  try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+// 페이지가 보일 때 한 번만: 카드·끼니 줄이 살짝 아래에서 차례로 (다시 그릴 때는 안 함)
+function playPageEnter(panel) {
+  if (!panel || reduceMotion()) return;
+  const items = (panel.id === 'view-home'
+    ? [...panel.querySelectorAll('.date-header, .meal-card, .snack-card, .day-summary')]
+    : [...panel.children]).filter(el => !el.hidden && el.offsetParent !== null).slice(0, 10);
+  clearTimeout(panel._staggerTimer);
+  items.forEach((el, i) => { el.classList.remove('stagger-in'); el.style.setProperty('--stagger', String(i)); });
+  void panel.offsetWidth;
+  items.forEach(el => el.classList.add('stagger-in'));
+  panel._staggerTimer = setTimeout(() => items.forEach(el => { el.classList.remove('stagger-in'); el.style.removeProperty('--stagger'); }), 900);
+}
+// 위쪽 탭 밑줄: 고른 탭으로 미끄러짐 (translateX + scaleX)
+function movePageTabIndicator(instant = false) {
+  const nav = document.getElementById('page-tabs');
+  if (!nav) return;
+  let bar = nav.querySelector('.page-tab-indicator');
+  if (!bar) {
+    bar = document.createElement('span');
+    bar.className = 'page-tab-indicator';
+    bar.setAttribute('aria-hidden', 'true');
+    nav.appendChild(bar);
+    instant = true;
+  }
+  const tab = nav.querySelector('.page-tab.active');
+  if (!tab || !tab.offsetWidth) { bar.style.opacity = '0'; return; }
+  if (instant) bar.classList.add('no-anim');
+  bar.style.opacity = '1';
+  bar.style.transform = `translateX(${tab.offsetLeft}px) scaleX(${tab.offsetWidth / 100})`;
+  if (instant) { void bar.offsetWidth; requestAnimationFrame(() => bar.classList.remove('no-anim')); }
+}
+let motionReadyDone = false;
+function motionOnReady() {
+  if (motionReadyDone) return;
+  motionReadyDone = true;
+  movePageTabIndicator(true);
+  playPageEnter(visiblePanel());
+  document.fonts?.ready?.then(() => movePageTabIndicator(true)).catch?.(() => {});
+}
+addEventListener('resize', () => movePageTabIndicator(true));
