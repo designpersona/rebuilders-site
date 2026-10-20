@@ -45,6 +45,8 @@
       </array>
     </dict>
 	</dict>
+	<key>NSHealthShareUsageDescription</key>
+	<string>리빌더스는 건강 앱의 심박수를 읽어 홈 화면에 보여줘요. 심박수는 이 기기 안에서만 보여주고, 저장하거나 백업하거나 외부로 보내지 않아요.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

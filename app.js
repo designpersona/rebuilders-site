@@ -5483,6 +5483,89 @@ function showAppScreen() {
   if (phone) phone.hidden = false;
 }
 
+/* ============================
+   건강 앱(HealthKit) 심박수: 읽기 전용, 화면 표시만(저장·백업·전송 안 함)
+   ============================ */
+let heartRateTimer = null;
+
+function healthCopy(key) {
+  const en = ACTIVE_LOCALE === 'en';
+  return {
+    connect: en ? 'Connect Apple Health' : '건강 앱 연결하기',
+    disconnect: en ? 'Disconnect' : '연결 끊기',
+    connected: en ? 'Connected. Heart rate is read on this device only.' : '연결됨 · 심박수는 이 기기에서만 읽어 보여줘요.',
+    disconnected: en ? 'Disconnected in the app. To fully revoke access: Settings > Health > Data Access & Devices > Rebuilders.' : '앱에서 연결을 끊었어요. 권한까지 끄려면 설정 > 건강 > 데이터 접근 및 기기 > 리빌더스에서 꺼주세요.',
+    noData: en ? 'No heart rate today' : '오늘 기록 없음',
+  }[key];
+}
+
+function renderHealthSettings(message = '') {
+  const card = document.getElementById('health-card');
+  if (!card) return;
+  const supported = globalThis.RebuildersHealth?.isSupported();
+  card.hidden = !supported;
+  if (!supported) return;
+  const connected = RebuildersHealth.isConnected();
+  const button = document.getElementById('health-connect');
+  button.textContent = connected ? healthCopy('disconnect') : healthCopy('connect');
+  const hint = document.getElementById('health-hint');
+  const text = message || (connected ? healthCopy('connected') : '');
+  hint.hidden = !text;
+  hint.textContent = text;
+}
+
+async function refreshHeartRate() {
+  const card = document.getElementById('heart-rate-card');
+  if (!card) return;
+  if (!globalThis.RebuildersHealth?.isConnected()) { card.hidden = true; return; }
+  try {
+    const result = await RebuildersHealth.readTodayHeartRate();
+    card.hidden = false;
+    const hasData = result && result.count > 0;
+    document.getElementById('heart-rate-average').textContent = hasData ? String(result.average) : '--';
+    document.getElementById('heart-rate-latest').textContent = hasData ? String(result.latest) : '--';
+    const time = document.getElementById('heart-rate-latest-time');
+    if (hasData && result.latestAt) {
+      const at = new Date(result.latestAt);
+      time.textContent = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+    } else {
+      time.textContent = hasData ? '' : healthCopy('noData');
+    }
+  } catch {
+    card.hidden = true; // 읽기 실패(권한 없음 등)면 조용히 숨김
+  }
+}
+
+function setupHealthUi() {
+  renderHealthSettings();
+  refreshHeartRate();
+  clearInterval(heartRateTimer);
+  if (globalThis.RebuildersHealth?.isSupported()) {
+    heartRateTimer = setInterval(() => { if (!document.hidden) refreshHeartRate(); }, 5 * 60_000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshHeartRate(); });
+  }
+}
+
+document.getElementById('health-connect')?.addEventListener('click', async event => {
+  const button = event.currentTarget;
+  if (button.dataset.actionLocked === 'true') return;
+  button.dataset.actionLocked = 'true';
+  try {
+    if (RebuildersHealth.isConnected()) {
+      RebuildersHealth.disconnect();
+      renderHealthSettings(healthCopy('disconnected'));
+    } else {
+      await RebuildersHealth.connect();
+      renderHealthSettings();
+    }
+    await refreshHeartRate();
+  } catch (error) {
+    renderHealthSettings(String(error?.message || error));
+  } finally {
+    delete button.dataset.actionLocked;
+  }
+});
+
 async function initializeApp() {
   const modeState = await initializeStorageRepository();
   updateLocalModeStatus(modeState);
@@ -5506,6 +5589,7 @@ async function initializeApp() {
   renderAll(false);
   setupAppModeUi();
   setupReminderUi();
+  setupHealthUi();
   showAppScreen();
   document.body.classList.add('app-ready');
   registerServiceWorker();
