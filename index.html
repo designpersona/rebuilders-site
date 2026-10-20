@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=141" />
+  <link rel="stylesheet" href="style.css?v=144" />
 </head>
 
 <body>
@@ -70,92 +70,26 @@
         </div>
       </header>
 
-      <!-- 오늘 영양 요약 -->
-      <section class="day-summary" aria-label="영양소 현황">
-        <header class="date-header">
-          <button class="nav-btn" id="prev-day" aria-label="이전 날">
-            <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
-              <path d="M8 1L1 8L8 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round" />
-            </svg>
-          </button>
-          <div class="date-display">
-            <span class="date-badge" id="date-badge">오늘</span>
-            <span class="date-text" id="current-date">7.19 (일)</span>
-            <button type="button" class="go-today-btn" id="go-today" hidden>오늘로</button>
-          </div>
-          <button class="nav-btn" id="next-day" aria-label="다음 날">
-            <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
-              <path d="M1 1L8 8L1 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round" />
-            </svg>
-          </button>
-        </header>
-
-        <div class="player-card">
-          <div class="player-measurements" aria-label="신체 정보">
-            <span class="level-bubble" aria-hidden="true">LEVEL UP!</span>
-            <p><span>Ht</span> <strong id="health-height">169cm</strong></p>
-            <p><span>Wt</span> <strong id="health-weight">50kg</strong></p>
-          </div>
-
-          <div class="main-avatar" data-calorie-state="hungry" aria-label="섭취 칼로리가 낮은 상태">
-            <img class="pixel-avatar" src="assets/character/01%20jamie_hungry.jpg" width="778" height="1152" alt="" />
-          </div>
-
-          <!-- 건강 앱(HealthKit) 실제 값: 연결했을 때만 채움. 연결 전엔 비우거나 '건강 앱 연결' 링크(아이폰 앱에서만) -->
-          <div class="health-glance" id="health-glance" aria-label="건강 앱 정보">
-            <div id="glance-heart" aria-label="최근 심박수" hidden>
-              <img class="vital-icon" src="assets/icon/Health status/heart.png" width="12" height="12" alt="" />
-              <strong id="heart-rate-latest" data-value="--">-- bpm</strong>
-            </div>
-            <div id="glance-steps" aria-label="걸음수" hidden>
-              <img class="vital-icon" src="assets/icon/Health status/Step.png" width="12" height="12" alt="" />
-              <strong id="health-steps-value" data-value="--">--</strong>
-            </div>
-            <button type="button" class="health-glance-link" id="health-glance-connect" hidden>건강 앱 연결</button>
-          </div>
-        </div>
-
-        <button type="button" class="kcal-meter" id="calorie-summary-toggle" aria-label="먹은 칼로리 0킬로칼로리. 탭해서 다른 수치 보기">
-          <span class="kcal-meter-label" id="ring-metric-label">Kcal</span>
-          <span class="kcal-bar-track" aria-hidden="true">
-            <span class="kcal-bar-fill" id="calorie-progress-fill" style="width: 0%"></span>
-            <span class="kcal-over-fill" id="calorie-over-fill" hidden></span>
-            <span class="kcal-target-marker" id="kcal-target-marker" hidden></span>
-            <span class="kcal-over-bubble" id="kcal-over-bubble" hidden></span>
-          </span>
-          <span class="kcal-meter-value"><strong id="ring-metric-value">0</strong> / <span
-              id="kcal-target-value">1,300</span>kcal <em id="kcal-over-note" hidden></em></span>
+      <!-- 날짜 이동: 식단 위 맨 위(이 날짜의 식단을 보여줌) -->
+      <header class="date-header home-date-row">
+        <button class="nav-btn" id="prev-day" aria-label="이전 날">
+          <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
+            <path d="M8 1L1 8L8 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
         </button>
-
-        <div class="macros-panel">
-          <div class="macro-row">
-            <span class="macro-label">탄수화물</span>
-            <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
-              aria-label="탄수화물">
-              <div class="macro-bar carbs" id="bar-carbs" style="width: 0%"></div>
-            </div>
-            <span class="macro-val" id="val-carbs">0 / 130g</span>
-          </div>
-          <div class="macro-row">
-            <span class="macro-label">단백질</span>
-            <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
-              aria-label="단백질">
-              <div class="macro-bar protein" id="bar-protein" style="width: 0%"></div>
-            </div>
-            <span class="macro-val" id="val-protein">0 / 81g</span>
-          </div>
-          <div class="macro-row">
-            <span class="macro-label">지방</span>
-            <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
-              aria-label="지방">
-              <div class="macro-bar fat" id="bar-fat" style="width: 0%"></div>
-            </div>
-            <span class="macro-val" id="val-fat">0 / 51g</span>
-          </div>
+        <div class="date-display">
+          <span class="date-badge" id="date-badge">오늘</span>
+          <span class="date-text" id="current-date">7.19 (일)</span>
+          <button type="button" class="go-today-btn" id="go-today" hidden>오늘로</button>
         </div>
-      </section>
+        <button class="nav-btn" id="next-day" aria-label="다음 날">
+          <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
+            <path d="M1 1L8 8L1 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+        </button>
+      </header>
 
       <div class="section-head">
         <h2 class="section-title">오늘 식단</h2>
@@ -385,6 +319,74 @@
         <button type="button" class="clear-day-btn" id="clear-day-btn" disabled title="이 날 기록이 있을 때 사용할 수 있어요">전체
           삭제</button>
       </div>
+
+      <!-- 오늘 영양 요약(캐릭터 카드): 식단 아래 -->
+      <section class="day-summary" aria-label="영양소 현황">
+
+        <div class="player-card">
+          <div class="player-measurements" aria-label="신체 정보">
+            <span class="level-bubble" aria-hidden="true">LEVEL UP!</span>
+            <p><span>Ht</span> <strong id="health-height">169cm</strong></p>
+            <p><span>Wt</span> <strong id="health-weight">50kg</strong></p>
+          </div>
+
+          <div class="main-avatar" data-calorie-state="hungry" aria-label="섭취 칼로리가 낮은 상태">
+            <img class="pixel-avatar" src="assets/character/01%20jamie_hungry.jpg" width="778" height="1152" alt="" />
+          </div>
+
+          <!-- 건강 앱(HealthKit) 실제 값: 연결했을 때만 채움. 연결 전엔 비우거나 '건강 앱 연결' 링크(아이폰 앱에서만) -->
+          <div class="health-glance" id="health-glance" aria-label="건강 앱 정보">
+            <div id="glance-heart" aria-label="최근 심박수" hidden>
+              <img class="vital-icon" src="assets/icon/Health status/heart.png" width="12" height="12" alt="" />
+              <strong id="heart-rate-latest" data-value="--">-- bpm</strong>
+            </div>
+            <div id="glance-steps" aria-label="걸음수" hidden>
+              <img class="vital-icon" src="assets/icon/Health status/Step.png" width="12" height="12" alt="" />
+              <strong id="health-steps-value" data-value="--">--</strong>
+            </div>
+            <button type="button" class="health-glance-link" id="health-glance-connect" hidden>건강 앱 연결</button>
+          </div>
+        </div>
+
+        <button type="button" class="kcal-meter" id="calorie-summary-toggle" aria-label="먹은 칼로리 0킬로칼로리. 탭해서 다른 수치 보기">
+          <span class="kcal-meter-label" id="ring-metric-label">Kcal</span>
+          <span class="kcal-bar-track" aria-hidden="true">
+            <span class="kcal-bar-fill" id="calorie-progress-fill" style="width: 0%"></span>
+            <span class="kcal-over-fill" id="calorie-over-fill" hidden></span>
+            <span class="kcal-target-marker" id="kcal-target-marker" hidden></span>
+            <span class="kcal-over-bubble" id="kcal-over-bubble" hidden></span>
+          </span>
+          <span class="kcal-meter-value"><strong id="ring-metric-value">0</strong> / <span
+              id="kcal-target-value">1,300</span>kcal <em id="kcal-over-note" hidden></em></span>
+        </button>
+
+        <div class="macros-panel">
+          <div class="macro-row">
+            <span class="macro-label">탄수화물</span>
+            <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
+              aria-label="탄수화물">
+              <div class="macro-bar carbs" id="bar-carbs" style="width: 0%"></div>
+            </div>
+            <span class="macro-val" id="val-carbs">0 / 130g</span>
+          </div>
+          <div class="macro-row">
+            <span class="macro-label">단백질</span>
+            <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
+              aria-label="단백질">
+              <div class="macro-bar protein" id="bar-protein" style="width: 0%"></div>
+            </div>
+            <span class="macro-val" id="val-protein">0 / 81g</span>
+          </div>
+          <div class="macro-row">
+            <span class="macro-label">지방</span>
+            <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
+              aria-label="지방">
+              <div class="macro-bar fat" id="bar-fat" style="width: 0%"></div>
+            </div>
+            <span class="macro-val" id="val-fat">0 / 51g</span>
+          </div>
+        </div>
+      </section>
 
       <div class="content-end-spacer"></div>
     </div>
@@ -1259,7 +1261,7 @@
   <script src="storage.js?v=6"></script>
   <script src="backup.js?v=2"></script>
   <script src="notifications.js?v=1"></script>
-  <script src="keyboard.js?v=1"></script>
+  <script src="keyboard.js?v=2"></script>
   <script src="demo-seed.js?v=3"></script>
   <script src="quick-entry.js?v=2"></script>
   <script src="health.js?v=2"></script>

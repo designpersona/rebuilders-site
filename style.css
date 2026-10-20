@@ -12282,3 +12282,31 @@ body:not(.has-ai-dock) .app-content { padding-bottom: calc(20px + var(--safe-bot
 .search-hub-head { height: auto !important; padding-bottom: 14px !important; }
 #view-profile .profile-page-head { padding-top: 6px !important; height: auto !important; min-height: 0 !important; }
 #view-profile .profile-page-head > .stats-page-title { margin-top: 0 !important; }
+
+/* 홈: 날짜 이동을 식단 위 작은 줄로, 캐릭터 카드는 식단 아래 */
+#view-home .date-header.home-date-row { margin: 4px 0 6px; padding: 0; background: transparent; border: 0; box-shadow: none; }
+#view-home .day-clear-row + .day-summary, #view-home .day-summary { margin-top: 12px; }
+
+/* 키보드: 앱에서는 키보드 높이(--kb-h)만큼 화면을 iOS 키보드와 같은 0.25초 곡선으로 줄여 입력창이 같이 올라감 */
+html.kb-native .phone-frame {
+  height: calc(100dvh - var(--kb-h, 0px));
+  transition: height 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+html.kb-native .modal-overlay,
+html.kb-native .agent-help-overlay { bottom: var(--kb-h, 0px); transition: bottom 0.25s cubic-bezier(0.25, 0.1, 0.25, 1); }
+@media (prefers-reduced-motion: reduce) {
+  html.kb-native .phone-frame, html.kb-native .modal-overlay, html.kb-native .agent-help-overlay { transition: none; }
+}
+
+/* 위쪽 글자 탭이 페이지 이름 역할 → 로고·페이지 제목 숨김, 내용은 탭 바로 아래부터 */
+#view-stats .stats-page-head { display: none !important; }
+#search-hub-title, #search-hub-kicker, .search-brand-row,
+#view-profile .profile-page-head > .stats-page-title,
+#view-profile .profile-page-head > .stats-page-sub { display: none !important; }
+#view-search .search-hub-head { padding: 0 !important; min-height: 0 !important; height: auto !important; }
+#view-profile .profile-page-head { padding: 0 !important; min-height: 0 !important; height: auto !important; display: flex !important; justify-content: flex-end; }
+#view-stats, #view-search, #view-profile { padding-top: 6px !important; }
+.foodex-brand-logo-wrap { display: none !important; }
+.foodex-library.is-page .foodex-library-header { display: none !important; }
+/* 설정의 × (이전 화면으로) 는 위쪽 탭·좌우 밀기로 대신함 */
+#view-profile .profile-page-head { display: none !important; }

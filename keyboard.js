@@ -14,6 +14,19 @@
     doc.body.classList.toggle(CLASS, Boolean(open));
   }
 
+  /* 앱: 키보드 높이만큼 화면(.phone-frame)을 키보드와 같은 시간·곡선으로 줄임(style.css 의 --kb-h).
+     resize:'none' 이라 iOS 가 웹뷰를 늦게 줄이지 않음 → 입력창이 키보드에 딱 붙어 같이 올라감 */
+  function setKeyboardHeight(height) {
+    const h = Math.max(0, Math.round(Number(height) || 0));
+    doc.documentElement.style.setProperty('--kb-h', `${h}px`);
+    doc.documentElement.classList.toggle('kb-native', true);
+  }
+  function revealFocused() {
+    const el = doc.activeElement;
+    if (!el || el === doc.body || el.closest?.('#home-ai-dock')) return;
+    try { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* ignore */ }
+  }
+
   function plugin() {
     const cap = global.Capacitor;
     if (!cap?.isNativePlatform?.()) return null;
@@ -23,10 +36,12 @@
 
   function initNative(keyboard) {
     try {
-      keyboard.addListener('keyboardWillShow', () => setOpen(true));
-      keyboard.addListener('keyboardDidShow', () => setOpen(true));
-      keyboard.addListener('keyboardWillHide', () => setOpen(false));
-      keyboard.addListener('keyboardDidHide', () => setOpen(false));
+      // iOS 는 웹뷰 스크롤을 직접 움직이지 않게(화면 크기를 우리가 줄이므로 이중으로 밀리지 않음)
+      try { keyboard.setScroll?.({ isDisabled: true })?.catch?.(() => {}); } catch { /* ignore */ }
+      keyboard.addListener('keyboardWillShow', info => { setKeyboardHeight(info?.keyboardHeight); setOpen(true); });
+      keyboard.addListener('keyboardDidShow', info => { if (info?.keyboardHeight) setKeyboardHeight(info.keyboardHeight); setOpen(true); revealFocused(); });
+      keyboard.addListener('keyboardWillHide', () => { setKeyboardHeight(0); setOpen(false); });
+      keyboard.addListener('keyboardDidHide', () => { setKeyboardHeight(0); setOpen(false); });
       return true;
     } catch (error) {
       console.warn('[keyboard] 네이티브 키보드 리스너 등록 실패', error);
