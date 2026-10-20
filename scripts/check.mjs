@@ -5,13 +5,13 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const js = ['app.js', 'app-config.js', 'storage.js', 'backup.js', 'notifications.js', 'keyboard.js', 'food-catalog.js', 'demo-seed.js', 'quick-entry.js', 'health.js', 'sw.js'];
+const js = ['app.js', 'app-config.js', 'storage.js', 'backup.js', 'notifications.js', 'keyboard.js', 'food-catalog.js', 'demo-seed.js', 'quick-entry.js', 'health.js', 'log-link.js', 'sw.js'];
 let failed = false;
 for (const file of js) {
   try { execFileSync(process.execPath, ['--check', join(root, file)], { stdio: 'pipe' }); console.log('문법 OK', file); }
   catch (error) { failed = true; console.error('문법 오류', file, String(error.stderr || error)); }
 }
-const web = ['index.html', 'privacy.html', ...js];
+const web = ['index.html', 'privacy.html', 'log.html', ...js];
 const pattern = /clarity|googletagmanager|google-analytics|\bgtag\(|sendBeacon|XMLHttpRequest|\bfetch\(|WebSocket\(/i;
 for (const file of web) {
   const text = readFileSync(join(root, file), 'utf8');

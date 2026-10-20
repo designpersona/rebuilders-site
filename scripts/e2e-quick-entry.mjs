@@ -45,7 +45,7 @@ try {
   check('미등록 음식은 영양값 없이 저장(0으로 채우지 않음)', lunch[0] && lunch[0].cal === null && lunch[0].carbs === null, JSON.stringify(lunch[0]));
   check('아아 = 아이스 아메리카노, 아메리카노 영양값', lunch[1]?.cal === 3, JSON.stringify(lunch[1]));
   check('답장에 미입력 안내', reply.includes('영양정보 미입력') && reply.includes('점심'), reply);
-  const fillBtn = await evaluate(`return [...document.querySelectorAll('#agent-log .agent-confirm')].pop()?.textContent || ''`);
+  const fillBtn = await evaluate(`return [...document.querySelectorAll('#agent-log .agent-confirm:not(.ask-ai-btn)')].pop()?.textContent || ''`);
   check('답장에 "영양정보 채우기" 버튼', fillBtn === '영양정보 채우기', fillBtn);
 
   // 2) 홈 표시

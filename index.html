@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=131" />
+  <link rel="stylesheet" href="style.css?v=132" />
 </head>
 
 <body>
@@ -880,6 +880,19 @@
         <p class="profile-save-hint" id="health-hint" hidden></p>
       </section>
 
+      <section class="profile-form-card ai-lookup-card" id="ai-lookup-card" aria-labelledby="ai-lookup-title">
+        <h3 class="stats-section-title" id="ai-lookup-title">AI 영양 찾기 (텔레그램)</h3>
+        <p class="profile-save-hint language-settings-copy">DB에 없는 음식을 'AI에게 물어보기'로 맥 미니의 AI 봇에게 물어볼 때 쓰는 봇 아이디예요. 음식 이름·양·끼니만 보내요.</p>
+        <div class="settings-form profile-settings-form">
+          <div class="form-group">
+            <label for="telegram-bot-id">텔레그램 봇 아이디</label>
+            <input type="text" class="settings-input" id="telegram-bot-id" placeholder="예: my_food_bot" autocomplete="off" autocapitalize="off" spellcheck="false" />
+          </div>
+        </div>
+        <button class="settings-save-btn" id="telegram-bot-save" type="button">봇 아이디 저장</button>
+        <p class="profile-save-hint" id="telegram-bot-hint" hidden></p>
+      </section>
+
       <section class="profile-form-card data-transfer-card" aria-labelledby="data-transfer-title">
         <div class="data-transfer-head">
           <div>
@@ -1181,6 +1194,28 @@
     </div>
   </div>
 
+  <!-- 링크(AI 답장)로 받은 기록 확인: 사용자가 '기록'을 눌러야 저장 -->
+  <div class="modal-overlay" id="log-link-modal" role="dialog" aria-modal="true" aria-label="링크로 받은 기록 확인">
+    <div class="modal-sheet log-link-sheet">
+      <div class="modal-handle"></div>
+      <button type="button" class="modal-x-btn" id="log-link-x" aria-label="기록 확인 닫기">×</button>
+      <h3 class="modal-title">받은 기록 확인</h3>
+      <p class="log-link-date" id="log-link-date"></p>
+      <div class="log-link-meals" role="group" aria-label="끼니 선택">
+        <button type="button" class="language-option" data-log-meal="breakfast">아침</button>
+        <button type="button" class="language-option" data-log-meal="lunch">점심</button>
+        <button type="button" class="language-option" data-log-meal="dinner">저녁</button>
+        <button type="button" class="language-option" data-log-meal="snack">간식</button>
+      </div>
+      <ul class="log-link-foods" id="log-link-foods"></ul>
+      <p class="log-link-warnings" id="log-link-warnings" hidden></p>
+      <div class="meal-detail-actions">
+        <button class="modal-close-btn" id="log-link-cancel" type="button">취소</button>
+        <button class="settings-save-btn" id="log-link-save" type="button">기록</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 섭취 시간 수정 -->
   <div class="modal-overlay" id="time-edit-modal" role="dialog" aria-modal="true" aria-label="섭취 시간 수정">
     <div class="modal-sheet time-edit-sheet">
@@ -1250,7 +1285,8 @@
   <script src="demo-seed.js?v=3"></script>
   <script src="quick-entry.js?v=1"></script>
   <script src="health.js?v=2"></script>
-  <script src="app.js?v=84"></script>
+  <script src="log-link.js?v=1"></script>
+  <script src="app.js?v=85"></script>
 </body>
 
 </html>

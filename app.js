@@ -2633,12 +2633,15 @@ function renderQuickFoods(entries) {
   // 검색 중인 한 단어(예: "바나")는 검색 결과를 먼저, 끼니·여러 음식이 들어간 입력은 바로 기록을 먼저 보여줍니다.
   const quickFirst = quickButton && !(quickButton.dataset.singleUnknown === 'true' && entries.length);
   if (quickButton && quickFirst) container.appendChild(quickButton);
+  const askButton = quickButton?.dataset.askItems ? buildAskAiButton(quickButton.dataset.askMeal, JSON.parse(quickButton.dataset.askItems)) : null;
+  if (askButton && quickFirst) container.appendChild(askButton);
 
   const sectionLabel = ACTIVE_LOCALE === 'en'
     ? (q ? 'My foods · Built-in (local)' : 'My foods · Built-in')
     : (q ? '내 음식 · 기본 (로컬)' : '내 음식 · 기본');
   renderFoodSection(container, sectionLabel, entries, true);
   if (quickButton && !quickFirst) container.appendChild(quickButton);
+  if (askButton && !quickFirst) container.appendChild(askButton);
 
   if (!entries.length && !quickButton) {
     const empty = document.createElement('div');
@@ -2687,6 +2690,11 @@ function buildQuickRecordButton(query) {
     ? `Log to ${mealLabel(mealId)} · ${parsed.items.length}`
     : `${mealLabel(mealId)}에 바로 기록 · ${parsed.items.length}개`)}</span><span class="quick-record-items">${escapeHtml(names)}</span>`;
   button.dataset.singleUnknown = String(parsed.items.length === 1 && !parsed.items[0].known && !parsed.mealExplicit);
+  const unknown = parsed.items.filter(item => !item.known || isNutritionMissing(item.food));
+  if (unknown.length) {
+    button.dataset.askMeal = mealId;
+    button.dataset.askItems = JSON.stringify(unknown.map(item => ({ name: item.food.name, serving: item.food.serving || '' })));
+  }
   button.addEventListener('click', () => runButtonAction(button, () => submitQuickRecord(query)));
   return button;
 }
@@ -3139,7 +3147,7 @@ function openFoodEdit(mealId, idx) {
     </section>
     <section class="meal-edit-section meal-edit-nutrition">
       <h4>${ACTIVE_LOCALE === 'en' ? 'Key nutrition' : '핵심 영양'}</h4>
-      ${isNutritionMissing(food) ? `<p class="meal-edit-missing-note">${ACTIVE_LOCALE === 'en' ? 'Nutrition not entered yet. Fill in calories, carbs, protein, and fat. Blank values count as 0 in totals.' : '영양정보 미입력 상태예요. 칼로리·탄수화물·단백질·지방을 채워주세요. 비워둔 값은 합계에 0으로 계산돼요.'}</p>` : ''}
+      ${isNutritionMissing(food) ? `<p class="meal-edit-missing-note">${ACTIVE_LOCALE === 'en' ? 'Nutrition not entered yet. Fill in calories, carbs, protein, and fat. Blank values count as 0 in totals.' : '영양정보 미입력 상태예요. 칼로리·탄수화물·단백질·지방을 채워주세요. 비워둔 값은 합계에 0으로 계산돼요.'}</p><div class="meal-edit-ask-host"></div>` : ''}
       ${editNumberField('cal', detailFieldLabel('cal', '칼로리'), food.cal, 'kcal', 'is-wide')}
       <div class="meal-primary-nutrients">
         ${editNumberField('carbs', detailFieldLabel('carbs', '탄수화물'), food.carbs, 'g')}
@@ -3169,6 +3177,8 @@ function openFoodEdit(mealId, idx) {
       <label class="meal-detail-field is-wide"><span>${ACTIVE_LOCALE === 'en' ? 'Optional note' : '선택 입력'}</span><textarea class="settings-input meal-detail-input meal-detail-description" data-edit-field="description" rows="3">${escapeHtml(food.description || '')}</textarea></label>
     </section>`;
 
+  const askHost = mealDetailEditGrid.querySelector('.meal-edit-ask-host');
+  if (askHost) askHost.appendChild(buildAskAiButton(mealId, [{ name: food.name, serving: food.serving || '' }]));
   mealDetailModal.classList.add('open');
 }
 
@@ -5100,7 +5110,10 @@ async function handleAgentCommand() {
     const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
       ? `Saved to ${mealLabel(mealId)}: ${summary}.${missing.length ? ' You can fill in nutrition later.' : ''}`
       : `${mealLabel(mealId)}에 저장했어요: ${summary}.${missing.length ? ' 영양정보는 나중에 채워도 돼요.' : ''}`);
-    if (missing.length) appendFillNutritionButton(message, mealId, missing[0].idx);
+    if (missing.length) {
+      appendFillNutritionButton(message, mealId, missing[0].idx);
+      appendToAgentMessage(message, buildAskAiButton(mealId, missing.map(({ food }) => ({ name: food.name, serving: food.serving || '' })), 'agent-confirm'));
+    }
   } catch (error) {
     showStorageFailure(error);
     appendAgentMessage(ACTIVE_LOCALE === 'en'
@@ -5612,6 +5625,215 @@ document.getElementById('health-connect')?.addEventListener('click', async event
   }
 });
 
+/* ============================
+   AI(맥 미니 OpenClaw · 텔레그램)에게 영양성분 물어보기 + 링크로 받은 기록 확인
+   - 보내는 내용: 음식 이름·양·끼니(·날짜)만. 체중·심박수·걸음 수 등은 보내지 않음.
+   - 받는 링크(rebuilders://log?d=...)는 확인 시트에서 사용자가 '기록'을 눌러야만 저장.
+   ============================ */
+const TELEGRAM_BOT_KEY = 'rebuilders-telegram-bot';
+
+function normalizeBotId(value) {
+  const id = String(value || '').trim().replace(/^https?:\/\/(t\.me|telegram\.me)\//i, '').replace(/^@/, '').split(/[/?#]/)[0];
+  return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(id) ? id : '';
+}
+function getTelegramBotId() {
+  try { return normalizeBotId(localStorage.getItem(TELEGRAM_BOT_KEY)); } catch { return ''; }
+}
+
+function buildAskText(mealId, items, date = currentDate) {
+  const list = items.map(item => `${item.name}${item.serving ? ` ${item.serving}` : ''}`).join(', ');
+  const dateText = isToday(date) ? '' : ` (${dateKey(date)})`;
+  return `[리빌더스] ${MEAL_META[mealId]?.label || '간식'}${dateText}: ${list}\n1회 제공량 기준 칼로리·탄수화물·단백질·지방 찾아서 리빌더스 기록 링크 보내줘.`;
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* 아래 방식으로 */ }
+  try {
+    const area = document.createElement('textarea');
+    area.value = text; area.setAttribute('readonly', ''); area.style.position = 'fixed'; area.style.opacity = '0';
+    document.body.appendChild(area); area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    return ok;
+  } catch { return false; }
+}
+
+function openExternalUrl(url) {
+  // Capacitor(iOS)는 앱 밖 주소를 시스템(텔레그램 앱/사파리)으로 엽니다.
+  const opened = window.open(url, '_blank');
+  if (!opened) location.href = url;
+}
+
+function openAiLookupSettings() {
+  document.getElementById('btn-open-profile')?.click();
+  setTimeout(() => document.getElementById('ai-lookup-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
+}
+
+async function askAiForFoods(mealId, items) {
+  const clean = (items || []).filter(item => item?.name).slice(0, 10);
+  if (!clean.length) return;
+  const bot = getTelegramBotId();
+  if (!bot) {
+    showToast(ACTIVE_LOCALE === 'en' ? 'Enter your Telegram bot ID in Settings first.' : '설정에서 텔레그램 봇 아이디를 먼저 넣어주세요.', 'info');
+    openAiLookupSettings();
+    return;
+  }
+  const text = buildAskText(mealId, clean);
+  const copied = await copyText(text);
+  // 봇 채팅은 ?text= 미리 채우기가 안 될 수 있어 클립보드에도 복사해 둡니다.
+  openExternalUrl(`https://t.me/${bot}?text=${encodeURIComponent(text)}`);
+  showToast(copied
+    ? (ACTIVE_LOCALE === 'en' ? 'Question copied. Paste it in Telegram if it is not filled in.' : '질문을 복사했어요. 입력칸이 비어 있으면 붙여넣고 보내주세요.')
+    : (ACTIVE_LOCALE === 'en' ? 'Opening Telegram…' : '텔레그램을 열고 있어요…'), 'info');
+}
+
+function buildAskAiButton(mealId, items, className = 'ask-ai-btn') {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className === 'agent-confirm' ? 'agent-confirm ask-ai-btn' : className;
+  button.dataset.askAi = 'true';
+  button.textContent = ACTIVE_LOCALE === 'en' ? 'Ask AI' : 'AI에게 물어보기';
+  button.addEventListener('click', event => { event.stopPropagation(); askAiForFoods(mealId, items); });
+  return button;
+}
+
+function renderAiLookupSettings(message = '') {
+  const input = document.getElementById('telegram-bot-id');
+  if (input && document.activeElement !== input) input.value = getTelegramBotId();
+  const hint = document.getElementById('telegram-bot-hint');
+  if (!hint) return;
+  hint.hidden = !message;
+  hint.textContent = message;
+}
+
+document.getElementById('telegram-bot-save')?.addEventListener('click', () => {
+  const raw = document.getElementById('telegram-bot-id')?.value || '';
+  const id = normalizeBotId(raw);
+  try {
+    if (!raw.trim()) localStorage.removeItem(TELEGRAM_BOT_KEY);
+    else if (id) localStorage.setItem(TELEGRAM_BOT_KEY, id);
+  } catch { /* ignore */ }
+  renderAiLookupSettings(!raw.trim()
+    ? (ACTIVE_LOCALE === 'en' ? 'Bot ID removed.' : '봇 아이디를 지웠어요.')
+    : id ? (ACTIVE_LOCALE === 'en' ? `Saved @${id}` : `@${id} 저장했어요.`)
+      : (ACTIVE_LOCALE === 'en' ? 'Check the bot ID (letters, numbers, _).' : '봇 아이디를 확인해주세요(영문·숫자·_).'));
+});
+
+let pendingLogLink = null;
+const logLinkModal = document.getElementById('log-link-modal');
+
+function logFoodLine(food) {
+  const has = value => value !== undefined && value !== null;
+  const en = ACTIVE_LOCALE === 'en';
+  const labels = en ? { carbs: 'Carbs', protein: 'Protein', fat: 'Fat' } : { carbs: '탄수', protein: '단백질', fat: '지방' };
+  const macro = ['carbs', 'protein', 'fat'].map(key => `${labels[key]} ${has(food[key]) ? `${food[key]}g` : '—'}`).join(' · ');
+  return `<li class="log-link-food"><div><strong>${escapeHtml(food.name)}</strong>${food.serving ? `<small>${escapeHtml(food.serving)}</small>` : ''}${food.estimate ? `<em class="log-link-estimate">${en ? 'Estimate' : '추정'}</em>` : ''}</div>
+    <span class="log-link-kcal">${has(food.cal) ? `${food.cal}kcal` : (en ? 'kcal —' : 'kcal 미입력')}</span>
+    <span class="log-link-macros">${escapeHtml(macro)}</span>
+    ${food.sourceNote ? `<span class="log-link-source">${en ? 'Source' : '출처'}: ${escapeHtml(food.sourceNote)}</span>` : ''}</li>`;
+}
+
+function renderLogLinkSheet() {
+  if (!pendingLogLink) return;
+  const { data, meal, warnings } = pendingLogLink;
+  const date = parseDateKey(data.date);
+  const en = ACTIVE_LOCALE === 'en';
+  document.getElementById('log-link-date').textContent = `${isToday(date) ? (en ? 'Today' : '오늘') : formatHomeDate(date)} · ${data.source === 'openclaw' ? (en ? 'found by AI (Telegram)' : 'AI(텔레그램)가 찾은 값') : (en ? 'from a link' : '링크로 받은 값')}`;
+  document.querySelectorAll('[data-log-meal]').forEach(button => {
+    const active = button.dataset.logMeal === meal;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+    button.textContent = mealLabel(button.dataset.logMeal);
+  });
+  document.getElementById('log-link-foods').innerHTML = data.foods.map(logFoodLine).join('');
+  const warn = document.getElementById('log-link-warnings');
+  warn.hidden = !warnings.length;
+  warn.textContent = warnings.slice(0, 3).join(' ');
+  document.getElementById('log-link-save').textContent = en ? `Log ${data.foods.length}` : `${data.foods.length}개 기록`;
+}
+
+function closeLogLinkSheet() {
+  logLinkModal?.classList.remove('open');
+  pendingLogLink = null;
+}
+
+function handleIncomingLogUrl(url) {
+  if (!globalThis.RebuildersLogLink) return false;
+  const result = RebuildersLogLink.parseLogUrl(url);
+  if (!result.ok) {
+    showToast(result.errors[0] || (ACTIVE_LOCALE === 'en' ? 'Could not read the link.' : '링크를 읽을 수 없어요.'), 'error');
+    return false;
+  }
+  pendingLogLink = { data: result.data, meal: result.data.meal, warnings: result.warnings };
+  renderLogLinkSheet();
+  logLinkModal?.classList.add('open');
+  return true;
+}
+
+const compactFoodName = name => String(name || '').toLowerCase().replace(/\s+/g, '');
+
+async function savePendingLogLink() {
+  if (!pendingLogLink) return;
+  const { data, meal } = pendingLogLink;
+  if (data.date !== dateKey(currentDate)) {
+    currentDate = parseDateKey(data.date);
+    await loadCurrentDay();
+    updateDateDisplay();
+    renderAll(true);
+  }
+  if (meal === 'snack') currentSnackSlot = getDefaultSnackSlot();
+  const before = snapshotMeals();
+  const wasEmpty = meal === 'snack' ? !snackFoodsForSlot(currentSnackSlot).length : !meals[meal].foods.length;
+  let filled = 0;
+  let added = 0;
+  data.foods.forEach(food => {
+    const record = { ...food, source: 'openclaw', sourceTrust: food.estimate ? 'estimate' : 'ai', loggedVia: 'link' };
+    // 이름만 저장해 둔 같은 음식(영양 미입력)이 있으면 새로 추가하지 않고 그 기록을 채움
+    const idx = meals[meal].foods.findIndex(existing => isNutritionMissing(existing) && compactFoodName(existing.name) === compactFoodName(food.name));
+    if (idx >= 0) {
+      const existing = meals[meal].foods[idx];
+      meals[meal].foods[idx] = { ...existing, ...record, serving: record.serving || existing.serving, slot: existing.slot };
+      filled += 1;
+    } else {
+      if (meal === 'snack') record.slot = currentSnackSlot;
+      record._isNew = true;
+      meals[meal].foods.push(record);
+      added += 1;
+    }
+  });
+  setAutoTimeForFirstFood(meal, meal === 'snack' ? currentSnackSlot : null, wasEmpty);
+  renderAll(false);
+  await persistMealsOrRestore(before);
+  closeLogLinkSheet();
+  const en = ACTIVE_LOCALE === 'en';
+  const parts = en
+    ? [added ? `${added} added` : '', filled ? `${filled} filled in` : '']
+    : [added ? `${added}개 기록` : '', filled ? `${filled}개 영양정보 채움` : ''];
+  showToast(`${mealLabel(meal)}${en ? ': ' : '에 '}${parts.filter(Boolean).join(', ')}`, 'success');
+}
+
+document.querySelectorAll('[data-log-meal]').forEach(button => {
+  button.addEventListener('click', () => {
+    if (!pendingLogLink) return;
+    pendingLogLink.meal = button.dataset.logMeal;
+    renderLogLinkSheet();
+  });
+});
+document.getElementById('log-link-save')?.addEventListener('click', event => runButtonAction(event.currentTarget, savePendingLogLink));
+document.getElementById('log-link-cancel')?.addEventListener('click', closeLogLinkSheet);
+document.getElementById('log-link-x')?.addEventListener('click', closeLogLinkSheet);
+logLinkModal?.addEventListener('click', event => { if (event.target === logLinkModal) closeLogLinkSheet(); });
+
+function setupDeepLinks() {
+  renderAiLookupSettings();
+  const cap = globalThis.Capacitor;
+  if (!cap?.isNativePlatform?.()) return;
+  const appPlugin = cap.Plugins?.App || cap.registerPlugin?.('App');
+  if (!appPlugin) return;
+  appPlugin.addListener?.('appUrlOpen', event => handleIncomingLogUrl(event?.url));
+  appPlugin.getLaunchUrl?.().then(result => { if (result?.url) handleIncomingLogUrl(result.url); }).catch(() => {});
+}
+
 async function initializeApp() {
   const modeState = await initializeStorageRepository();
   updateLocalModeStatus(modeState);
@@ -5636,6 +5858,7 @@ async function initializeApp() {
   setupAppModeUi();
   setupReminderUi();
   setupHealthUi();
+  setupDeepLinks();
   showAppScreen();
   document.body.classList.add('app-ready');
   registerServiceWorker();
