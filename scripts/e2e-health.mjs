@@ -29,15 +29,24 @@ const results = []; let failed = 0;
 function check(name, cond, info = '') { results.push(`${cond ? 'PASS' : 'FAIL'} ${name}${info ? ' — ' + info : ''}`); if (!cond) failed++; }
 const MOCK = `(() => {
   const calls = [];
-  const now = Date.now();
+  const now = new Date();
+  const dayStart = offset => { const d = new Date(now); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - offset); return d; };
+  const at = (offset, h, m = 0) => { const d = dayStart(offset); d.setHours(h, m); return d.toISOString(); };
+  // 오늘: 64(1시간 전), 80(1분 전) / 어제: 70, 90(최근 21:30)
+  const today1 = new Date(now.getTime() - 3600000).toISOString(), today2 = new Date(now.getTime() - 60000).toISOString();
+  const heart = [
+    { value: 80, startDate: today2, endDate: today2 }, { value: 64, startDate: today1, endDate: today1 },
+    { value: 90, startDate: at(1, 21, 30), endDate: at(1, 21, 30) }, { value: 70, startDate: at(1, 9), endDate: at(1, 9) },
+  ].map(x => ({ dataType: 'heartRate', unit: 'bpm', ...x }));
   const Health = {
     isAvailable: async () => ({ available: true }),
-    requestAuthorization: async opts => { calls.push(['requestAuthorization', opts]); return { readAuthorized: ['heartRate'], readDenied: [], writeAuthorized: [], writeDenied: [] }; },
-    readSamples: async opts => { calls.push(['readSamples', opts]); return { samples: [
-      { dataType: 'heartRate', value: 80, unit: 'bpm', startDate: new Date(now - 60000).toISOString(), endDate: new Date(now - 60000).toISOString() },
-      { dataType: 'heartRate', value: 64, unit: 'bpm', startDate: new Date(now - 3600000).toISOString(), endDate: new Date(now - 3600000).toISOString() },
-    ] }; },
-    queryAggregated: async opts => { calls.push(['queryAggregated', opts]); return { samples: [{ value: 71.6 }] }; },
+    requestAuthorization: async opts => { calls.push(['requestAuthorization', opts]); return { readAuthorized: opts.read, readDenied: [], writeAuthorized: [], writeDenied: [] }; },
+    readSamples: async opts => { calls.push(['readSamples', opts]); return { samples: opts.dataType === 'heartRate' ? heart : [] }; },
+    queryAggregated: async opts => {
+      calls.push(['queryAggregated', opts]);
+      if (opts.dataType === 'steps') return { samples: [{ startDate: dayStart(0).toISOString(), value: 3456 }, { startDate: dayStart(1).toISOString(), value: 8000.4 }] };
+      return { samples: [{ startDate: dayStart(1).toISOString(), value: 79.6 }] };
+    },
     saveSample: async () => { calls.push(['saveSample']); },
   };
   window.__healthCalls = calls;
@@ -64,13 +73,33 @@ try {
   // 3) 연결 버튼 → 읽기 전용 권한 요청 → 홈 카드 표시
   await evaluate(`document.getElementById('health-connect').click(); await new Promise(r => setTimeout(r, 300)); return true;`);
   st = await evaluate(`const auth = window.__healthCalls.find(c => c[0] === 'requestAuthorization'); return { auth: auth && auth[1], home: document.getElementById('heart-rate-card').hidden, avg: document.getElementById('heart-rate-average').textContent, latest: document.getElementById('heart-rate-latest').textContent, btn: document.getElementById('health-connect').textContent, writes: window.__healthCalls.filter(c => c[0] === 'saveSample').length }`);
-  check('권한 요청은 읽기(heartRate)만, 쓰기 없음', JSON.stringify(st.auth) === JSON.stringify({ read: ['heartRate'], write: [] }) && st.writes === 0, JSON.stringify(st.auth));
+  check('권한 요청은 읽기(심박수·걸음 수)만, 쓰기·체중 없음', JSON.stringify(st.auth) === JSON.stringify({ read: ['heartRate', 'steps'], write: [] }) && st.writes === 0, JSON.stringify(st.auth));
   check('홈에 오늘 평균 72 / 최근 80 bpm 표시', !st.home && st.avg === '72' && st.latest === '80', JSON.stringify(st));
-  check('버튼이 "연결 끊기"로 바뀜', st.btn === '연결 끊기', st.btn);
+  st = await evaluate(`return { steps: document.getElementById('health-steps-value').textContent, perm: document.getElementById('health-steps-permission').hidden, label: document.getElementById('health-day-label').textContent, under: document.getElementById('heart-rate-card').previousElementSibling?.className }`);
+  check('오늘 걸음 3,456, 권한 추가 버튼 숨김, 캐릭터 카드 바로 아래', st.steps === '3,456' && st.perm && st.label === '오늘' && st.under === 'player-card', JSON.stringify(st));
+
+  // 날짜 이동: 어제 → 어제 값, 8일 전 → 최근 7일 안내
+  await evaluate(`await changeDate(-1); await new Promise(r => setTimeout(r, 300)); return true;`);
+  st = await evaluate(`return { avg: document.getElementById('heart-rate-average').textContent, latest: document.getElementById('heart-rate-latest').textContent, time: document.getElementById('heart-rate-latest-time').textContent, steps: document.getElementById('health-steps-value').textContent, label: document.getElementById('health-day-label').textContent }`);
+  check('어제 선택: 평균 80(HealthKit 일 평균) / 최근 90 21:30 / 걸음 8,000', st.avg === '80' && st.latest === '90' && st.time === '21:30' && st.steps === '8,000' && st.label !== '오늘', JSON.stringify(st));
+  await evaluate(`for (let i = 0; i < 7; i++) await changeDate(-1); await new Promise(r => setTimeout(r, 300)); return true;`);
+  st = await evaluate(`return { avg: document.getElementById('heart-rate-average').textContent, note: document.getElementById('health-card-note').textContent }`);
+  check('8일 전: 값 없음 + "최근 7일" 안내', st.avg === '--' && st.note.includes('최근 7일'), JSON.stringify(st));
+  await evaluate(`await goToToday(); await new Promise(r => setTimeout(r, 300)); return true;`);
+
+  // 예전에 심박수만 연결한 사용자 → '걸음 수 권한 추가' → 재요청
+  await evaluate(`localStorage.setItem('rebuilders-health-connected', '1'); window.__healthCalls.length = 0; await refreshHeartRate({ force: true }); return true;`);
+  st = await evaluate(`return { perm: document.getElementById('health-steps-permission').hidden, stepsShown: !document.getElementById('health-steps-metric').hidden, stepQueries: window.__healthCalls.filter(c => c[1]?.dataType === 'steps').length }`);
+  check('심박수만 연결한 사용자: "걸음 수 권한 추가" 보임, 걸음 조회 안 함', !st.perm && !st.stepsShown && st.stepQueries === 0, JSON.stringify(st));
+  await evaluate(`document.getElementById('health-steps-permission').click(); await new Promise(r => setTimeout(r, 300)); return true;`);
+  st = await evaluate(`const auth = window.__healthCalls.find(c => c[0] === 'requestAuthorization'); return { auth: auth && auth[1], perm: document.getElementById('health-steps-permission').hidden, steps: document.getElementById('health-steps-value').textContent, level: localStorage.getItem('rebuilders-health-connected') }`);
+  check('권한 추가 누르면 읽기 재요청 후 걸음 표시', JSON.stringify(st.auth) === JSON.stringify({ read: ['heartRate', 'steps'], write: [] }) && st.perm && st.steps === '3,456' && st.level === '2', JSON.stringify(st));
+  const btnText = await evaluate(`return document.getElementById('health-connect').textContent`);
+  check('설정 버튼이 "연결 끊기"로 바뀜', btnText === '연결 끊기', btnText);
 
   // 4) 심박수는 저장소·백업에 없음
-  const leak = await evaluate(`const all = await storageRepository.getAll(); const text = JSON.stringify(NiliriBackup.buildBackup(all)) + JSON.stringify(all); return { heart: /heartRate|bpm|"80"|71\\.6/.test(text), keys: Object.keys(all) }`);
-  check('심박수가 기기 저장소·백업 JSON에 없음', !leak.heart, JSON.stringify(leak));
+  const leak = await evaluate(`const all = await storageRepository.getAll(); const text = JSON.stringify(NiliriBackup.buildBackup(all)) + JSON.stringify(all); return { heart: /heartRate|bpm|steps|3456|8000|79\\.6/.test(text), keys: Object.keys(all) }`);
+  check('심박수·걸음 수가 기기 저장소·백업 JSON에 없음', !leak.heart, JSON.stringify(leak));
 
   // 5) 새로고침 후에도 연결 유지, 연결 끊기 → 홈 카드 숨김
   await load();

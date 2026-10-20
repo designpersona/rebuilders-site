@@ -746,6 +746,8 @@ function updateDateDisplay() {
     badge.hidden = !today;
   }
   if (goToday) goToday.hidden = today;
+  // 홈 건강 카드도 선택한 날짜로(연결 안 했으면 아무 일 없음)
+  if (typeof refreshHeartRate === 'function' && globalThis.RebuildersHealth?.isConnected()) refreshHeartRate();
 }
 
 async function changeDate(delta) {
@@ -5488,9 +5490,10 @@ function healthCopy(key) {
   return {
     connect: en ? 'Connect Apple Health' : '건강 앱 연결하기',
     disconnect: en ? 'Disconnect' : '연결 끊기',
-    connected: en ? 'Connected. Heart rate is read on this device only.' : '연결됨 · 심박수는 이 기기에서만 읽어 보여줘요.',
+    connected: en ? 'Connected. Heart rate and steps are read on this device only.' : '연결됨 · 심박수와 걸음 수는 이 기기에서만 읽어 보여줘요.',
     disconnected: en ? 'Disconnected in the app. To fully revoke access: Settings > Health > Data Access & Devices > Rebuilders.' : '앱에서 연결을 끊었어요. 권한까지 끄려면 설정 > 건강 > 데이터 접근 및 기기 > 리빌더스에서 꺼주세요.',
-    noData: en ? 'No heart rate today' : '오늘 기록 없음',
+    noData: en ? 'No heart rate for this day' : '이 날 심박수 기록 없음',
+    addSteps: en ? 'Allow step count' : '걸음 수 권한 추가',
   }[key];
 }
 
@@ -5509,35 +5512,73 @@ function renderHealthSettings(message = '') {
   hint.textContent = text;
 }
 
-async function refreshHeartRate() {
+let healthRefreshSeq = 0;
+async function refreshHeartRate(options = {}) {
   const card = document.getElementById('heart-rate-card');
   if (!card) return;
   if (!globalThis.RebuildersHealth?.isConnected()) { card.hidden = true; return; }
+  const seq = ++healthRefreshSeq;
+  const en = ACTIVE_LOCALE === 'en';
+  const date = new Date(currentDate);
   try {
-    const result = await RebuildersHealth.readTodayHeartRate();
+    if (options.force) RebuildersHealth.clearCache();
+    const day = await RebuildersHealth.readDay(date);
+    if (seq !== healthRefreshSeq) return; // 날짜를 빨리 넘긴 경우 마지막 요청만 반영
     card.hidden = false;
-    const hasData = result && result.count > 0;
-    document.getElementById('heart-rate-average').textContent = hasData ? String(result.average) : '--';
-    document.getElementById('heart-rate-latest').textContent = hasData ? String(result.latest) : '--';
+    document.getElementById('health-day-label').textContent = isToday(date)
+      ? (en ? 'Today' : '오늘')
+      : formatHomeDate(date);
+    const hasHeart = !day.outOfRange && day.heartCount > 0;
+    document.getElementById('heart-rate-average').textContent = hasHeart ? String(day.heartAverage) : '--';
+    document.getElementById('heart-rate-latest').textContent = hasHeart ? String(day.heartLatest) : '--';
     const time = document.getElementById('heart-rate-latest-time');
-    if (hasData && result.latestAt) {
-      const at = new Date(result.latestAt);
+    if (hasHeart && day.heartLatestAt) {
+      const at = new Date(day.heartLatestAt);
       time.textContent = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
     } else {
-      time.textContent = hasData ? '' : healthCopy('noData');
+      time.textContent = '';
     }
+    const needsSteps = RebuildersHealth.needsStepsPermission();
+    document.getElementById('health-steps-metric').hidden = needsSteps;
+    document.getElementById('health-steps-value').textContent = !day.outOfRange && day.steps != null
+      ? day.steps.toLocaleString(en ? 'en-US' : 'ko-KR')
+      : '--';
+    document.getElementById('health-steps-permission').hidden = !needsSteps;
+    const note = document.getElementById('health-card-note');
+    const noteText = day.outOfRange
+      ? (en ? 'Only the last 7 days are shown.' : '최근 7일 기록만 보여줘요.')
+      : (!hasHeart ? healthCopy('noData') : '');
+    note.hidden = !noteText;
+    note.textContent = noteText;
   } catch {
-    card.hidden = true; // 읽기 실패(권한 없음 등)면 조용히 숨김
+    if (seq === healthRefreshSeq) card.hidden = true; // 읽기 실패(권한 없음 등)면 조용히 숨김
   }
 }
+
+document.getElementById('health-steps-permission')?.addEventListener('click', async event => {
+  const button = event.currentTarget;
+  if (button.dataset.actionLocked === 'true') return;
+  button.dataset.actionLocked = 'true';
+  try {
+    await RebuildersHealth.connect(); // 심박수+걸음 수 읽기 권한(쓰기 없음)
+    renderHealthSettings();
+    await refreshHeartRate({ force: true });
+  } catch (error) {
+    const note = document.getElementById('health-card-note');
+    note.hidden = false;
+    note.textContent = String(error?.message || error);
+  } finally {
+    delete button.dataset.actionLocked;
+  }
+});
 
 function setupHealthUi() {
   renderHealthSettings();
   refreshHeartRate();
   clearInterval(heartRateTimer);
   if (globalThis.RebuildersHealth?.isSupported()) {
-    heartRateTimer = setInterval(() => { if (!document.hidden) refreshHeartRate(); }, 5 * 60_000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshHeartRate(); });
+    heartRateTimer = setInterval(() => { if (!document.hidden) refreshHeartRate({ force: true }); }, 5 * 60_000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshHeartRate({ force: true }); });
   }
 }
 

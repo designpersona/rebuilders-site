@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=129" />
+  <link rel="stylesheet" href="style.css?v=130" />
 </head>
 
 <body>
@@ -97,6 +97,20 @@
           </div>
         </div>
 
+        <section class="heart-rate-card" id="heart-rate-card" aria-label="건강 앱 기록" hidden>
+          <div class="health-card-head">
+            <span id="health-day-label">오늘</span>
+            <small class="heart-rate-source">건강 앱</small>
+          </div>
+          <div class="heart-rate-values">
+            <span><img class="vital-icon" src="assets/icon/Health status/heart.png" width="14" height="14" alt="" /> 평균 <strong id="heart-rate-average">--</strong> bpm</span>
+            <span>최근 <strong id="heart-rate-latest">--</strong> bpm <small id="heart-rate-latest-time"></small></span>
+            <span id="health-steps-metric"><img class="vital-icon" src="assets/icon/Health status/Step.png" width="14" height="14" alt="" /> <strong id="health-steps-value">--</strong> 걸음</span>
+          </div>
+          <button type="button" class="health-steps-permission" id="health-steps-permission" hidden>걸음 수 권한 추가</button>
+          <p class="health-card-note" id="health-card-note" hidden></p>
+        </section>
+
         <button type="button" class="kcal-meter" id="calorie-summary-toggle" aria-label="먹은 칼로리 0킬로칼로리. 탭해서 다른 수치 보기">
           <span class="kcal-meter-label" id="ring-metric-label">Kcal</span>
           <span class="kcal-bar-track" aria-hidden="true">
@@ -135,15 +149,6 @@
             <span class="macro-val" id="val-fat">0 / 51g</span>
           </div>
         </div>
-      </section>
-
-      <section class="heart-rate-card" id="heart-rate-card" aria-label="오늘 심박수" hidden>
-        <img class="vital-icon" src="assets/icon/Health status/heart.png" width="16" height="16" alt="" />
-        <div class="heart-rate-values">
-          <span>오늘 평균 <strong id="heart-rate-average">--</strong> bpm</span>
-          <span>최근 <strong id="heart-rate-latest">--</strong> bpm <small id="heart-rate-latest-time"></small></span>
-        </div>
-        <small class="heart-rate-source">건강 앱</small>
       </section>
 
       <div class="section-head">
@@ -867,7 +872,7 @@
 
       <section class="profile-form-card health-settings-card" id="health-card" aria-labelledby="health-title" hidden>
         <h3 class="stats-section-title" id="health-title">건강 앱 연결</h3>
-        <p class="profile-save-hint language-settings-copy" id="health-copy">아이폰 건강 앱의 심박수를 읽어 홈에 보여줘요. 읽기만 하고, 이 기기 안에서만 보여줘요. 저장·백업·외부 전송은 하지 않아요.</p>
+        <p class="profile-save-hint language-settings-copy" id="health-copy">아이폰 건강 앱의 심박수와 걸음 수를 읽어 홈에 보여줘요. 읽기만 하고, 이 기기 안에서만 보여줘요. 저장·백업·외부 전송은 하지 않아요.</p>
         <button class="settings-save-btn" id="health-connect" type="button">건강 앱 연결하기</button>
         <p class="profile-save-hint" id="health-hint" hidden></p>
       </section>
@@ -1241,8 +1246,8 @@
   <script src="keyboard.js?v=1"></script>
   <script src="demo-seed.js?v=3"></script>
   <script src="quick-entry.js?v=1"></script>
-  <script src="health.js?v=1"></script>
-  <script src="app.js?v=82"></script>
+  <script src="health.js?v=2"></script>
+  <script src="app.js?v=83"></script>
 </body>
 
 </html>
