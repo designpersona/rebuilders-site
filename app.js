@@ -794,11 +794,6 @@ function applyExtendedStaticCopy() {
   label('#next-day', '다음 날', 'Next day');
   label('.player-measurements', '신체 정보', 'Body information');
   label('.main-avatar', '사용자 픽셀 캐릭터', 'User pixel character');
-  label('.health-glance', '건강 앱 정보', 'Health app information');
-  const healthLabels = en ? ['Heart rate', 'Steps', 'Active calories'] : ['심장박동', '걸음수', '소모 칼로리'];
-  document.querySelectorAll('.health-glance > div').forEach((item, index) => {
-    item.setAttribute('aria-label', healthLabels[index] || '');
-  });
   const macroAria = [t('carbs'), t('protein'), t('fat')];
   document.querySelectorAll('#view-home .macro-bar-track').forEach((item, index) => {
     item.setAttribute('aria-label', macroAria[index] || '');
