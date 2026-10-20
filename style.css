@@ -12035,3 +12035,43 @@ body.has-ai-dock.keyboard-open .toast-host { bottom: 70px; }
 .recent-swipe-hint { margin: -2px 0 8px; font: 600 11px/1.4 var(--font); color: var(--text-secondary); }
 .recent-swipe-hint[hidden] { display: none; }
 .swipe-row .swipe-content { -webkit-user-select: none; user-select: none; }
+
+/* 홈 AI 입력창: iOS 검색창 같은 알약(capsule) + 옆의 동그란 보내기 버튼 (테마 색 사용) */
+.home-ai-dock { padding-top: 8px; padding-bottom: 8px; }
+.ai-dock-bar { gap: 8px; min-height: 50px; align-items: center; }
+.ai-dock-capsule {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg3);
+  cursor: text;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.ai-dock-capsule:focus-within { border-color: var(--border-strong); background: var(--bg2); }
+.ai-dock-lead { flex: 0 0 auto; display: inline-flex; color: var(--text-secondary); }
+.ai-dock-capsule .ai-dock-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  outline: none;
+  color: var(--text-primary);
+  font: 500 17px/1.2 var(--font); /* 16px 이상: iOS 포커스 확대 방지 */
+  -webkit-appearance: none;
+  appearance: none;
+}
+.ai-dock-capsule .ai-dock-icon { width: 38px; height: 38px; color: var(--text-secondary); }
+.ai-dock-capsule .ai-dock-icon.is-listening { color: #fff; }
+.ai-dock-send, .ai-dock-send.is-empty { flex: 0 0 50px; width: 50px; height: 50px; min-width: 50px; border-radius: 50%; transition: background 0.15s ease, color 0.15s ease; }
+.ai-dock-send { background: var(--accent); color: var(--bg2); }
+.ai-dock-send.is-empty { background: var(--bg3); color: var(--text-secondary); border: 1px solid var(--border); }
+.ai-dock-send svg { width: 20px; height: 20px; }
