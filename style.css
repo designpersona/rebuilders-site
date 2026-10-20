@@ -12075,3 +12075,7 @@ body.has-ai-dock.keyboard-open .toast-host { bottom: 70px; }
 .ai-dock-send { background: var(--accent); color: var(--bg2); }
 .ai-dock-send.is-empty { background: var(--bg3); color: var(--text-secondary); border: 1px solid var(--border); }
 .ai-dock-send svg { width: 20px; height: 20px; }
+
+/* 홈 스크롤 영역 끝(전체 삭제 등)이 입력창 경계에 붙거나 걸리지 않게 여유를 둠.
+   입력창·탭바·홈 인디케이터(safe area)는 스크롤 영역 밖(아래 형제)이라 겹치지 않음 */
+body.has-ai-dock #view-home { padding-bottom: 28px; scroll-padding-bottom: 28px; }
