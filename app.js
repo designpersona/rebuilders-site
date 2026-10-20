@@ -2706,7 +2706,11 @@ function renderQuickFoods(entries) {
 }
 
 function renderRecentFoods() {
+  // 밀고 있는 도중엔 다시 그리지 않음(줄이 바뀌면 손가락 동작이 끊김) → 끝나면 다시 그림
+  if (swipeGestureActive) { swipeRenderPending = true; return; }
   const container = document.getElementById('recent-foods');
+  const swipeHint = document.getElementById('recent-swipe-hint');
+  if (swipeHint) swipeHint.hidden = !RECENT_FOODS.length;
   container.innerHTML = '';
 
   if (!RECENT_FOODS.length) {
@@ -2746,13 +2750,20 @@ function setupRecentEditButton() {
   });
 }
 
-/* 왼쪽으로 밀면 빨간 '삭제'. iOS WKWebView 대응:
-   - 첫 touchmove 에서 가로 움직임이면 바로 preventDefault(늦으면 iOS가 스크롤로 가져가 touchcancel)
-   - 가로로 잡은 뒤엔 stopPropagation(시트·스크롤이 가져가지 않게), 세로는 그대로 스크롤(touch-action: pan-y)
-   - 길게 누르기(0.5초)로도 열림. 마우스는 pointer 이벤트로 */
+/* 왼쪽으로 밀면 빨간 '삭제' (iOS WKWebView 대응, 세 번째 버전)
+   - 손가락: Touch Events, non-passive touchmove 에서 가로면 preventDefault(스크롤·시트가 가져가지 않게)
+   - 마우스·펜: Pointer Events + setPointerCapture
+   - 밀고 있는 동안 목록을 다시 그리지 않음(swipeGestureActive)
+   - 길게 누르기(0.5초)·'편집' 버튼은 대체 방법 */
+var swipeGestureActive = false; // var: 시작 시 renderRecentFoods 가 먼저 불려도 안전
+var swipeRenderPending = false;
+function finishSwipeGesture() {
+  swipeGestureActive = false;
+  if (swipeRenderPending) { swipeRenderPending = false; setTimeout(renderRecentFoods, 0); }
+}
 function enableSwipeDelete(row, onDelete) {
   const WIDTH = 84;
-  const OPEN_AT = 32;
+  const OPEN_AT = 28;
   const content = document.createElement('div');
   content.className = 'swipe-content';
   while (row.firstChild) content.appendChild(row.firstChild);
@@ -2764,7 +2775,7 @@ function enableSwipeDelete(row, onDelete) {
   del.setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? 'Delete from recent foods' : '최근 음식에서 삭제');
   row.classList.add('swipe-row');
   row.append(del, content);
-  let startX = 0; let startY = 0; let base = 0; let x = 0; let mode = null; let pressTimer = null;
+  let startX = 0; let startY = 0; let base = 0; let x = 0; let mode = null; let pressTimer = null; let activeId = null; let tracking = false;
   const set = (value, animate) => {
     x = value;
     content.style.transition = animate ? 'transform 0.2s ease' : 'none';
@@ -2774,29 +2785,31 @@ function enableSwipeDelete(row, onDelete) {
   };
   const close = () => set(0, true);
   const open = () => { set(-WIDTH, true); row.__swipeAt = Date.now(); };
-  const closeOthers = () => document.querySelectorAll('.swipe-row.is-open').forEach(other => { if (other !== row) other.__swipeClose?.(); });
   const clearPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
   row.__swipeClose = close;
   const begin = (cx, cy) => {
+    tracking = true;
+    swipeGestureActive = true;
     startX = cx; startY = cy; mode = null;
     base = row.classList.contains('is-open') ? -WIDTH : 0;
-    closeOthers();
+    document.querySelectorAll('.swipe-row.is-open').forEach(other => { if (other !== row) other.__swipeClose?.(); });
     clearPress();
-    pressTimer = setTimeout(() => { pressTimer = null; if (!mode) { mode = 'press'; open(); } }, 500);
+    pressTimer = setTimeout(() => { pressTimer = null; if (tracking && !mode) { mode = 'press'; open(); } }, 500);
   };
-  const move = (cx, cy, event) => {
+  const decide = (mx, my) => {
+    if (!mode && (Math.abs(mx) >= 4 || Math.abs(my) >= 4)) mode = Math.abs(mx) > Math.abs(my) ? 'h' : 'v';
+    return mode;
+  };
+  const move = (cx, cy) => {
+    if (!tracking) return;
     const mx = cx - startX; const my = cy - startY;
     if (Math.abs(mx) > 6 || Math.abs(my) > 6) clearPress();
-    if (!mode) {
-      if (Math.abs(mx) < 3 && Math.abs(my) < 3) return;
-      mode = Math.abs(mx) > Math.abs(my) ? 'h' : 'v';
-    }
-    if (mode !== 'h') return;
-    if (event?.cancelable) event.preventDefault();
-    event?.stopPropagation();
+    if (decide(mx, my) !== 'h') return;
     set(Math.max(-WIDTH - 24, Math.min(0, base + mx)), false);
   };
   const end = () => {
+    if (!tracking) return;
+    tracking = false;
     clearPress();
     if (mode === 'h') {
       const moved = x - base;
@@ -2806,26 +2819,42 @@ function enableSwipeDelete(row, onDelete) {
       row.__swipeAt = Date.now();
     }
     mode = null;
+    activeId = null;
+    finishSwipeGesture();
   };
+  // 손가락: Touch Events(iOS WKWebView 는 항상 보냄). touchmove 는 passive:false 라서 가로면 스크롤을 막을 수 있음
   content.addEventListener('touchstart', event => {
+    if (event.touches.length !== 1) return;
     const t = event.touches[0];
-    if (t) begin(t.clientX, t.clientY);
+    begin(t.clientX, t.clientY);
   }, { passive: true });
   content.addEventListener('touchmove', event => {
     const t = event.touches[0];
-    if (t) move(t.clientX, t.clientY, event);
+    if (!t || !tracking) return;
+    const mx = t.clientX - startX; const my = t.clientY - startY;
+    move(t.clientX, t.clientY);
+    const horizontal = mode === 'h' || (!mode && Math.abs(mx) > Math.abs(my));
+    if (horizontal && event.cancelable) { event.preventDefault(); event.stopPropagation(); }
   }, { passive: false });
   content.addEventListener('touchend', end, { passive: true });
   content.addEventListener('touchcancel', end, { passive: true });
-  // 마우스(맥 브라우저 등)
-  content.addEventListener('pointerdown', event => {
-    if (event.pointerType !== 'mouse' || event.button !== 0) return;
-    begin(event.clientX, event.clientY);
-    const onMove = e => move(e.clientX, e.clientY, e);
-    const onUp = () => { end(); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  });
+  // 마우스·펜: Pointer Events(손가락 포인터는 위 터치가 처리하므로 무시)
+  if (window.PointerEvent) {
+    content.addEventListener('pointerdown', event => {
+      if (event.pointerType === 'touch' || event.button !== 0) return;
+      activeId = event.pointerId;
+      begin(event.clientX, event.clientY);
+    });
+    content.addEventListener('pointermove', event => {
+      if (event.pointerType === 'touch' || event.pointerId !== activeId) return;
+      move(event.clientX, event.clientY);
+      if (mode === 'h') { try { content.setPointerCapture(event.pointerId); } catch { /* ignore */ } }
+    });
+    ['pointerup', 'pointercancel'].forEach(type => content.addEventListener(type, event => {
+      if (event.pointerType === 'touch' || event.pointerId !== activeId) return;
+      end();
+    }));
+  }
   content.addEventListener('contextmenu', event => event.preventDefault());
   // 열려 있거나 방금 밀었거나 편집 중이면 탭해도 음식 추가하지 않음
   content.addEventListener('click', event => {
@@ -5363,12 +5392,7 @@ async function handleAgentCommand() {
   }
 }
 
-document.getElementById('agent-send')?.addEventListener('click', handleAgentCommand);
-document.getElementById('agent-input')?.addEventListener('keydown', event => {
-  if (event.key !== 'Enter' || event.isComposing) return;
-  event.preventDefault();
-  handleAgentCommand();
-});
+// 보내기 버튼(type=submit)과 return 키는 #ai-dock-form 의 submit 으로 처리(위 refreshAiDockSend 옆)
 
 const agentHelpDialog = document.getElementById('agent-help-dialog');
 function closeAgentHelp() {
@@ -5393,10 +5417,21 @@ const agentInputEl = document.getElementById('agent-input');
 const agentSendEl = document.getElementById('agent-send');
 const agentVoiceButton = document.getElementById('agent-voice');
 
+/* 보내기 버튼은 항상 보이고, 글자가 없을 땐 흐리게(눌러도 아무 일 없음).
+   iOS 한글 입력(조합 중)은 input 이벤트가 늦을 수 있어 여러 이벤트에서 확인 */
 function refreshAiDockSend() {
-  if (agentSendEl) agentSendEl.hidden = !agentInputEl?.value.trim();
+  if (!agentSendEl) return;
+  const empty = !agentInputEl?.value.trim();
+  agentSendEl.hidden = false;
+  agentSendEl.classList.toggle('is-empty', empty);
+  agentSendEl.setAttribute('aria-disabled', String(empty));
 }
-agentInputEl?.addEventListener('input', refreshAiDockSend);
+['input', 'compositionupdate', 'compositionend', 'keyup', 'change', 'focus', 'blur'].forEach(type => agentInputEl?.addEventListener(type, refreshAiDockSend));
+// return 키·보내기 버튼 = form 제출(한글 조합 중 return 도 iOS가 조합을 끝낸 뒤 제출)
+document.getElementById('ai-dock-form')?.addEventListener('submit', event => {
+  event.preventDefault();
+  handleAgentCommand();
+});
 
 function focusAiDock(text = '') {
   if (activeView !== 'home') setActiveView('home');

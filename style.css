@@ -12018,3 +12018,20 @@ body.has-ai-dock .toast-host { bottom: calc(150px + var(--safe-bottom)); }
 body.has-ai-dock.keyboard-open .toast-host { bottom: 70px; }
 
 .ai-dock-icon[hidden] { display: none !important; }
+
+/* 보내기 버튼: 항상 보임, 비었을 땐 흐리게. 393pt 에서도 잘리지 않게 고정 크기 */
+.ai-dock-bar { margin: 0; }
+.ai-dock-send { flex: 0 0 38px; min-width: 38px; }
+.ai-dock-send.is-empty { background: var(--bg3); color: var(--text-secondary); }
+/* 최근 음식 '편집' 버튼을 눈에 띄게 + 안내 */
+.recent-edit-btn {
+  border: 1.5px solid var(--text-primary);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--text-primary);
+  background: #fff;
+}
+.recent-edit-btn[aria-pressed="true"] { background: #dc2626; border-color: #dc2626; color: #fff; }
+.recent-swipe-hint { margin: -2px 0 8px; font: 600 11px/1.4 var(--font); color: var(--text-secondary); }
+.recent-swipe-hint[hidden] { display: none; }
+.swipe-row .swipe-content { -webkit-user-select: none; user-select: none; }
