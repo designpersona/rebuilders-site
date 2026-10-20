@@ -44,7 +44,7 @@ try {
   check('처음엔 먹은 칼로리 500 / 목표, 채움 = 먹은/목표', a.mode === 'eaten' && a.label === '먹은 칼로리' && a.value === '500' && a.goal === goal.toLocaleString() && a.noGoalLine && a.unit === 'kcal' && a.labelHidden && Math.abs(a.off - (100 - 500 / goal * 100)) < 0.1, JSON.stringify(a));
   await evaluate(`document.getElementById('kcal-gauge').click(); return 1;`);
   const b = await evaluate(read);
-  check('탭 → 남은 칼로리(목표 − 먹은), 기기에 기억, 채움은 그대로', b.mode === 'left' && b.label === '남은 칼로리' && b.unit === 'kcal 남음' && b.value === (goal - 500).toLocaleString() && b.saved === 'left' && b.off === a.off, JSON.stringify(b));
+  check('탭 → 남은 칼로리(목표 − 먹은), 기기에 기억, 채움은 그대로', b.mode === 'left' && b.label === '남은 칼로리' && b.unit === '칼로리 남음' && b.value === (goal - 500).toLocaleString() && b.saved === 'left' && b.off === a.off, JSON.stringify(b));
   await load();
   await evaluate(`updateRing({ cal: 500, carbs: 0, protein: 0, fat: 0 }, false); return 1;`);
   const c = await evaluate(read);
@@ -52,7 +52,7 @@ try {
   await evaluate(`updateRing({ cal: ${goal} + 200, carbs: 0, protein: 0, fat: 0 }, false); return 1;`);
   const d = await evaluate(read);
   const basePct = goal / (goal + 200) * 100; const overParts = String(d.overDash).split(/[ ,]+/).map(parseFloat);
-  check('목표 넘으면 초과 칼로리 200, 막대처럼 목표까지 검정·넘친 만큼만 빨강', d.label === '초과 칼로리' && d.unit === 'kcal 초과' && d.value === '200' && d.over && d.overOn && Math.abs(d.off - (100 - basePct)) < 0.1 && overParts.length === 2 && Math.abs(overParts[0] - (100 - basePct)) < 0.1 && overParts[1] >= 100 && Math.abs(-d.overOff - basePct) < 0.1 && d.overFirst && !/229, 72, 77|226, 61, 61/.test(d.fillColor), JSON.stringify(d));
+  check('목표 넘으면 초과 칼로리 200, 막대처럼 목표까지 검정·넘친 만큼만 빨강', d.label === '초과 칼로리' && d.unit === '칼로리 초과' && d.value === '200' && d.over && d.overOn && Math.abs(d.off - (100 - basePct)) < 0.1 && overParts.length === 2 && Math.abs(overParts[0] - (100 - basePct)) < 0.1 && overParts[1] >= 100 && Math.abs(-d.overOff - basePct) < 0.1 && d.overFirst && !/229, 72, 77|226, 61, 61/.test(d.fillColor), JSON.stringify(d));
   const many = [];
   for (const extra of [1, 350, 1300, 3700]) {
     await evaluate(`updateRing({ cal: ${goal} + ${extra}, carbs: 0, protein: 0, fat: 0 }, false); return 1;`);
