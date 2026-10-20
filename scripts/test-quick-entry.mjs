@@ -69,5 +69,23 @@ check('끼니만 → 항목 없음', p('점심').items.length === 0);
 check('countNutritionMissing', countNutritionMissing([{ name: 'a' }, { name: 'b', cal: 0, carbs: 0, protein: 0, fat: 0 }, { name: 'c', cal: 100 }]) === 2);
 check('영양값 0은 미입력 아님', !isNutritionMissing({ cal: 0, carbs: 0, protein: 0, fat: 0 }));
 
+// 날짜 말(기준: 2026-10-20 화)
+r = p('내일 아침 바나나');
+check('내일 아침 바나나 → 10-21 아침 [바나나]', r.date === '2026-10-21' && r.dateExplicit && r.mealId === 'breakfast' && names(r).join() === '바나나', r);
+r = p('아침 내일 바나나');
+check('아침 내일 바나나(순서 바꿔도)', r.date === '2026-10-21' && r.mealId === 'breakfast' && names(r).join() === '바나나', r);
+r = p('어제 저녁에 김치, 밥');
+check('어제 저녁에 → 10-19 저녁, 이름에 날짜 없음', r.date === '2026-10-19' && r.mealId === 'dinner' && !names(r).some(n => /어제|저녁/.test(n)), r);
+check('그제/그저께 → 10-18', p('그제 점심 바나나').date === '2026-10-18' && p('그저께 점심 바나나').date === '2026-10-18');
+check('모레 → 10-22, 오늘 → 10-20', p('모레 간식 바나나').date === '2026-10-22' && p('오늘 야식 바나나').date === '2026-10-20' && p('오늘 야식 바나나').mealId === 'snack');
+r = p('10/22 점심 바나나');
+check('10/22 → 2026-10-22, 이름에 숫자 없음', r.date === '2026-10-22' && names(r).join() === '바나나', r);
+r = p('22일 점심 이삭 햄치즈');
+check('22일 → 이번 달 22일', r.date === '2026-10-22' && names(r).join() === '이삭 햄치즈', r);
+check('10월 19일 저녁 바나나', p('10월 19일 저녁 바나나').date === '2026-10-19');
+r = p('점심 바나나 2개');
+check('날짜 없으면 date 없음, 양(2개)은 그대로', r.date === null && !r.dateExplicit && r.items[0].amount?.value === 2, r);
+check('내일은 아침 바나나(조사)', p('내일은 아침 바나나').date === '2026-10-21' && names(p('내일은 아침 바나나')).join() === '바나나');
+
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

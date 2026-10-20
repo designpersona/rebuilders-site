@@ -926,7 +926,7 @@ function applyExtendedStaticCopy() {
   });
   label('#time-edit-modal', '섭취 시간 수정', 'Edit meal time');
   set('#time-edit-title', '섭취 시간', 'Meal time');
-  set('#tab-recent .quick-add-label', '최근 음식', 'Recent foods');
+  set('#tab-recent .recent-label-row > span', '최근 음식', 'Recent foods');
   placeholder('#custom-name', '예: 편의점 닭가슴살 샐러드', 'e.g. Chicken breast salad');
   placeholder('#custom-serving-amount', '예: 100', 'e.g. 100');
   placeholder('#custom-serving-grams', '선택', 'Optional');
@@ -2720,15 +2720,39 @@ function renderRecentFoods() {
   }
 
   renderFoodRows(container, RECENT_FOODS.map(food => [food.name, food]), false);
+  setupRecentEditButton();
   const names = RECENT_FOODS.map(food => food.name);
   container.querySelectorAll('.quick-food-row').forEach((row, i) => {
     if (names[i]) enableSwipeDelete(row, () => runButtonAction(row, () => deleteRecentFood(names[i])));
   });
 }
 
-/* 왼쪽으로 밀면 빨간 '삭제' 버튼(iOS WKWebView 터치 이벤트). 세로 스크롤은 그대로(touch-action: pan-y) */
+/* 최근 음식 '편집' 버튼: 밀기가 안 될 때도 모든 줄에 '삭제'를 보여줌 */
+function setupRecentEditButton() {
+  const button = document.getElementById('recent-edit');
+  const container = document.getElementById('recent-foods');
+  if (!button || !container) return;
+  const editing = container.classList.contains('is-editing') && RECENT_FOODS.length > 0;
+  if (!RECENT_FOODS.length) container.classList.remove('is-editing');
+  button.hidden = !RECENT_FOODS.length;
+  button.textContent = editing ? (ACTIVE_LOCALE === 'en' ? 'Done' : '완료') : (ACTIVE_LOCALE === 'en' ? 'Edit' : '편집');
+  button.setAttribute('aria-pressed', String(editing));
+  if (button.dataset.ready) return;
+  button.dataset.ready = 'true';
+  button.addEventListener('click', () => {
+    container.classList.toggle('is-editing');
+    container.querySelectorAll('.swipe-row.is-open').forEach(row => row.__swipeClose?.());
+    setupRecentEditButton();
+  });
+}
+
+/* 왼쪽으로 밀면 빨간 '삭제'. iOS WKWebView 대응:
+   - 첫 touchmove 에서 가로 움직임이면 바로 preventDefault(늦으면 iOS가 스크롤로 가져가 touchcancel)
+   - 가로로 잡은 뒤엔 stopPropagation(시트·스크롤이 가져가지 않게), 세로는 그대로 스크롤(touch-action: pan-y)
+   - 길게 누르기(0.5초)로도 열림. 마우스는 pointer 이벤트로 */
 function enableSwipeDelete(row, onDelete) {
   const WIDTH = 84;
+  const OPEN_AT = 32;
   const content = document.createElement('div');
   content.className = 'swipe-content';
   while (row.firstChild) content.appendChild(row.firstChild);
@@ -2740,7 +2764,7 @@ function enableSwipeDelete(row, onDelete) {
   del.setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? 'Delete from recent foods' : '최근 음식에서 삭제');
   row.classList.add('swipe-row');
   row.append(del, content);
-  let startX = 0; let startY = 0; let base = 0; let x = 0; let mode = null;
+  let startX = 0; let startY = 0; let base = 0; let x = 0; let mode = null; let pressTimer = null;
   const set = (value, animate) => {
     x = value;
     content.style.transition = animate ? 'transform 0.2s ease' : 'none';
@@ -2749,33 +2773,66 @@ function enableSwipeDelete(row, onDelete) {
     del.tabIndex = value < 0 ? 0 : -1;
   };
   const close = () => set(0, true);
+  const open = () => { set(-WIDTH, true); row.__swipeAt = Date.now(); };
+  const closeOthers = () => document.querySelectorAll('.swipe-row.is-open').forEach(other => { if (other !== row) other.__swipeClose?.(); });
+  const clearPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
   row.__swipeClose = close;
-  content.addEventListener('touchstart', event => {
-    const t = event.touches[0];
-    startX = t.clientX; startY = t.clientY; mode = null;
+  const begin = (cx, cy) => {
+    startX = cx; startY = cy; mode = null;
     base = row.classList.contains('is-open') ? -WIDTH : 0;
-    document.querySelectorAll('.swipe-row.is-open').forEach(other => { if (other !== row) other.__swipeClose?.(); });
-  }, { passive: true });
-  content.addEventListener('touchmove', event => {
-    const t = event.touches[0];
-    const mx = t.clientX - startX; const my = t.clientY - startY;
+    closeOthers();
+    clearPress();
+    pressTimer = setTimeout(() => { pressTimer = null; if (!mode) { mode = 'press'; open(); } }, 500);
+  };
+  const move = (cx, cy, event) => {
+    const mx = cx - startX; const my = cy - startY;
+    if (Math.abs(mx) > 6 || Math.abs(my) > 6) clearPress();
     if (!mode) {
-      if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+      if (Math.abs(mx) < 3 && Math.abs(my) < 3) return;
       mode = Math.abs(mx) > Math.abs(my) ? 'h' : 'v';
     }
     if (mode !== 'h') return;
-    event.preventDefault();
+    if (event?.cancelable) event.preventDefault();
+    event?.stopPropagation();
     set(Math.max(-WIDTH - 24, Math.min(0, base + mx)), false);
-  }, { passive: false });
-  content.addEventListener('touchend', () => {
-    if (mode === 'h') { set(x < -WIDTH / 2 ? -WIDTH : 0, true); row.__swipeAt = Date.now(); }
+  };
+  const end = () => {
+    clearPress();
+    if (mode === 'h') {
+      const moved = x - base;
+      set(moved < -OPEN_AT || (base < 0 && moved < OPEN_AT) ? -WIDTH : 0, true);
+      row.__swipeAt = Date.now();
+    } else if (mode === 'press') {
+      row.__swipeAt = Date.now();
+    }
     mode = null;
+  };
+  content.addEventListener('touchstart', event => {
+    const t = event.touches[0];
+    if (t) begin(t.clientX, t.clientY);
+  }, { passive: true });
+  content.addEventListener('touchmove', event => {
+    const t = event.touches[0];
+    if (t) move(t.clientX, t.clientY, event);
+  }, { passive: false });
+  content.addEventListener('touchend', end, { passive: true });
+  content.addEventListener('touchcancel', end, { passive: true });
+  // 마우스(맥 브라우저 등)
+  content.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    begin(event.clientX, event.clientY);
+    const onMove = e => move(e.clientX, e.clientY, e);
+    const onUp = () => { end(); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   });
-  content.addEventListener('touchcancel', () => { set(base, true); mode = null; });
-  // 열려 있거나 방금 민 경우엔 탭해도 음식 추가하지 않고 닫기만
+  content.addEventListener('contextmenu', event => event.preventDefault());
+  // 열려 있거나 방금 밀었거나 편집 중이면 탭해도 음식 추가하지 않음
   content.addEventListener('click', event => {
-    if (row.classList.contains('is-open') || Date.now() - (row.__swipeAt || 0) < 350) {
-      event.preventDefault(); event.stopPropagation(); close();
+    const editing = row.parentElement?.classList.contains('is-editing');
+    if (editing || row.classList.contains('is-open') || Date.now() - (row.__swipeAt || 0) < 350) {
+      event.preventDefault(); event.stopPropagation();
+      if (!editing) close();
     }
   }, true);
   del.addEventListener('click', event => { event.stopPropagation(); close(); onDelete(); });
@@ -2840,7 +2897,7 @@ function buildQuickRecordButton(query) {
   const names = parsed.items.map(item => quickItemSummary(item.food)).join(', ');
   button.innerHTML = `<span class="quick-record-title">${escapeHtml(ACTIVE_LOCALE === 'en'
     ? `Log to ${mealLabel(mealId)} · ${parsed.items.length}`
-    : `${mealLabel(mealId)}에 바로 기록 · ${parsed.items.length}개`)}</span><span class="quick-record-items">${escapeHtml(names)}</span>`;
+    : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 바로 기록 · ${parsed.items.length}개`)}</span><span class="quick-record-items">${escapeHtml(names)}</span>`;
   button.dataset.singleUnknown = String(parsed.items.length === 1 && !parsed.items[0].known && !parsed.mealExplicit);
   const unknown = parsed.items.filter(item => !item.known || isNutritionMissing(item.food));
   if (unknown.length) {
@@ -2851,11 +2908,27 @@ function buildQuickRecordButton(query) {
   return button;
 }
 
+/* "내일 아침 바나나"처럼 날짜를 말하면 그 날짜로 이동해서 기록. 반환: 이동했는지 */
+async function goToEntryDate(parsed) {
+  if (!parsed?.dateExplicit || !parsed.date || parsed.date === dateKey(currentDate)) return false;
+  currentDate = parseDateKey(parsed.date);
+  await loadCurrentDay();
+  updateDateDisplay();
+  renderAll(true);
+  return true;
+}
+function entryDateLabel(parsed) {
+  if (!parsed?.dateExplicit || !parsed.date) return '';
+  const date = parseDateKey(parsed.date);
+  return isToday(date) ? '' : `${formatHomeDate(date)} `;
+}
+
 async function submitQuickRecord(query) {
   const parsed = parseQuickFoodText(query);
   if (!parsed || !parsed.items.length) return false;
   const mealId = quickRecordTarget(parsed);
   if (!mealId) return false;
+  await goToEntryDate(parsed);
   if (mealId === 'snack' && currentMeal !== 'snack') currentSnackSlot = getDefaultSnackSlot();
   const foods = parsed.items.map(item => item.food);
   await addFoods(mealId, foods);
@@ -2864,7 +2937,7 @@ async function submitQuickRecord(query) {
   const queued = queueBridgeLookup(mealId, foods);
   showToast(ACTIVE_LOCALE === 'en'
     ? `Saved ${foods.length} to ${mealLabel(mealId)}${missing ? (queued ? ' · AI is finding nutrition…' : ` · ${missing} missing nutrition`) : ''}`
-    : `${mealLabel(mealId)}에 ${foods.length}개 저장${missing ? (queued ? ' · AI가 영양성분 찾는 중…' : ` · 영양정보 미입력 ${missing}개`) : ''}`, 'info');
+    : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 ${foods.length}개 저장${missing ? (queued ? ' · AI가 영양성분 찾는 중…' : ` · 영양정보 미입력 ${missing}개`) : ''}`, 'info');
   return true;
 }
 
@@ -5254,6 +5327,7 @@ async function handleAgentCommand() {
   }
 
   const mealId = parsed.mealId;
+  await goToEntryDate(parsed);
   if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
   try {
     for (const food of discoveries) {
@@ -5269,7 +5343,7 @@ async function handleAgentCommand() {
       : (ACTIVE_LOCALE === 'en' ? ' You can fill in nutrition later.' : ' 영양정보는 나중에 채워도 돼요.');
     const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
       ? `Saved to ${mealLabel(mealId)}: ${summary}.${missing.length ? later : ''}`
-      : `${mealLabel(mealId)}에 저장했어요: ${summary}.${missing.length ? later : ''}`);
+      : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.${missing.length ? later : ''}`);
     if (missing.length) {
       appendFillNutritionButton(message, mealId, missing[0].idx);
       appendToAgentMessage(message, buildAskAiButton(mealId, missing.map(({ food }) => ({ name: food.name, serving: food.serving || '' })), 'agent-confirm'));

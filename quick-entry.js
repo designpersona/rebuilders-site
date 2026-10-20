@@ -84,6 +84,53 @@
     return out;
   }
 
+  // 날짜 말: 오늘·어제·그제/그저께·내일·모레 (+ "10/22", "10월 22일", "22일")
+  // (iOS 15 사파리도 돌아가게 정규식 lookbehind 는 쓰지 않음)
+  const DATE_WORDS = [['오늘', 0], ['금일', 0], ['어제', -1], ['어저께', -1], ['엊그제', -2], ['그저께', -2], ['그제', -2], ['내일', 1], ['낼', 1], ['모레', 2]];
+  const DATE_SUFFIX = '(은|는|도|에|에는|엔|때|으로|로)?';
+  const dateWordRe = (word, flags = 'u') => new RegExp(`(^|[\\s,.;!?])${word}${DATE_SUFFIX}(?=$|[\\s,.;!?])`, flags);
+  const MONTH_DAY_RE = /(\d{1,2})\s*월\s*(\d{1,2})\s*일/u;
+  const SLASH_DATE_RE = /(^|[^\d.])(\d{1,2})\s*\/\s*(\d{1,2})(?!\d)/u;
+  const DAY_ONLY_RE = /(^|[\s,])(\d{1,2})\s*일(?=$|[\s,.;!?])/u;
+
+  function dayKey(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  /** 입력에서 날짜를 찾음 → 'YYYY-MM-DD' 또는 null */
+  function detectDate(text, now = new Date()) {
+    const base = new Date(now);
+    base.setHours(0, 0, 0, 0);
+    const valid = (month, day) => {
+      const d = new Date(base.getFullYear(), month - 1, day);
+      return d.getMonth() === month - 1 && d.getDate() === day ? dayKey(d) : null;
+    };
+    let m = text.match(MONTH_DAY_RE);
+    if (m) return valid(Number(m[1]), Number(m[2]));
+    m = text.match(SLASH_DATE_RE);
+    if (m) return valid(Number(m[2]), Number(m[3]));
+    m = text.match(DAY_ONLY_RE);
+    if (m) return valid(base.getMonth() + 1, Number(m[2]));
+    let best = null;
+    DATE_WORDS.forEach(([word, offset]) => {
+      const hit = text.match(dateWordRe(word));
+      if (hit && (best === null || hit.index < best.index)) best = { index: hit.index, offset };
+    });
+    if (!best) return null;
+    const d = new Date(base);
+    d.setDate(d.getDate() + best.offset);
+    return dayKey(d);
+  }
+
+  function stripDateWords(text) {
+    let out = text
+      .replace(new RegExp(MONTH_DAY_RE.source, 'gu'), ' ')
+      .replace(new RegExp(SLASH_DATE_RE.source, 'gu'), '$1 ')
+      .replace(new RegExp(DAY_ONLY_RE.source, 'gu'), '$1 ');
+    DATE_WORDS.forEach(([word]) => { out = out.replace(dateWordRe(word, 'giu'), '$1 '); });
+    return out;
+  }
+
   function mealForTime(date = new Date()) {
     const hour = date.getHours();
     if (hour < 10) return 'breakfast';
@@ -226,7 +273,8 @@
     const index = buildIndex(foods);
     const meal = detectMeal(raw);
     const recordIntent = INTENT_RE.test(raw) || /\b(ate|had|log|record|add)\b/i.test(raw);
-    let body = stripMealWords(raw);
+    const date = detectDate(raw, options.now || new Date());
+    let body = stripDateWords(stripMealWords(raw));
     body = body
       .replace(/(먹었어요|먹었어|먹었다|먹었음|먹었는데|먹었고|먹은\s*거|먹은것|먹음|마셨어요|마셨어|마셨다|마셨고|마심)/gu, ' ')
       .replace(/(식단에?\s*)?(기록|등록|추가)(해\s*줘|해주세요|해줘|해|할게|할래)?/gu, ' ')
@@ -241,6 +289,8 @@
     return {
       mealId: meal ? meal.mealId : mealForTime(options.now || new Date()),
       mealExplicit: Boolean(meal),
+      date,
+      dateExplicit: Boolean(date),
       recordIntent,
       items,
     };
@@ -257,7 +307,7 @@
     return (foods || []).filter(isNutritionMissing).length;
   }
 
-  const api = { parseQuickEntry, isNutritionMissing, countNutritionMissing, mealForTime, QUICK_ALIASES, NUTRITION_CORE };
+  const api = { parseQuickEntry, detectDate, isNutritionMissing, countNutritionMissing, mealForTime, QUICK_ALIASES, NUTRITION_CORE };
   global.RebuildersQuickEntry = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

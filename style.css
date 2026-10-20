@@ -11906,3 +11906,18 @@ body.keyboard-open .bottom-nav {
   padding: 6px 2px;
   cursor: pointer;
 }
+
+/* 최근 음식 밀어서 삭제: 줄 전체 pan-y, 길게 누를 때 선택·메뉴 막기, 편집 모드 */
+.swipe-row, .swipe-row .swipe-content, .swipe-row .quick-food-chip { touch-action: pan-y; }
+.swipe-row { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.recent-label-row { display: flex; align-items: center; justify-content: space-between; }
+.recent-edit-btn {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: 800 12px/1 var(--font);
+  padding: 6px 2px;
+  cursor: pointer;
+}
+.recent-edit-btn[hidden] { display: none; }
+.quick-foods.is-editing .swipe-row .swipe-content { transform: translateX(-84px) !important; transition: transform 0.2s ease; }

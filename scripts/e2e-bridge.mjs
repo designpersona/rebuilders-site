@@ -144,6 +144,22 @@ try {
   // 5) 사용자가 고치면 배지 사라짐(직접 수정값 우선)
   const editable = await evaluate(`const f = meals.lunch.foods.find(x => x.aiEstimate); return aiEstimateTag({ ...f, sourceTrust: 'user' }) === ''`);
   check('직접 수정한 값에는 AI 추정 배지 없음', editable);
+  // 6) 최근 음식 '편집' 모드(밀기가 안 될 때 대체)
+  const editMode = await evaluate(`
+    renderRecentFoods(); const btn = document.getElementById('recent-edit'); const shown = !btn.hidden; btn.click();
+    const editing = document.getElementById('recent-foods').classList.contains('is-editing'); const label = btn.textContent;
+    const before = RECENT_FOODS.length; const name = RECENT_FOODS[0].name;
+    document.querySelector('#recent-foods .swipe-row .swipe-delete-btn').click(); await new Promise(r => setTimeout(r, 400));
+    const removed = !RECENT_FOODS.some(f => f.name === name) && RECENT_FOODS.length === before - 1;
+    [...document.querySelectorAll('.toast-undo button')].pop()?.click(); await new Promise(r => setTimeout(r, 400));
+    const back = RECENT_FOODS.some(f => f.name === name); btn.click();
+    return { shown, editing, label, removed, back, done: btn.textContent };`);
+  check('최근 음식 "편집" → 삭제 버튼, 삭제·되돌리기', editMode.shown && editMode.editing && editMode.label === '완료' && editMode.removed && editMode.back && editMode.done === '편집', JSON.stringify(editMode));
+
+  // 7) 날짜 말: "내일 아침 바나나" → 내일 아침에 '바나나'(이름에 '내일' 없음)
+  await evaluate(chat('내일 아침 바나나'));
+  const tomorrow = await evaluate(`${keyOf} const d = new Date(); d.setDate(d.getDate() + 1); const a = await storageRepository.getAll(); return { t: (a[key(d)]?.breakfast || []).map(f => f.name), today: (a[key(new Date())]?.breakfast || []).map(f => f.name), shown: dateKey(currentDate) === key(d) };`);
+  check('내일 아침 바나나 → 내일 아침 [바나나], 오늘엔 없음', tomorrow.t.includes('바나나') && !tomorrow.t.some(n => n.includes('내일')) && !tomorrow.today.some(n => /내일|바나나/.test(n)) && tomorrow.shown, JSON.stringify(tomorrow));
   check('스크립트 오류 없음', !errors.length, errors.slice(0, 3).join(' | '));
 } catch (error) {
   check('실행', false, String(error?.message || error));
