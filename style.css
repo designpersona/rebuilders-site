@@ -12508,3 +12508,121 @@ body.no-character #view-home .player-card .health-glance { flex-grow: 1 !importa
 .kcal-gauge-label, .kcal-gauge-goal { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 body.no-character #view-home .kcal-gauge-value.is-long { font-size: 24px; }
 body.no-character #view-home .kcal-gauge-value.is-xlong { font-size: 19px; }
+
+/* 게이지 가운데: 목표 줄 없이 이름 + 큰 숫자(+kcal), 가운데로 */
+body.no-character #view-home .kcal-gauge .kcal-gauge-center { bottom: 10px; gap: 1px; }
+.kcal-gauge-num { display: flex; align-items: baseline; justify-content: center; gap: 2px; max-width: 100%; }
+.kcal-gauge-unit { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+
+/* + 버튼 등 동그란 버튼: 굵은 테두리 대신 연한 채움 */
+#view-home .meal-header > .add-btn, #view-home .snack-header > .add-btn, .add-btn, .add-btn-sm {
+  width: 36px !important; height: 36px !important; min-width: 36px !important; padding: 0 !important;
+  border: 0 !important; border-radius: 50% !important; background: #F4F5F7 !important; color: #111216 !important; box-shadow: none !important;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.add-btn svg { width: 14px; height: 14px; }
+.add-btn svg path { stroke-width: 1.75; }
+#view-stats .cal-card .nav-btn, .stats-open-day-btn, .timeline-snack-add {
+  border: 0 !important; background: #F4F5F7 !important; color: #111216 !important; box-shadow: none !important;
+}
+#view-stats .cal-card .nav-btn { border-radius: 50% !important; }
+
+/* 입력줄: [최근 대화] [입력 알약] [보내기] */
+.ai-dock-toggle { display: none !important; }
+.ai-dock-capsule .ai-dock-lead { display: none !important; }
+.ai-dock-capsule { padding-left: 16px !important; }
+.ai-dock-history {
+  flex: 0 0 40px; width: 40px; height: 40px; align-self: center; margin: 0 8px 0 0; padding: 0;
+  border: 0; border-radius: 50%; background: #E8E9ED; color: #111216;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.ai-dock-history:active { scale: 0.92; }
+/* 최근 대화 시트 */
+#home-ai-dock .ai-dock-panel[hidden] { display: none !important; }
+#home-ai-dock .ai-dock-panel {
+  position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important;
+  z-index: 600 !important; max-height: 72dvh !important; margin: 0 !important;
+  border: 0 !important; border-radius: 20px 20px 0 0 !important; background: #fff !important;
+  padding: 8px max(16px, var(--safe-left)) calc(16px + var(--safe-bottom)) max(16px, var(--safe-right)) !important;
+  box-shadow: 0 -8px 32px rgba(17, 18, 22, 0.12) !important;
+  transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#home-ai-dock .ai-dock-panel.is-open { transform: none; }
+#home-ai-dock .ai-dock-panel::before { content: ''; display: block; flex: 0 0 auto; width: 36px; height: 5px; border-radius: 3px; background: #D5D7DD; margin: 0 auto 8px; }
+.ai-dock-log:empty::before { content: '아직 대화가 없어요'; display: block; padding: 24px 0; text-align: center; color: var(--text-secondary); font-size: 14px; }
+.ai-sheet-backdrop { position: fixed; inset: 0; z-index: 590; background: rgba(17, 18, 22, 0.28); opacity: 0; transition: opacity 0.3s ease; }
+.ai-sheet-backdrop[hidden] { display: none; }
+.ai-sheet-backdrop.is-open { opacity: 1; }
+
+/* 페이지 넘김: 280ms ease-out, 지나쳤다 돌아오지 않음, 덜 끌려옴 */
+@keyframes page-in-right { from { transform: translateX(48px); opacity: 0.5; } to { transform: none; opacity: 1; } }
+@keyframes page-in-left { from { transform: translateX(-48px); opacity: 0.5; } to { transform: none; opacity: 1; } }
+.app-content.view-panel.page-in-right { animation: page-in-right 0.28s cubic-bezier(0.25, 0.8, 0.25, 1); }
+.app-content.view-panel.page-in-left { animation: page-in-left 0.28s cubic-bezier(0.25, 0.8, 0.25, 1); }
+@media (prefers-reduced-motion: reduce) {
+  #home-ai-dock .ai-dock-panel, .ai-sheet-backdrop { transition: none !important; }
+  .app-content.view-panel.page-in-right, .app-content.view-panel.page-in-left { animation: none !important; }
+}
+
+/* 날짜 줄: < [오늘 10.21 (수)] > 한 줄 가운데, 날짜 누르면 오늘로 */
+#view-home .date-header.home-date-row { display: flex !important; align-items: center !important; justify-content: space-between !important; }
+#view-home .date-header .date-display {
+  display: inline-flex !important; flex-direction: row !important; align-items: baseline !important; justify-content: center !important; gap: 6px !important;
+  margin: 0 auto !important; padding: 6px 10px !important; border: 0 !important; background: transparent !important; box-shadow: none !important;
+  color: var(--text-primary); font: inherit; cursor: pointer; border-radius: 999px; -webkit-tap-highlight-color: transparent;
+}
+#view-home .date-header .date-display .date-badge {
+  position: static !important; margin: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important;
+  font-size: 13px !important; font-weight: 600 !important; color: var(--text-secondary) !important; line-height: 1.2 !important;
+}
+#view-home .date-header .date-display .date-badge.is-relative { opacity: 0.75; }
+#view-home .date-header .date-display .date-text { margin: 0 !important; line-height: 1.2 !important; }
+#view-home .go-today-btn { display: none !important; }
+/* 전체 삭제: 평소엔 숨김, 편집 중에만 시간 줄 위에 */
+#view-home .day-clear-row { display: none !important; }
+#view-home .section-head { display: flex !important; align-items: center !important; }
+#view-home .section-head .timeline-actions { margin-left: auto !important; }
+#view-home .section-head .clear-day-btn { display: none; }
+body.timeline-editing #view-home .section-head .clear-day-btn {
+  display: inline-flex; align-items: center; height: 28px; margin: 0; padding: 0 2px; border: 0 !important; background: transparent !important;
+  box-shadow: none !important; color: #E5484D !important; font: 600 13px/1 var(--font); white-space: nowrap; cursor: pointer;
+  animation: rb-fade-in 0.2s ease-out both;
+}
+body.timeline-editing #view-home .section-head .clear-day-btn:disabled { opacity: 0.4; }
+@keyframes rb-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { body.timeline-editing #view-home .section-head .clear-day-btn { animation: none; } }
+
+/* 공용 세그먼트(리포트 일/주/월과 같은 모양): 식도감 필터·보기 방식, 그로서리 탭 */
+.rb-seg {
+  position: relative !important; display: flex !important; align-items: stretch !important; gap: 0 !important;
+  padding: 3px !important; border: 0 !important; border-radius: 999px !important; background: #E8E9ED !important; box-shadow: none !important;
+  overflow: hidden !important;
+}
+.rb-seg > button {
+  position: relative !important; z-index: 1 !important; flex: 1 1 0 !important; min-width: 0 !important;
+  height: 32px !important; margin: 0 !important; padding: 0 12px !important;
+  border: 0 !important; border-radius: 999px !important; background: transparent !important; box-shadow: none !important;
+  color: #5E6470 !important; font: 600 13px/1 var(--font) !important; white-space: nowrap !important;
+  transition: color 0.2s ease, scale 0.15s ease-out !important;
+}
+.rb-seg > button.active, .rb-seg > button[aria-selected="true"], .rb-seg > button[aria-pressed="true"] {
+  background: transparent !important; color: #111216 !important; font-weight: 700 !important; box-shadow: none !important;
+}
+.rb-seg > button::before, .rb-seg > button::after { display: none !important; }
+.rb-seg-thumb {
+  position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 0; border-radius: 999px; background: #fff;
+  box-shadow: 0 1px 2px rgba(17, 18, 22, 0.08), 0 2px 8px rgba(17, 18, 22, 0.08); pointer-events: none;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), width 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.15s ease;
+}
+.rb-seg-thumb.no-anim { transition: none; }
+.report-range.rb-seg > button { font-size: 14px !important; }
+.search-index-view-toggle.rb-seg { flex: 0 0 auto !important; }
+.search-index-view-toggle.rb-seg > button { flex: 0 0 auto !important; }
+.foodex-filter-chips.rb-seg { margin: 12px 0 4px !important; }
+@media (prefers-reduced-motion: reduce) { .rb-seg-thumb { transition: none; } }
+
+/* 0kcal·작은 값에서 끝쪽 둥근 점이 생기지 않게(대시 뒤 빈칸을 충분히) */
+.kcal-gauge-fill { stroke-dasharray: 100 200 !important; }
+.foodex-page-tabs.rb-seg > button { height: 36px !important; font-size: 14px !important; }
+/* 건강 앱 연결 전에는 심박·걸음 칸 숨김([hidden] 이 flex 덮어쓰기에 지지 않게) */
+body.no-character #view-home .player-card .health-glance > [hidden] { display: none !important; }

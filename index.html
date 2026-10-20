@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=11153" />
+  <link rel="stylesheet" href="style.css?v=111157" />
 </head>
 
 <body>
@@ -78,11 +78,10 @@
               stroke-linejoin="round" />
           </svg>
         </button>
-        <div class="date-display">
+        <button type="button" class="date-display" id="date-display" aria-label="오늘로 이동">
           <span class="date-badge" id="date-badge">오늘</span>
           <span class="date-text" id="current-date">7.19 (일)</span>
-          <button type="button" class="go-today-btn" id="go-today" hidden>오늘로</button>
-        </div>
+        </button>
         <button class="nav-btn" id="next-day" aria-label="다음 날">
           <svg width="9" height="16" viewBox="0 0 9 16" fill="none">
             <path d="M1 1L8 8L1 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -343,8 +342,7 @@
             </svg>
             <span class="kcal-gauge-center">
               <span class="kcal-gauge-label" id="kcal-gauge-label">먹은 칼로리</span>
-              <strong class="kcal-gauge-value" id="kcal-gauge-value">0</strong>
-              <span class="kcal-gauge-goal">/ <span id="kcal-gauge-goal">1,300</span>kcal</span>
+              <span class="kcal-gauge-num"><strong class="kcal-gauge-value" id="kcal-gauge-value">0</strong><span class="kcal-gauge-unit">kcal</span></span>
             </span>
           </button>
 
@@ -461,7 +459,7 @@
           </button>
         </div>
       </header>
-      <div class="report-range" id="report-range" role="tablist" aria-label="리포트 기간">
+      <div class="report-range rb-seg" id="report-range" role="tablist" aria-label="리포트 기간">
         <button type="button" role="tab" class="report-range-btn active" data-report-range="day" aria-selected="true">일</button>
         <button type="button" role="tab" class="report-range-btn" data-report-range="week" aria-selected="false">주</button>
         <button type="button" role="tab" class="report-range-btn" data-report-range="month" aria-selected="false">월</button>
@@ -578,7 +576,7 @@
         </div>
       </header>
       <div class="search-hub-tabs" role="tablist" aria-label="검색 메뉴">
-        <div class="search-hub-main-tabs">
+        <div class="search-hub-main-tabs rb-seg">
           <button type="button" class="search-hub-tab active search-mode-tab" id="search-hub-tab-search"
             data-search-view="search" role="tab" aria-selected="true">최근</button>
           <button type="button" class="search-hub-tab search-mode-tab" id="search-hub-tab-products"
@@ -645,7 +643,7 @@
             <button type="button" class="foodex-library-close" id="foodex-library-close" aria-label="닫기" style="display: none;">×</button>
           </div>
         </header>
-        <div class="foodex-page-tabs" role="tablist" aria-label="푸드피디아 메뉴">
+        <div class="foodex-page-tabs rb-seg" role="tablist" aria-label="푸드피디아 메뉴">
           <button type="button" class="foodex-page-tab active" id="foodex-tab-index" data-foodex-tab="index" role="tab"
             aria-selected="true">Foodex</button>
           <button type="button" class="foodex-page-tab" id="foodex-tab-recipe" data-foodex-tab="recipe" role="tab"
@@ -665,7 +663,7 @@
               <input id="foodex-search-input" type="search" placeholder="Foodex에서 음식 검색" autocomplete="off" />
             </label>
           </div>
-          <div class="foodex-filter-chips" id="foodex-filter-chips" role="group" aria-label="식도감 필터">
+          <div class="foodex-filter-chips rb-seg" id="foodex-filter-chips" role="group" aria-label="식도감 필터">
             <button type="button" class="foodex-chip active" data-foodex-filter="all" aria-pressed="true">전체</button>
             <button type="button" class="foodex-chip" data-foodex-filter="recent" aria-pressed="false">최근 먹은</button>
             <button type="button" class="foodex-chip" data-foodex-filter="frequent" aria-pressed="false">자주 먹은</button>
@@ -679,7 +677,7 @@
                 <option value="frequent">자주 먹은 순</option>
               </select>
             </label>
-            <div class="search-index-view-toggle">
+            <div class="search-index-view-toggle rb-seg">
               <button type="button" class="search-index-view-btn active" id="search-index-layout-cards"
                 data-index-layout="cards" aria-pressed="true">카드 보기</button>
               <button type="button" class="search-index-view-btn" id="search-index-layout-list" data-index-layout="list"
@@ -972,6 +970,7 @@
       <form class="ai-dock-bar" id="ai-dock-form" action="#" autocomplete="off" novalidate>
         <button type="button" class="ai-dock-icon" id="ai-photo" aria-label="사진으로 기록" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 8.5C4 7.4 4.9 6.5 6 6.5H8L9.5 4.5H14.5L16 6.5H18C19.1 6.5 20 7.4 20 8.5V17.5C20 18.6 19.1 19.5 18 19.5H6C4.9 19.5 4 18.6 4 17.5V8.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.7"/></svg></button>
         <input type="file" id="ai-photo-input" accept="image/*" hidden />
+        <button type="button" class="ai-dock-history" id="ai-dock-history" aria-label="최근 대화 보기" aria-expanded="false" aria-controls="ai-dock-panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 4.5v3.8h3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.2l2.8 1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <label class="ai-dock-capsule" for="agent-input">
           <span class="ai-dock-lead" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.9"/><path d="M16 16L20 20" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span>
           <input id="agent-input" class="ai-dock-input" type="text" placeholder="아침 바나나" autocomplete="off" enterkeyhint="send" aria-label="먹은 음식 입력" />
@@ -1291,7 +1290,7 @@
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=3"></script>
-  <script src="app.js?v=106"></script>
+  <script src="app.js?v=110"></script>
 </body>
 
 </html>

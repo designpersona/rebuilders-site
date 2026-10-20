@@ -879,10 +879,15 @@ function updateDateDisplay() {
   const badge = document.getElementById('date-badge') || document.querySelector('.date-badge');
   const goToday = document.getElementById('go-today');
   const today = isToday(currentDate);
+  // 오늘이 아니면 어제/내일만 작게, 그 밖의 날은 비움
+  const dayDiff = Math.round((new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()) - new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())) / 86400000);
+  const relative = dayDiff === 0 ? ['오늘', 'Today'] : dayDiff === -1 ? ['어제', 'Yesterday'] : dayDiff === 1 ? ['내일', 'Tomorrow'] : null;
   if (badge) {
-    badge.textContent = today ? (ACTIVE_LOCALE === 'en' ? 'Today' : '오늘') : '';
-    badge.hidden = !today;
+    badge.textContent = relative ? relative[ACTIVE_LOCALE === 'en' ? 1 : 0] : '';
+    badge.hidden = !relative;
+    badge.classList.toggle('is-relative', !today && !!relative);
   }
+  document.getElementById('date-display')?.setAttribute('aria-label', `${formatHomeDate(currentDate)}. ${ACTIVE_LOCALE === 'en' ? 'Tap to go to today' : '눌러서 오늘로'}`);
   if (goToday) goToday.hidden = today;
   // 홈 건강 카드도 선택한 날짜로(연결 안 했으면 아무 일 없음)
   if (typeof refreshHeartRate === 'function' && globalThis.RebuildersHealth?.isSupported()) refreshHeartRate();
@@ -1223,6 +1228,18 @@ async function goToToday() {
 document.getElementById('prev-day').addEventListener('click', () => changeDate(-1));
 document.getElementById('next-day').addEventListener('click', () => changeDate(+1));
 document.getElementById('go-today')?.addEventListener('click', goToToday);
+// 날짜를 누르면 언제나 오늘로 (이미 오늘이면 그대로)
+document.getElementById('date-display')?.addEventListener('click', async () => {
+  if (isToday(currentDate)) return;
+  await goToToday();
+  if (typeof playPageEnter === 'function' && activeView === 'home') playPageEnter(document.getElementById('view-home'));
+});
+// 전체 삭제: 편집할 때만, 시간 줄 위(왼쪽)에 작은 빨간 글자
+{
+  const clearBtn = document.getElementById('clear-day-btn');
+  const head = document.querySelector('#view-home .section-head');
+  if (clearBtn && head) head.insertBefore(clearBtn, head.firstChild);
+}
 document.getElementById('clear-day-btn')?.addEventListener('click', clearCurrentDay);
 
 function setTimelineEditing(editing) {
@@ -1330,6 +1347,7 @@ function setKcalGaugeVisual(cal) {
   const basePct = isOver && cal > 0 ? (goal / cal) * 100 : ratio * 100;
   const round2 = v => Math.round(v * 100) / 100;
   if (fill) fill.style.strokeDashoffset = String(round2(100 - basePct));
+  if (fill) fill.style.opacity = basePct > 0.05 ? '1' : '0'; // 0kcal 일 때 둥근 끝 점 안 보이게
   const over = document.getElementById('kcal-gauge-over');
   if (over) {
     over.style.opacity = isOver ? '1' : '0';
@@ -1672,6 +1690,7 @@ function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
   } else {
     div.className = 'food-item';
   }
+  if (food.id) div.dataset.foodId = food.id;
   div.tabIndex = 0;
   div.setAttribute('role', 'button');
   div.setAttribute('aria-label', `${visibleName} ${ACTIVE_LOCALE === 'en' ? 'nutrition details' : '제품 정보 보기'}`);
@@ -2157,7 +2176,7 @@ async function removeFood(mealId, idx, food = null) {
       resetCardTime(mealId);
     }
   } catch (error) { console.error('시간 초기화 실패(삭제는 계속):', error); }
-  try { renderAll(false); } catch (error) { console.error('다시 그리기 실패(삭제는 계속):', error); }
+  try { withFlip(() => renderAll(false)); } catch (error) { console.error('다시 그리기 실패(삭제는 계속):', error); }
   await persistMealsOrRestore(before);
 }
 
@@ -2170,7 +2189,7 @@ async function clearMealRecord(mealId, slot = null) {
     meals[mealId].foods = [];
     resetCardTime(mealId);
   }
-  renderAll(false);
+  withFlip(() => renderAll(false));
   await persistMealsOrRestore(before);
 }
 
@@ -2185,7 +2204,7 @@ async function addFood(mealId, foodData) {
     : !meals[mealId].foods.length;
   meals[mealId].foods.push(data);
   setAutoTimeForFirstFood(mealId, mealId === 'snack' ? currentSnackSlot : null, wasEmpty);
-  renderAll(false);
+  withFlip(() => renderAll(false));
   try {
     const result = await storageRepository.saveDayAndRecent(
       dateKey(currentDate),
@@ -2228,7 +2247,7 @@ async function addFoods(mealId, foodList) {
     return meals[mealId].foods.length - 1;
   });
   setAutoTimeForFirstFood(mealId, destinationSlot, wasEmpty);
-  renderAll(false);
+  withFlip(() => renderAll(false));
   try {
     const result = await storageRepository.saveDayAndRecent(dateKey(currentDate), dayDataFromMeals(meals), list[list.length - 1]);
     RECENT_FOODS = result.recentFoods;
@@ -2305,7 +2324,7 @@ async function swapMealFoods(a, b) {
   const time = mealTimes[a];
   mealTimes[a] = mealTimes[b];
   mealTimes[b] = time;
-  renderAll(false);
+  withFlip(() => renderAll(false));
   await persistMealsOrRestore(before);
 }
 
@@ -2332,7 +2351,7 @@ async function swapMealAndSnack(mealId, snackSlot) {
   if (mealTime) mealTimes.snack[snackSlot] = mealTime;
   else resetCardTime('snack', snackSlot);
 
-  renderAll(false);
+  withFlip(() => renderAll(false));
   await persistMealsOrRestore(before);
 }
 
@@ -2357,7 +2376,7 @@ async function swapSnackSlots(slotA, slotB) {
   if (timeA) mealTimes.snack[slotB] = timeA;
   else resetCardTime('snack', slotB);
 
-  renderAll(false);
+  withFlip(() => renderAll(false));
   await persistMealsOrRestore(before);
 }
 
@@ -2642,7 +2661,7 @@ async function moveFoodToDestination(ctx, dest) {
     : !meals[ctx.mealId].foods.length;
   if (sourceIsEmpty) resetCardTime(ctx.mealId, sourceSlot);
 
-  renderAll(false);
+  withFlip(() => renderAll(false));
   await persistMealsOrRestore(before);
 }
 
@@ -4368,8 +4387,9 @@ function setActiveView(view) {
     if (btn.dataset.view === view) btn.setAttribute('aria-current', 'page'); else btn.removeAttribute('aria-current');
   });
   movePageTabIndicator();
+  requestAnimationFrame(() => syncAllSegmented(true));
   const nowPanel = visiblePanel();
-  if (nowPanel && nowPanel !== prevPanel) playPageEnter(nowPanel);
+  if (nowPanel && nowPanel !== prevPanel && !suppressPageEnter) playPageEnter(nowPanel);
   setFabMenu(false);
 
   if (view === 'stats') {
@@ -5684,11 +5704,36 @@ function focusAiDock(text = '') {
 function setAiDockPanel(open) {
   const panel = document.getElementById('ai-dock-panel');
   const toggle = document.getElementById('ai-dock-toggle');
-  if (!panel || !toggle) return;
-  panel.hidden = !open;
-  toggle.setAttribute('aria-expanded', String(open));
+  const history = document.getElementById('ai-dock-history');
+  if (!panel) return;
+  let backdrop = document.getElementById('ai-sheet-backdrop');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.id = 'ai-sheet-backdrop';
+    backdrop.className = 'ai-sheet-backdrop';
+    backdrop.hidden = true;
+    panel.parentElement.insertBefore(backdrop, panel);
+  }
+  clearTimeout(panel._closeTimer);
+  panel.style.transform = '';
+  panel.style.transition = '';
+  if (open) {
+    try { dismissAiDockKeyboard(); } catch {}
+    panel.hidden = false;
+    backdrop.hidden = false;
+    void panel.offsetHeight;
+    panel.classList.add('is-open');
+    backdrop.classList.add('is-open');
+    const log = document.getElementById('agent-log');
+    if (log) log.scrollTop = log.scrollHeight;
+  } else {
+    panel.classList.remove('is-open');
+    backdrop.classList.remove('is-open');
+    panel._closeTimer = setTimeout(() => { panel.hidden = true; backdrop.hidden = true; refreshAiDockToggle(); }, reduceMotion() ? 0 : 300);
+  }
+  toggle?.setAttribute('aria-expanded', String(open));
+  history?.setAttribute('aria-expanded', String(open));
   refreshAiDockToggle();
-  if (open) { const log = document.getElementById('agent-log'); if (log) log.scrollTop = log.scrollHeight; }
 }
 function refreshAiDockToggle() {
   const toggle = document.getElementById('ai-dock-toggle');
@@ -5697,13 +5742,15 @@ function refreshAiDockToggle() {
   if (!toggle) return;
   toggle.hidden = !count || !panel?.hidden;
   toggle.textContent = ACTIVE_LOCALE === 'en' ? `Recent messages ${count}` : `최근 대화 ${count}`;
+  const history = document.getElementById('ai-dock-history');
+  if (history) history.dataset.count = String(count);
 }
 document.getElementById('ai-dock-toggle')?.addEventListener('click', () => setAiDockPanel(true));
 // 최근 대화 패널 바깥을 누르면 닫기
 document.addEventListener('pointerdown', event => {
   const panel = document.getElementById('ai-dock-panel');
   if (!panel || panel.hidden) return;
-  if (panel.contains(event.target) || document.getElementById('ai-dock-toggle')?.contains(event.target)) return;
+  if (panel.contains(event.target) || document.getElementById('ai-dock-toggle')?.contains(event.target) || document.getElementById('ai-dock-history')?.contains(event.target)) return;
   setAiDockPanel(false);
 }, true);
 
@@ -5762,13 +5809,14 @@ function visiblePanel() {
 function slideToPage(view, dir) {
   if (foodDex?.classList.contains('open')) closeFoodDex();
   if (view !== 'foodex') closeFoodexLibrary();
-  setActiveView(view);
+  suppressPageEnter = !!dir;
+  try { setActiveView(view); } finally { suppressPageEnter = false; }
   const panel = visiblePanel();
   if (panel && dir) {
     panel.classList.remove('page-in-left', 'page-in-right');
     void panel.offsetWidth;
     panel.classList.add(dir > 0 ? 'page-in-right' : 'page-in-left');
-    setTimeout(() => panel.classList.remove('page-in-left', 'page-in-right'), 320);
+    setTimeout(() => panel.classList.remove('page-in-left', 'page-in-right'), 300);
   }
   document.querySelector('#page-tabs .page-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
@@ -5790,16 +5838,20 @@ function pageSwipeBlocked(target, x) {
 (function setupPageSwipe() {
   const frame = document.querySelector('.phone-frame');
   if (!frame) return;
-  let sx = 0; let sy = 0; let st = 0; let mode = null; let active = false; let panel = null;
+  const SNAP = 'transform 0.28s cubic-bezier(0.25, 0.8, 0.25, 1)';
+  let sx = 0; let sy = 0; let st = 0; let mode = null; let active = false; let panel = null; let lastDx = 0;
   const reset = animate => {
     if (!panel) return;
-    panel.style.transition = animate ? 'transform 0.2s ease' : '';
-    panel.style.transform = '';
     const p = panel;
-    if (animate) setTimeout(() => { p.style.transition = ''; }, 220);
+    p.style.transition = animate && !reduceMotion() ? SNAP : '';
+    p.style.transform = '';
+    if (animate) setTimeout(() => { if (!p.style.transform) p.style.transition = ''; }, 300);
   };
+  // 끝 페이지: 당길수록 덜 따라오고 40px 를 넘지 않음
+  const rubber = d => Math.sign(d) * 40 * (1 - Math.exp(-Math.abs(d) / 110));
+  const isEdge = d => { const idx = pageIndexOf(activeView); return (d > 0 && idx <= 0) || (d < 0 && idx >= PAGE_ORDER.length - 1); };
   frame.addEventListener('touchstart', event => {
-    active = false; mode = null; panel = null;
+    active = false; mode = null; panel = null; lastDx = 0;
     if (event.touches.length !== 1) return;
     const t = event.touches[0];
     if (pageSwipeBlocked(event.target, t.clientX)) return;
@@ -5808,28 +5860,31 @@ function pageSwipeBlocked(target, x) {
   frame.addEventListener('touchmove', event => {
     if (!active) return;
     const t = event.touches[0];
-    const dx = t.clientX - sx; const dy = t.clientY - sy;
-    if (!mode && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) mode = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'h' : 'v';
-    if (mode === 'v' || document.body.classList.contains('meal-drag-active') || document.body.classList.contains('card-drag-active')) { if (mode !== 'h') { active = false; } return; }
-    if (mode === 'h' && panel) {
-      const idx = pageIndexOf(activeView);
-      const edge = (dx > 0 && idx <= 0) || (dx < 0 && idx >= PAGE_ORDER.length - 1);
-      panel.style.transition = 'none';
-      panel.style.transform = `translateX(${Math.round(dx * (edge ? 0.12 : 0.35))}px)`;
+    let dx = t.clientX - sx; const dy = t.clientY - sy;
+    if (!mode) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+      if (mode === 'h') { sx = t.clientX; st = Date.now(); dx = 0; } // 방향이 정해진 지점부터 1:1
     }
-  }, { passive: true });
+    if (mode === 'v' || document.body.classList.contains('meal-drag-active') || document.body.classList.contains('card-drag-active')) { active = false; reset(false); return; }
+    if (event.cancelable) event.preventDefault(); // 가로로 정해지면 세로 스크롤 막음
+    lastDx = dx;
+    if (panel) {
+      panel.style.transition = 'none';
+      panel.style.transform = `translateX(${Math.round(isEdge(dx) ? rubber(dx) : dx)}px)`;
+    }
+  }, { passive: false });
   const finish = event => {
     if (!active) return;
     active = false;
-    const t = event.changedTouches?.[0];
-    if (mode !== 'h' || !t) { reset(true); return; }
-    const dx = t.clientX - sx; const dy = t.clientY - sy;
+    if (mode !== 'h') { reset(true); return; }
+    const dx = lastDx;
     const v = Math.abs(dx) / Math.max(1, Date.now() - st);
     const idx = pageIndexOf(activeView);
     const dir = dx < 0 ? 1 : -1;
     const next = PAGE_ORDER[idx + dir];
-    const enough = (Math.abs(dx) >= 60 || (v > 0.45 && Math.abs(dx) >= 30)) && Math.abs(dx) > Math.abs(dy) * 1.5;
-    if (!enough || idx < 0 || !next) { reset(true); return; }
+    const enough = Math.abs(dx) >= 60 || (v > 0.45 && Math.abs(dx) >= 30);
+    if (!enough || idx < 0 || !next || isEdge(dx)) { reset(true); return; }
     if (panel) { panel.style.transition = ''; panel.style.transform = ''; }
     slideToPage(next, dir);
   };
@@ -7129,3 +7184,113 @@ document.querySelectorAll('[data-report-range]').forEach(button => {
   document.querySelectorAll('[data-report-range]').forEach(b => { const on = b.dataset.reportRange === reportRange; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
   statsCalendarExpanded = reportRange === 'month';
 }
+
+var suppressPageEnter = false;
+/* ============================
+   FLIP: 다시 그리기 전후 위치를 재서 옮겨진 음식 줄·끼니 카드가 실제로 움직여 자리 잡게 (transform 만)
+   ============================ */
+function flipKeyedElements() {
+  const out = new Map();
+  document.querySelectorAll('#view-home .food-item[data-food-id]').forEach(el => out.set('f:' + el.dataset.foodId, el));
+  document.querySelectorAll('#view-home .meal-card, #view-home .snack-card, #view-home .day-clear-row, #view-home .day-summary').forEach((el, i) => out.set('c:' + (el.id || el.className + i), el));
+  return out;
+}
+function flipSnapshot() {
+  const snap = new Map();
+  if (reduceMotion() || activeView !== 'home') return snap;
+  flipKeyedElements().forEach((el, key) => {
+    const r = el.getBoundingClientRect();
+    if (r.width || r.height) snap.set(key, r);
+  });
+  // 끌어서 놓은 경우: 손가락 아래 떠 있던 복제본 위치에서 출발
+  const ghost = document.querySelector('.food-drag-ghost[data-food-id]');
+  if (ghost) snap.set('f:' + ghost.dataset.foodId, ghost.getBoundingClientRect());
+  return snap;
+}
+function flipPlay(snap) {
+  if (!snap?.size || reduceMotion()) return;
+  const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
+  flipKeyedElements().forEach((el, key) => {
+    const before = snap.get(key);
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return;
+    if (!before) {
+      if (key.startsWith('f:')) el.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 300, easing: ease });
+      return;
+    }
+    const dx = before.left - r.left; const dy = before.top - r.top;
+    const isCard = key.startsWith('c:');
+    // 카드 높이가 바뀌면 위·아래로 살짝 늘어나듯(scaleY 는 글자를 찌그러뜨려서 대신 위치만 부드럽게)
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    el.animate([
+      { transform: `translate(${dx}px, ${dy}px)`, ...(isCard ? {} : { zIndex: 5 }) },
+      { transform: 'none', ...(isCard ? {} : { zIndex: 5 }) },
+    ], { duration: 350, easing: ease });
+  });
+}
+function withFlip(render) {
+  const snap = flipSnapshot();
+  render();
+  try { flipPlay(snap); } catch (error) { console.warn('flip', error); }
+}
+/* 최근 대화 버튼(입력창 왼쪽) + 시트 아래로 밀어 닫기 */
+document.getElementById('ai-dock-history')?.addEventListener('click', () => {
+  const panel = document.getElementById('ai-dock-panel');
+  setAiDockPanel(!panel || panel.hidden || !panel.classList.contains('is-open'));
+});
+(function setupSheetSwipeDown() {
+  const panel = document.getElementById('ai-dock-panel');
+  if (!panel) return;
+  let y0 = null; let dy = 0;
+  panel.addEventListener('touchstart', event => {
+    const log = document.getElementById('agent-log');
+    if (event.touches.length !== 1 || (log && log.contains(event.target) && log.scrollTop > 0)) { y0 = null; return; }
+    y0 = event.touches[0].clientY; dy = 0;
+  }, { passive: true });
+  panel.addEventListener('touchmove', event => {
+    if (y0 == null) return;
+    dy = Math.max(0, event.touches[0].clientY - y0);
+    if (dy > 0) { panel.style.transition = 'none'; panel.style.transform = `translateY(${dy}px)`; if (event.cancelable) event.preventDefault(); }
+  }, { passive: false });
+  panel.addEventListener('touchend', () => {
+    if (y0 == null) return;
+    y0 = null;
+    panel.style.transition = '';
+    if (dy > 80) setAiDockPanel(false);
+    else panel.style.transform = '';
+  }, { passive: true });
+})();
+
+/* ============================
+   공용 세그먼트(.rb-seg): 회색 알약 트랙 + 흰 선택 칸이 미끄러짐. 기존 버튼·active 클래스는 그대로 두고 위에 얹음
+   ============================ */
+function segmentedActive(seg) {
+  return [...seg.querySelectorAll(':scope > button')].find(b => b.offsetParent !== null && (b.classList.contains('active') || b.getAttribute('aria-selected') === 'true' || b.getAttribute('aria-pressed') === 'true'));
+}
+function syncSegmented(seg, instant = false) {
+  if (!seg || !seg.offsetWidth) return;
+  let thumb = seg.querySelector(':scope > .rb-seg-thumb');
+  if (!thumb) {
+    thumb = document.createElement('span');
+    thumb.className = 'rb-seg-thumb';
+    thumb.setAttribute('aria-hidden', 'true');
+    seg.prepend(thumb);
+    instant = true;
+  }
+  const active = segmentedActive(seg);
+  if (!active) { thumb.style.opacity = '0'; return; }
+  if (instant) thumb.classList.add('no-anim');
+  thumb.style.opacity = '1';
+  thumb.style.width = `${active.offsetWidth}px`;
+  thumb.style.transform = `translateX(${active.offsetLeft}px)`;
+  if (instant) { void thumb.offsetWidth; requestAnimationFrame(() => thumb.classList.remove('no-anim')); }
+}
+function syncAllSegmented(instant = false) {
+  document.querySelectorAll('.rb-seg').forEach(seg => syncSegmented(seg, instant));
+}
+document.querySelectorAll('.rb-seg').forEach(seg => {
+  new MutationObserver(() => syncSegmented(seg)).observe(seg, { subtree: true, attributes: true, attributeFilter: ['class', 'aria-selected', 'aria-pressed'] });
+});
+addEventListener('resize', () => syncAllSegmented(true));
+document.fonts?.ready?.then(() => syncAllSegmented(true)).catch?.(() => {});
+setTimeout(() => syncAllSegmented(true), 0);
