@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const js = ['app.js', 'app-config.js', 'storage.js', 'backup.js', 'notifications.js', 'keyboard.js', 'food-catalog.js', 'demo-seed.js', 'sw.js'];
+const js = ['app.js', 'app-config.js', 'storage.js', 'backup.js', 'notifications.js', 'keyboard.js', 'food-catalog.js', 'demo-seed.js', 'quick-entry.js', 'sw.js'];
 let failed = false;
 for (const file of js) {
   try { execFileSync(process.execPath, ['--check', join(root, file)], { stdio: 'pipe' }); console.log('문법 OK', file); }

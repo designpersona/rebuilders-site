@@ -11673,7 +11673,7 @@ body.keyboard-open .bottom-nav {
   flex-wrap: wrap;
   gap: 4px 8px;
   width: 100%;
-  margin-top: 10px;
+  margin: 0 0 10px;
   padding: 9px 12px;
   border: 1px dashed #d4a017;
   border-radius: 12px;
@@ -11723,4 +11723,34 @@ body.keyboard-open .bottom-nav {
   background: #fff8e1;
   color: #7a5a00;
   font: 600 12px/1.45 var(--font);
+}
+
+/* 빠른 입력: 검색창에 "점심 김밥, 아아"처럼 쓰면 바로 기록 */
+.quick-record-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: #18181b;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.quick-record-title {
+  font: 800 13px/1.2 var(--font);
+}
+.quick-record-items {
+  font: 500 12px/1.4 var(--font);
+  color: #d4d4d8;
+}
+
+/* 기록 수정 시트: 핵심 영양(칼로리·탄·단·지)은 한 줄 전체 폭으로 */
+.meal-detail-grid .meal-edit-section.meal-edit-nutrition,
+.meal-detail-grid .meal-edit-section.meal-edit-memo {
+  grid-column: 1 / -1;
 }

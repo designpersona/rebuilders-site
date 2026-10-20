@@ -966,9 +966,9 @@ function applyExtendedStaticCopy() {
     ['Register a new food', 'If it is not in Foodex, select Register manually, review nutrition, and save it.'],
     ['Log from an AI messaging app', 'Open the agent chat → confirm Rebuilders is connected → send meal, food, and amount → check the saved reply.'],
   ] : [
-    ['앱 채팅으로 기록', '“아침에 바나나 먹었어”처럼 내장 음식과 끼니를 함께 적어요.'],
+    ['앱 채팅으로 기록', '“아침 바나나”, “점심 이삭 햄치즈, 아아”처럼 끼니와 음식만 짧게 적어도 돼요. 쉼표·랑·하고로 여러 개를 한 번에 기록해요.'],
     ['저장 결과 확인', '완료 메시지에 끼니와 음식이 표시되면 오늘 식단에 기록된 상태예요.'],
-    ['새 음식 등록', 'Foodex에 없는 음식은 직접 등록을 눌러 영양정보를 확인한 뒤 저장해요.'],
+    ['새 음식 등록', 'Foodex에 없는 음식은 이름만 먼저 저장돼요. 영양정보는 나중에 기록 상세에서 채우면 돼요.'],
     ['AI 메시지 앱으로 기록', '에이전트 대화 열기 → Rebuilders 연결 확인 → 끼니·음식·양 보내기 → 저장 완료 응답 확인 순서로 사용해요.'],
   ];
   helpRows.forEach((row, index) => {
@@ -1064,8 +1064,8 @@ function applyExtendedStaticCopy() {
   const agentInput = document.getElementById('agent-input');
   if (agentInput) {
     agentInput.placeholder = en
-      ? 'Try saying "I had a banana for breakfast."'
-      : '"아침에 바나나 먹었어"라고 말해보세요.';
+      ? 'Try "breakfast banana" or "lunch toast, iced americano".'
+      : '"아침 바나나", "점심 햄치즈 토스트, 아아"처럼 짧게 써도 돼요.';
   }
   set('#telegram-open-btn strong', '기록 안내', 'Logging guide');
   set('#telegram-open-btn small', '연결 후 텔레그램 사용', 'Set up Telegram');
@@ -1962,6 +1962,59 @@ async function addFood(mealId, foodData) {
   }
 }
 
+/* 여러 음식을 한 번에 기록(빠른 입력). 저장은 한 번만 하고, 최근 음식에도 순서대로 넣습니다.
+   반환값: 각 음식이 들어간 meals[mealId].foods 인덱스 목록 */
+async function addFoods(mealId, foodList) {
+  const list = (foodList || []).filter(food => food?.name);
+  if (!list.length) return [];
+  const before = snapshotMeals();
+  if (mealId === 'snack' && (currentSnackSlot == null || Number.isNaN(currentSnackSlot))) currentSnackSlot = getDefaultSnackSlot();
+  const destinationSlot = mealId === 'snack' ? currentSnackSlot : null;
+  const wasEmpty = mealId === 'snack'
+    ? !snackFoodsForSlot(currentSnackSlot).length
+    : !meals[mealId].foods.length;
+  const indexes = list.map(food => {
+    const data = { ...food, _isNew: true };
+    if (mealId === 'snack') data.slot = currentSnackSlot;
+    meals[mealId].foods.push(data);
+    return meals[mealId].foods.length - 1;
+  });
+  setAutoTimeForFirstFood(mealId, destinationSlot, wasEmpty);
+  renderAll(false);
+  try {
+    const result = await storageRepository.saveDayAndRecent(dateKey(currentDate), dayDataFromMeals(meals), list[list.length - 1]);
+    RECENT_FOODS = result.recentFoods;
+    for (const food of list.slice(0, -1).reverse()) {
+      RECENT_FOODS = await storageRepository.saveRecentFood(food);
+    }
+  } catch (error) {
+    restoreMeals(before);
+    renderAll(true);
+    throw error;
+  }
+  if (activeMealPageContext) renderMealPage();
+  return indexes;
+}
+
+function quickEntryFoods() {
+  return getFoodEntries().map(([name, data]) => [
+    name,
+    data,
+    [displayFoodName({ name, ...data }), data.nameEn, FOOD_NAME_EN[name], ...(FOOD_NAME_ALIASES[name] || [])].filter(Boolean),
+  ]);
+}
+
+function parseQuickFoodText(text) {
+  if (!globalThis.RebuildersQuickEntry) return null;
+  return RebuildersQuickEntry.parseQuickEntry(text, { foods: quickEntryFoods(), now: new Date() });
+}
+
+function quickItemSummary(food) {
+  const visible = displayFoodName(food);
+  if (isNutritionMissing(food)) return `${visible}(${ACTIVE_LOCALE === 'en' ? 'no nutrition yet' : '영양정보 미입력'})`;
+  return `${visible} ${Math.round(food.cal || 0)}kcal${food.quantityNote ? ` · ${food.quantityNote}` : ''}`;
+}
+
 /* ============================
    + 버튼 / 펼침 / 핸들 전용 드래그
    ============================ */
@@ -2579,12 +2632,18 @@ function renderQuickFoods(entries) {
 
   if (q && document.getElementById('custom-name')) document.getElementById('custom-name').value = q;
 
+  const quickButton = q ? buildQuickRecordButton(q) : null;
+  // 검색 중인 한 단어(예: "바나")는 검색 결과를 먼저, 끼니·여러 음식이 들어간 입력은 바로 기록을 먼저 보여줍니다.
+  const quickFirst = quickButton && !(quickButton.dataset.singleUnknown === 'true' && entries.length);
+  if (quickButton && quickFirst) container.appendChild(quickButton);
+
   const sectionLabel = ACTIVE_LOCALE === 'en'
     ? (q ? 'My foods · Built-in (local)' : 'My foods · Built-in')
     : (q ? '내 음식 · 기본 (로컬)' : '내 음식 · 기본');
   renderFoodSection(container, sectionLabel, entries, true);
+  if (quickButton && !quickFirst) container.appendChild(quickButton);
 
-  if (!entries.length) {
+  if (!entries.length && !quickButton) {
     const empty = document.createElement('div');
     empty.className = 'food-empty-state';
     empty.textContent = ACTIVE_LOCALE === 'en'
@@ -2612,6 +2671,54 @@ function renderRecentFoods() {
 }
 
 foodSearchInput.addEventListener('input', scheduleFoodSearch);
+
+function quickRecordTarget(parsed) {
+  if (!currentMeal || productRegistrationMode) return null;
+  return parsed.mealExplicit ? parsed.mealId : currentMeal;
+}
+
+function buildQuickRecordButton(query) {
+  const parsed = parseQuickFoodText(query);
+  if (!parsed || !parsed.items.length) return null;
+  const mealId = quickRecordTarget(parsed);
+  if (!mealId) return null;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'quick-record-btn';
+  const names = parsed.items.map(item => quickItemSummary(item.food)).join(', ');
+  button.innerHTML = `<span class="quick-record-title">${escapeHtml(ACTIVE_LOCALE === 'en'
+    ? `Log to ${mealLabel(mealId)} · ${parsed.items.length}`
+    : `${mealLabel(mealId)}에 바로 기록 · ${parsed.items.length}개`)}</span><span class="quick-record-items">${escapeHtml(names)}</span>`;
+  button.dataset.singleUnknown = String(parsed.items.length === 1 && !parsed.items[0].known && !parsed.mealExplicit);
+  button.addEventListener('click', () => runButtonAction(button, () => submitQuickRecord(query)));
+  return button;
+}
+
+async function submitQuickRecord(query) {
+  const parsed = parseQuickFoodText(query);
+  if (!parsed || !parsed.items.length) return false;
+  const mealId = quickRecordTarget(parsed);
+  if (!mealId) return false;
+  if (mealId === 'snack' && currentMeal !== 'snack') currentSnackSlot = getDefaultSnackSlot();
+  const foods = parsed.items.map(item => item.food);
+  await addFoods(mealId, foods);
+  closeModal();
+  const missing = foods.filter(isNutritionMissing).length;
+  showToast(ACTIVE_LOCALE === 'en'
+    ? `Saved ${foods.length} to ${mealLabel(mealId)}${missing ? ` · ${missing} missing nutrition` : ''}`
+    : `${mealLabel(mealId)}에 ${foods.length}개 저장${missing ? ` · 영양정보 미입력 ${missing}개` : ''}`, 'info');
+  return true;
+}
+
+foodSearchInput.addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || event.isComposing) return;
+  const q = foodSearchInput.value.trim();
+  if (!q) return;
+  event.preventDefault();
+  // 맨 위에 보이는 항목(바로 기록 또는 첫 검색 결과)을 실행
+  const button = document.querySelector('#quick-foods .quick-record-btn, #quick-foods .quick-food-chip');
+  if (button) button.click();
+});
 
 function updateCustomSaveLabel() {
   const productOnly = currentMeal == null && (productRegistrationMode || customForm?.classList.contains('is-inline-search'));
@@ -4933,54 +5040,13 @@ function withKoreanObjectParticle(text) {
   return `${value}${hasFinalConsonant ? '을' : '를'}`;
 }
 
-function parseAgentFoodCommand(text) {
-  const normalized = text.trim().toLowerCase();
-  const recordIntent = /(먹었|먹음|먹었다|마셨|마심|기록|등록|추가)/u.test(normalized)
-    || /\b(ate|had|log|record|add)\b/u.test(normalized);
-  const mealTokens = [
-    ['breakfast', ['아침', 'breakfast']],
-    ['lunch', ['점심', 'lunch']],
-    ['dinner', ['저녁', 'dinner']],
-    ['snack', ['간식', 'snack']],
-  ];
-  const mealId = mealTokens.find(([, tokens]) => tokens.some(token => normalized.includes(token)))?.[0]
-    || getSuggestedMealForNow();
-  const match = getFoodEntries()
-    .map(([name, data]) => ({
-      name,
-      data,
-      names: [name, displayFoodName({ name, ...data }), data.nameEn, ...(FOOD_NAME_ALIASES[name] || [])].filter(Boolean),
-    }))
-    .sort((a, b) => Math.max(...b.names.map(name => name.length)) - Math.max(...a.names.map(name => name.length)))
-    .find(entry => entry.names.some(name => {
-      const candidate = String(name).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const trailingBoundary = '(?:$|[\\s,.;!?]|(?:을|를|이|가|은|는|도|만|랑|와|과)(?=$|[\\s,.;!?]))';
-      return new RegExp(`(?:^|[\\s,.;!?])${candidate}${trailingBoundary}`, 'u').test(normalized);
-    }));
-  if (match) return { mealId, name: match.name, data: match.data, discovered: false, recordIntent };
-  const candidate = text
-    .replace(/(아침|점심|저녁|간식)(으로|에|때)?/gu, ' ')
-    .replace(/(식단에?\s*)?(기록|등록)(해\s*줘|해주세요|해줘|해|할게|할래)?/gu, ' ')
-    .replace(/(먹었어요|먹었어|먹었다|먹은\s*거|먹은거|먹음|먹었는데)/gu, ' ')
-    .replace(/\b(i|we|ate|had|for|breakfast|lunch|dinner|snack|please|log|record|add|today)\b/giu, ' ')
-    .replace(/[,.!?·]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/(?:을|를|이|가|은|는|도)$/u, '')
-    .trim();
-  return candidate ? { mealId, name: candidate.slice(0, 120), data: null, discovered: true, recordIntent } : null;
-}
-
-function appendDirectRegistration(message, mealId, name) {
+function appendFillNutritionButton(message, mealId, idx) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'agent-confirm';
-  button.textContent = ACTIVE_LOCALE === 'en' ? 'Register manually' : '직접 등록';
+  button.textContent = ACTIVE_LOCALE === 'en' ? 'Fill in nutrition' : '영양정보 채우기';
   button.addEventListener('click', () => {
-    openModal(mealId);
-    setFoodTab('custom');
-    setInputValue('custom-name', name);
-    setTimeout(() => document.getElementById('custom-serving')?.focus(), 100);
+    if (meals[mealId]?.foods[idx]) openFoodEdit(mealId, idx);
   });
   appendToAgentMessage(message, button);
 }
@@ -4991,63 +5057,53 @@ async function handleAgentCommand() {
   if (!text) return;
   appendAgentMessage(text, 'user');
   input.value = '';
-  const parsed = parseAgentFoodCommand(text);
-  if (!parsed) {
+  const parsed = parseQuickFoodText(text);
+  if (!parsed || !parsed.items.length) {
     appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? 'Tell me the food name and meal, such as “strawberry milk for snack.”'
-      : '“간식으로 딸기우유 먹었어”처럼 음식 이름과 끼니를 말해주세요.');
+      ? 'Tell me the meal and food, such as “breakfast banana” or “lunch toast, iced americano.”'
+      : '“아침 바나나”, “점심 햄치즈 토스트, 아아”처럼 끼니와 음식을 적어주세요.');
     return;
   }
 
-  if (!parsed.recordIntent) {
+  // 끼니를 적었거나, 먹었다/기록 같은 말이 있거나, 모두 아는 음식이면 바로 기록
+  const allKnown = parsed.items.every(item => item.known);
+  if (!parsed.mealExplicit && !parsed.recordIntent && !allKnown) {
     appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? 'To add a meal, say what you ate and when, such as “I had Greek yogurt for breakfast.”'
-      : '식단에 기록하려면 “아침에 그릭요거트 먹었어”처럼 끼니와 먹은 음식을 함께 말해주세요.');
+      ? `Add the meal in front to log it, such as “lunch ${parsed.items[0].name}.”`
+      : `“점심 ${parsed.items[0].name}”처럼 끼니를 앞에 붙이면 바로 기록돼요.`);
     return;
   }
 
-  if (!parsed.data) {
-    if (!LOCAL_MODE) {
-      const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
-        ? `${parsed.name} is a new discovery. Register it once to add it to Foodex and this meal.`
-        : `${parsed.name}은 아직 푸덱스에 없는 새로운 발견이에요. 한 번 등록하면 도감과 식단에 함께 추가됩니다.`);
-      appendDirectRegistration(message, parsed.mealId, parsed.name);
-      return;
+  const foods = [];
+  const discoveries = [];
+  for (const item of parsed.items) {
+    let food = item.food;
+    if (!item.known && LOCAL_MODE) {
+      try {
+        const result = await storageRepository.resolveFood({ name: item.name }, { register: false });
+        food = { ...result.food, ...(item.amount && !result.food.serving ? { serving: item.amount.text } : {}) };
+        discoveries.push(food);
+      } catch {
+        // 자동 조회가 안 되면 이름만 저장
+      }
     }
-    const resolving = appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? `Finding practical nutrition for ${parsed.name}…`
-      : `${parsed.name}의 영양정보를 찾고 있어요…`);
-    try {
-      const result = await storageRepository.resolveFood({ name: parsed.name }, { register: false });
-      parsed.name = result.food.name;
-      parsed.data = result.food;
-      resolving?.remove();
-    } catch (error) {
-      if (resolving) setAgentMessageText(resolving, ACTIVE_LOCALE === 'en'
-        ? 'Automatic lookup is unavailable. You can still register it directly.'
-        : '자동 영양 조회를 사용할 수 없어요. 직접 등록으로 계속할 수 있습니다.');
-      appendDirectRegistration(resolving, parsed.mealId, parsed.name);
-      return;
-    }
+    foods.push(food);
   }
 
-  const visibleName = displayFoodName({ name: parsed.name, ...parsed.data });
-  const isNewDiscovery = !FOOD_DB[parsed.name] && !CUSTOM_FOODS[parsed.name];
-  // 내장/알려진 음식은 확인 없이 바로 저장
-  if (parsed.mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
+  const mealId = parsed.mealId;
+  if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
   try {
-    if (isNewDiscovery && parsed.data) {
-      await saveCustomFood(parsed.name, {
-        ...parsed.data,
-        discoveredAt: new Date().toISOString(),
-        discoveryOrigin: 'meal',
-        unlocked: true,
-      });
+    for (const food of discoveries) {
+      if (FOOD_DB[food.name] || CUSTOM_FOODS[food.name]) continue;
+      await saveCustomFood(food.name, { ...food, discoveredAt: new Date().toISOString(), discoveryOrigin: 'meal', unlocked: true });
     }
-    await addFood(parsed.mealId, { name: parsed.name, ...parsed.data });
-    appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? `${isNewDiscovery ? 'New discovery unlocked in Foodex. ' : ''}Saved ${visibleName} to ${mealLabel(parsed.mealId)}. ${Math.round(parsed.data.cal || 0)} kcal · ${parsed.data.serving || ''}`
-      : `${mealLabel(parsed.mealId)}에 ${withKoreanObjectParticle(visibleName)} 저장했어요. ${Math.round(parsed.data.cal || 0)}kcal · ${parsed.data.serving || ''}`);
+    const indexes = await addFoods(mealId, foods);
+    const missing = foods.map((food, i) => ({ food, idx: indexes[i] })).filter(({ food }) => isNutritionMissing(food));
+    const summary = foods.map(quickItemSummary).join(', ');
+    const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
+      ? `Saved to ${mealLabel(mealId)}: ${summary}.${missing.length ? ' You can fill in nutrition later.' : ''}`
+      : `${mealLabel(mealId)}에 저장했어요: ${summary}.${missing.length ? ' 영양정보는 나중에 채워도 돼요.' : ''}`);
+    if (missing.length) appendFillNutritionButton(message, mealId, missing[0].idx);
   } catch (error) {
     showStorageFailure(error);
     appendAgentMessage(ACTIVE_LOCALE === 'en'

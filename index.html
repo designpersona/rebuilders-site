@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=127" />
+  <link rel="stylesheet" href="style.css?v=128" />
 </head>
 
 <body>
@@ -150,7 +150,6 @@
             <span class="macro-val" id="val-fat">0 / 51g</span>
           </div>
         </div>
-        <button type="button" class="nutrition-missing-note" id="nutrition-missing-note" hidden></button>
       </section>
 
       <div class="section-head">
@@ -160,6 +159,7 @@
           <button type="button" class="timeline-edit-btn" id="timeline-edit-btn" aria-pressed="false">편집</button>
         </div>
       </div>
+      <button type="button" class="nutrition-missing-note" id="nutrition-missing-note" hidden></button>
 
       <!-- Meal timeline -->
       <section class="meals-section" aria-label="식사 기록">
@@ -778,7 +778,7 @@
       </div>
 
       <div class="agent-composer">
-        <input id="agent-input" type="text" placeholder='"아침에 바나나 먹었어"라고 말해보세요.' autocomplete="off" />
+        <input id="agent-input" type="text" placeholder='"아침 바나나", "점심 햄치즈 토스트, 아아"처럼 짧게 써도 돼요.' autocomplete="off" />
         <button id="agent-voice" class="agent-voice" type="button" aria-label="음성으로 입력"><svg width="20" height="20"
             viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <rect x="7" y="2" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.6" />
@@ -1239,7 +1239,8 @@
   <script src="notifications.js?v=1"></script>
   <script src="keyboard.js?v=1"></script>
   <script src="demo-seed.js?v=3"></script>
-  <script src="app.js?v=79"></script>
+  <script src="quick-entry.js?v=1"></script>
+  <script src="app.js?v=80"></script>
 </body>
 
 </html>
