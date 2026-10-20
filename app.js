@@ -1134,6 +1134,40 @@ function getMealCal(mealId) {
   return meals[mealId].foods.reduce((s, f) => s + (f.cal || 0), 0);
 }
 
+/* 영양정보 미입력: 칼로리·탄수화물·단백질·지방 중 비어 있는 값이 있으면 미입력으로 봅니다.
+   합계에서는 0으로 계산하되, 화면에는 "영양정보 미입력 n개"로 따로 알려줍니다. */
+const NUTRITION_CORE_FIELDS = ['cal', 'carbs', 'protein', 'fat'];
+function isBlankNutrient(value) {
+  return value === undefined || value === null || value === '' || (typeof value === 'number' && !Number.isFinite(value));
+}
+function isNutritionMissing(food) {
+  return Boolean(food) && NUTRITION_CORE_FIELDS.some(field => isBlankNutrient(food[field]));
+}
+function missingNutritionEntries() {
+  const entries = [];
+  [...MEAL_IDS, 'snack'].forEach(mealId => {
+    (meals[mealId]?.foods || []).forEach((food, idx) => {
+      if (isNutritionMissing(food)) entries.push({ mealId, idx, food });
+    });
+  });
+  return entries;
+}
+function nutritionMissingLabel(count = 1) {
+  if (ACTIVE_LOCALE === 'en') return count > 1 ? `${count} foods missing nutrition` : 'Nutrition not entered';
+  return count > 1 ? `영양정보 미입력 ${count}개` : '영양정보 미입력';
+}
+function foodCalText(food) {
+  return isBlankNutrient(food?.cal) ? (ACTIVE_LOCALE === 'en' ? '— kcal' : '— kcal') : `${Math.round(Number(food.cal) * 10) / 10}kcal`;
+}
+function updateNutritionMissingNote() {
+  const note = document.getElementById('nutrition-missing-note');
+  if (!note) return;
+  const entries = missingNutritionEntries();
+  note.hidden = entries.length === 0;
+  if (!entries.length) return;
+  note.innerHTML = `<span class="nutrition-missing-dot" aria-hidden="true"></span>${escapeHtml(ACTIVE_LOCALE === 'en' ? `${entries.length} missing nutrition` : `영양정보 미입력 ${entries.length}개`)}<em>${ACTIVE_LOCALE === 'en' ? 'Counted as 0 · Tap to fill in' : '합계에 0으로 계산 · 눌러서 채우기'}</em>`;
+}
+
 /* ============================
    칼로리 가로 게이지
    ============================ */
@@ -1404,8 +1438,8 @@ function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
     <div class="food-main">
       <span class="food-name">${escapeHtml(visibleName)}</span>
       <div class="food-detail-line">
-        <span class="food-cal">${food.cal || 0}kcal</span>
-        <div class="food-macros">${nutritionTags(food)}</div>
+        <span class="food-cal">${foodCalText(food)}</span>
+        <div class="food-macros">${isNutritionMissing(food) ? `<span class="macro-tag nutrition-missing-tag">${escapeHtml(nutritionMissingLabel())}</span>` : ''}${nutritionTags(food)}</div>
       </div>
     </div>
     <div class="food-actions">
@@ -1578,6 +1612,7 @@ function renderAll(skipAnimation = false) {
   renderSnack();
   updateTimelineStates();
   updateClearDayButton();
+  updateNutritionMissingNote();
   const t = getTotals();
 
   if (skipAnimation) {
@@ -1589,6 +1624,11 @@ function renderAll(skipAnimation = false) {
   }
   if (activeMealPageContext) renderMealPage();
 }
+
+document.getElementById('nutrition-missing-note')?.addEventListener('click', () => {
+  const first = missingNutritionEntries()[0];
+  if (first) openFoodEdit(first.mealId, first.idx);
+});
 
 // 매 분마다 타임라인 상태 갱신
 setInterval(updateTimelineStates, 60_000);
@@ -1688,7 +1728,15 @@ function renderMealPage() {
   document.getElementById('meal-page-title').textContent = mealLabel(mealId);
   document.getElementById('meal-page-time').textContent = time;
   document.getElementById('meal-page-kcal').textContent = `${Math.round(totalKcal)}kcal`;
+  const missingCount = entries.filter(({ food }) => isNutritionMissing(food)).length;
   document.getElementById('meal-page-count').textContent = String(entries.length);
+  const pageMissing = document.getElementById('meal-page-missing');
+  if (pageMissing) {
+    pageMissing.hidden = missingCount === 0;
+    pageMissing.textContent = ACTIVE_LOCALE === 'en'
+      ? `${missingCount} missing nutrition · counted as 0 in totals`
+      : `영양정보 미입력 ${missingCount}개 · 합계에는 0으로 계산돼요`;
+  }
   const summaryLabels = [t('mealTime'), t('totalCalories'), t('foodCount')];
   document.querySelectorAll('#view-meal-detail .meal-page-summary span').forEach((label, index) => {
     label.textContent = summaryLabels[index] || '';
@@ -2440,9 +2488,10 @@ function renderFoodRows(container, entries, allowCustomActions = true) {
         <span class="chip-serving">${escapeHtml(displayServing({ name, ...data }, data.serving || ''))}</span>
         <span class="chip-source ${src.cls}">${src.label}</span>
       </span>
-      <span class="chip-meta">
-        <span>${data.cal || 0}kcal</span>
-        <span class="chip-macros">${ACTIVE_LOCALE === 'en' ? 'C' : '탄'}${data.carbs || 0}g · ${ACTIVE_LOCALE === 'en' ? 'P' : '단'}${data.protein || 0}g · ${ACTIVE_LOCALE === 'en' ? 'F' : '지'}${data.fat || 0}g</span>
+      <span class="chip-meta">${isNutritionMissing(data)
+        ? `<span class="chip-missing">${escapeHtml(nutritionMissingLabel())}</span>`
+        : `<span>${data.cal || 0}kcal</span>
+        <span class="chip-macros">${ACTIVE_LOCALE === 'en' ? 'C' : '탄'}${data.carbs || 0}g · ${ACTIVE_LOCALE === 'en' ? 'P' : '단'}${data.protein || 0}g · ${ACTIVE_LOCALE === 'en' ? 'F' : '지'}${data.fat || 0}g</span>`}
       </span>
     `;
     btn.addEventListener('click', async () => {
@@ -2652,12 +2701,13 @@ document.getElementById('custom-save').addEventListener('click', async () => {
   const serving = `${servingAmount}${servingUnit}`;
   const description = document.getElementById('custom-description').value.trim();
   const foodData = {
-    cal: numberFromInput('custom-cal'),
-    carbs: numberFromInput('custom-carbs'),
+    // 비워두면 0이 아니라 '미입력'으로 저장(나중에 기록 상세에서 채움)
+    cal: optionalNumberFromInput('custom-cal'),
+    carbs: optionalNumberFromInput('custom-carbs'),
     sugar: optionalNumberFromInput('custom-sugar'),
     fiber: optionalNumberFromInput('custom-fiber'),
-    protein: numberFromInput('custom-protein'),
-    fat: numberFromInput('custom-fat'),
+    protein: optionalNumberFromInput('custom-protein'),
+    fat: optionalNumberFromInput('custom-fat'),
     saturatedFat: optionalNumberFromInput('custom-saturated-fat'),
     transFat: optionalNumberFromInput('custom-trans-fat'),
     cholesterol: optionalNumberFromInput('custom-cholesterol'),
@@ -2692,7 +2742,9 @@ document.getElementById('custom-save').addEventListener('click', async () => {
     await saveCustomFood(name, foodData, previousName);
     if (currentMeal) {
       await addFood(currentMeal, { name, ...foodData });
-      showToast(ACTIVE_LOCALE === 'en' ? `${name} saved and unlocked in Foodex` : `${name} 저장 · 푸덱스 해금`, 'info');
+      showToast(isNutritionMissing(foodData)
+        ? (ACTIVE_LOCALE === 'en' ? `${name} saved without nutrition. Fill it in later from the log.` : `${name} 저장 · 영양정보는 기록 상세에서 채울 수 있어요`)
+        : (ACTIVE_LOCALE === 'en' ? `${name} saved and unlocked in Foodex` : `${name} 저장 · 푸덱스 해금`), 'info');
     } else {
       showToast(ACTIVE_LOCALE === 'en' ? `${name} unlocked in Foodex` : `${name} 푸덱스에 해금됨`, 'info');
     }
@@ -2849,7 +2901,9 @@ function openFoodDex(food) {
     row.classList.toggle('is-empty', !hasValue);
     const displayedValue = hasValue
       ? `${escapeHtml(value)}<small>${escapeHtml(unit)}</small>`
-      : (isBuiltInFood ? '<span class="nutrition-not-reported">—</span>' : '');
+      : (isBuiltInFood
+        ? '<span class="nutrition-not-reported">—</span>'
+        : (NUTRITION_CORE_FIELDS.includes(field) ? `<span class="nutrition-not-reported">${ACTIVE_LOCALE === 'en' ? 'Not entered' : '미입력'}</span>` : ''));
     row.innerHTML = `<span>${escapeHtml(detailFieldLabel(field, label))}</span><strong>${displayedValue}</strong>`;
     grid.appendChild(row);
   });
@@ -2979,19 +3033,17 @@ function openFoodEdit(mealId, idx) {
         <label class="meal-detail-field"><span>${ACTIVE_LOCALE === 'en' ? 'Unit' : '단위'}</span><select class="settings-input meal-serving-unit" data-serving-unit>${servingUnits.map(unit => `<option value="${escapeHtml(unit)}"${unit === serving.unit ? ' selected' : ''}>${escapeHtml(servingUnitLabel(unit))}</option>`).join('')}</select></label>
       </div>
     </section>
-    <section class="meal-edit-section meal-edit-energy">
-      <h4>${ACTIVE_LOCALE === 'en' ? 'Calories' : '칼로리'}</h4>
-      ${editNumberField('cal', 'Calories', food.cal, 'kcal', 'is-wide')}
-    </section>
     <section class="meal-edit-section meal-edit-nutrition">
-      <h4>${ACTIVE_LOCALE === 'en' ? 'Nutrition' : '영양성분'}</h4>
+      <h4>${ACTIVE_LOCALE === 'en' ? 'Key nutrition' : '핵심 영양'}</h4>
+      ${isNutritionMissing(food) ? `<p class="meal-edit-missing-note">${ACTIVE_LOCALE === 'en' ? 'Nutrition not entered yet. Fill in calories, carbs, protein, and fat. Blank values count as 0 in totals.' : '영양정보 미입력 상태예요. 칼로리·탄수화물·단백질·지방을 채워주세요. 비워둔 값은 합계에 0으로 계산돼요.'}</p>` : ''}
+      ${editNumberField('cal', detailFieldLabel('cal', '칼로리'), food.cal, 'kcal', 'is-wide')}
       <div class="meal-primary-nutrients">
         ${editNumberField('carbs', detailFieldLabel('carbs', '탄수화물'), food.carbs, 'g')}
         ${editNumberField('protein', detailFieldLabel('protein', '단백질'), food.protein, 'g')}
         ${editNumberField('fat', detailFieldLabel('fat', '지방'), food.fat, 'g')}
       </div>
       <details class="meal-advanced-nutrients">
-        <summary>${ACTIVE_LOCALE === 'en' ? 'More nutrition' : '상세 영양성분'}</summary>
+        <summary>${ACTIVE_LOCALE === 'en' ? 'More nutrition (optional)' : '상세 영양성분 (선택)'}</summary>
         <div class="meal-advanced-grid">
           ${editNumberField('sugar', detailFieldLabel('sugar', '당류'), food.sugar, 'g')}
           ${editNumberField('fiber', detailFieldLabel('fiber', '식이섬유'), food.fiber, 'g')}
@@ -4233,7 +4285,7 @@ function renderCollectionProducts() {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'collection-product-item';
-    button.innerHTML = `<span><strong>${escapeHtml(displayFoodName({ name, ...data }))}</strong><small>${escapeHtml(displayServing({ name, ...data }, data.serving || '100g'))}</small></span><b>${Math.round(data.cal || 0)}kcal</b>`;
+    button.innerHTML = `<span><strong>${escapeHtml(displayFoodName({ name, ...data }))}</strong><small>${escapeHtml(displayServing({ name, ...data }, data.serving || '100g'))}</small></span><b>${isBlankNutrient(data.cal) ? (ACTIVE_LOCALE === 'en' ? 'Not entered' : '미입력') : `${Math.round(data.cal || 0)}kcal`}</b>`;
     button.addEventListener('click', () => openFoodDex({ name, ...data }, { mode: 'index' }));
     list.appendChild(button);
   });
