@@ -747,7 +747,7 @@ function updateDateDisplay() {
   }
   if (goToday) goToday.hidden = today;
   // 홈 건강 카드도 선택한 날짜로(연결 안 했으면 아무 일 없음)
-  if (typeof refreshHeartRate === 'function' && globalThis.RebuildersHealth?.isConnected()) refreshHeartRate();
+  if (typeof refreshHeartRate === 'function' && globalThis.RebuildersHealth?.isSupported()) refreshHeartRate();
 }
 
 async function changeDate(delta) {
@@ -5506,6 +5506,11 @@ function renderHealthSettings(message = '') {
   const connected = RebuildersHealth.isConnected();
   const button = document.getElementById('health-connect');
   button.textContent = connected ? healthCopy('disconnect') : healthCopy('connect');
+  const stepsButton = document.getElementById('health-steps-permission');
+  if (stepsButton) {
+    stepsButton.hidden = !RebuildersHealth.needsStepsPermission();
+    stepsButton.textContent = healthCopy('addSteps');
+  }
   const hint = document.getElementById('health-hint');
   const text = message || (connected ? healthCopy('connected') : '');
   hint.hidden = !text;
@@ -5513,47 +5518,54 @@ function renderHealthSettings(message = '') {
 }
 
 let healthRefreshSeq = 0;
+function setGlanceRows({ heart = false, steps = false, link = false } = {}) {
+  document.getElementById('glance-heart').hidden = !heart;
+  document.getElementById('glance-heart-avg').hidden = !heart;
+  document.getElementById('glance-steps').hidden = !steps;
+  document.getElementById('health-glance-connect').hidden = !link;
+}
+
+/* 홈 캐릭터 옆(원래 vital 자리)에 선택한 날짜의 심박수·걸음 수를 작게 표시. 메모리 표시만. */
 async function refreshHeartRate(options = {}) {
-  const card = document.getElementById('heart-rate-card');
-  if (!card) return;
-  if (!globalThis.RebuildersHealth?.isConnected()) { card.hidden = true; return; }
+  const glance = document.getElementById('health-glance');
+  if (!glance) return;
+  const health = globalThis.RebuildersHealth;
+  if (!health?.isSupported()) { setGlanceRows(); return; } // 웹: 빈 자리
+  if (!health.isConnected()) { setGlanceRows({ link: true }); return; } // 연결 전: 작은 링크
   const seq = ++healthRefreshSeq;
   const en = ACTIVE_LOCALE === 'en';
   const date = new Date(currentDate);
   try {
-    if (options.force) RebuildersHealth.clearCache();
-    const day = await RebuildersHealth.readDay(date);
+    if (options.force) health.clearCache();
+    const day = await health.readDay(date);
     if (seq !== healthRefreshSeq) return; // 날짜를 빨리 넘긴 경우 마지막 요청만 반영
-    card.hidden = false;
-    document.getElementById('health-day-label').textContent = isToday(date)
-      ? (en ? 'Today' : '오늘')
-      : formatHomeDate(date);
     const hasHeart = !day.outOfRange && day.heartCount > 0;
-    document.getElementById('heart-rate-average').textContent = hasHeart ? String(day.heartAverage) : '--';
-    document.getElementById('heart-rate-latest').textContent = hasHeart ? String(day.heartLatest) : '--';
-    const time = document.getElementById('heart-rate-latest-time');
+    const setValue = (id, value, text) => { const el = document.getElementById(id); el.dataset.value = value; el.textContent = text; };
+    const latest = hasHeart ? String(day.heartLatest) : '--';
+    const average = hasHeart ? String(day.heartAverage) : '--';
+    const steps = !day.outOfRange && day.steps != null ? day.steps.toLocaleString(en ? 'en-US' : 'ko-KR') : '--';
+    setValue('heart-rate-latest', latest, `${latest} bpm`);
+    setValue('heart-rate-average', average, `${en ? 'Avg' : '평균'} ${average}`);
+    setValue('health-steps-value', steps, steps);
+    let latestTime = '';
     if (hasHeart && day.heartLatestAt) {
       const at = new Date(day.heartLatestAt);
-      time.textContent = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
-    } else {
-      time.textContent = '';
+      latestTime = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
     }
-    const needsSteps = RebuildersHealth.needsStepsPermission();
-    document.getElementById('health-steps-metric').hidden = needsSteps;
-    document.getElementById('health-steps-value').textContent = !day.outOfRange && day.steps != null
-      ? day.steps.toLocaleString(en ? 'en-US' : 'ko-KR')
-      : '--';
-    document.getElementById('health-steps-permission').hidden = !needsSteps;
-    const note = document.getElementById('health-card-note');
-    const noteText = day.outOfRange
+    document.getElementById('glance-heart').title = day.outOfRange
       ? (en ? 'Only the last 7 days are shown.' : '최근 7일 기록만 보여줘요.')
-      : (!hasHeart ? healthCopy('noData') : '');
-    note.hidden = !noteText;
-    note.textContent = noteText;
+      : (latestTime ? `${en ? 'Latest' : '최근'} ${latestTime}` : healthCopy('noData'));
+    setGlanceRows({ heart: true, steps: !health.needsStepsPermission() });
   } catch {
-    if (seq === healthRefreshSeq) card.hidden = true; // 읽기 실패(권한 없음 등)면 조용히 숨김
+    if (seq === healthRefreshSeq) setGlanceRows(); // 읽기 실패(권한 없음 등)면 조용히 비움
   }
 }
+
+document.getElementById('health-glance-connect')?.addEventListener('click', () => {
+  // 설정의 '건강 앱 연결' 카드로 이동(권한 요청은 거기서 사용자가 누를 때만)
+  document.getElementById('btn-open-profile')?.click();
+  setTimeout(() => document.getElementById('health-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
+});
 
 document.getElementById('health-steps-permission')?.addEventListener('click', async event => {
   const button = event.currentTarget;
@@ -5564,9 +5576,7 @@ document.getElementById('health-steps-permission')?.addEventListener('click', as
     renderHealthSettings();
     await refreshHeartRate({ force: true });
   } catch (error) {
-    const note = document.getElementById('health-card-note');
-    note.hidden = false;
-    note.textContent = String(error?.message || error);
+    renderHealthSettings(String(error?.message || error));
   } finally {
     delete button.dataset.actionLocked;
   }

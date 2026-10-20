@@ -11755,47 +11755,19 @@ body.keyboard-open .bottom-nav {
   grid-column: 1 / -1;
 }
 
-/* 건강 앱 카드(연결했을 때만 보임): 캐릭터 카드 바로 아래 */
-.heart-rate-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 10px 0 12px;
-  padding: 10px 14px;
+/* 건강 앱 값(캐릭터 옆 vital 자리) */
+.health-glance [hidden] { display: none !important; }
+#glance-heart-avg strong { font-weight: 600; opacity: .7; }
+#glance-heart-avg { padding-left: 2px; }
+.health-glance-link {
+  padding: 5px 8px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 8px;
   background: #fff;
-}
-.heart-rate-card[hidden] { display: none; }
-.health-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font: 800 11px/1.2 var(--font);
   color: #18181b;
-}
-.heart-rate-card .vital-icon { width: 14px; height: 14px; vertical-align: -2px; }
-.heart-rate-values {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 14px;
-  font: 600 12px/1.4 var(--font);
-  color: var(--text-secondary);
-}
-.heart-rate-values [hidden] { display: none; }
-.heart-rate-values strong { color: #18181b; font-size: 15px; font-weight: 800; }
-.heart-rate-values small { font-size: 11px; color: var(--text-secondary); }
-.heart-rate-source { font: 600 10px/1 var(--font); color: var(--text-secondary); }
-.health-steps-permission {
-  align-self: flex-start;
-  padding: 7px 12px;
-  border: 0;
-  border-radius: 10px;
-  background: #18181b;
-  color: #fff;
-  font: 800 11px/1 var(--font);
+  font: 700 10px/1.2 var(--font);
+  white-space: nowrap;
   cursor: pointer;
 }
+.health-steps-permission { margin-top: 8px; }
 .health-steps-permission[hidden] { display: none; }
-.health-card-note { margin: 0; font: 500 11px/1.4 var(--font); color: var(--text-secondary); }
-.health-card-note[hidden] { display: none; }

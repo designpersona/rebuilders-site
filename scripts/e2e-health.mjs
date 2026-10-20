@@ -59,40 +59,42 @@ try {
   await send('Runtime.enable'); await send('Page.enable');
   // 1) 웹(플러그인 없음): 설정 카드·홈 카드 모두 숨김
   await load(URL);
-  let st = await evaluate(`return { settings: document.getElementById('health-card').hidden, home: document.getElementById('heart-rate-card').hidden, supported: RebuildersHealth.isSupported() }`);
-  check('웹: 건강 앱 설정·홈 심박수 카드 숨김', st.settings && st.home && !st.supported, JSON.stringify(st));
+  let st = await evaluate(`return { settings: document.getElementById('health-card').hidden, home: document.getElementById('glance-heart').hidden, supported: RebuildersHealth.isSupported() }`);
+  const webLink = await evaluate(`return document.getElementById('health-glance-connect').hidden && document.getElementById('glance-steps').hidden`);
+  check('웹: 설정 건강 카드 숨김, 캐릭터 옆 자리는 비움(링크도 없음)', st.settings && st.home && !st.supported && webLink, JSON.stringify(st));
 
   // 2) 아이폰(가짜 플러그인): 설정 카드 보임, 누르기 전엔 권한 요청 없음
   await send('Page.addScriptToEvaluateOnNewDocument', { source: MOCK });
   await load();
   await evaluate(`localStorage.removeItem('rebuilders-health-connected'); return true;`); await load();
-  st = await evaluate(`return { settings: document.getElementById('health-card').hidden, home: document.getElementById('heart-rate-card').hidden, calls: window.__healthCalls.map(c => c[0]) }`);
-  check('앱: 설정에 "건강 앱 연결" 보임, 홈 카드는 연결 전 숨김', !st.settings && st.home, JSON.stringify(st));
+  st = await evaluate(`return { settings: document.getElementById('health-card').hidden, home: document.getElementById('glance-heart').hidden, calls: window.__healthCalls.map(c => c[0]) }`);
+  const link = await evaluate(`return !document.getElementById('health-glance-connect').hidden && !!document.querySelector('.player-card #health-glance-connect')`);
+  check('앱: 설정에 "건강 앱 연결" 보임, 연결 전 캐릭터 옆엔 "건강 앱 연결" 작은 링크만', !st.settings && st.home && link, JSON.stringify(st));
   check('앱을 열기만 해서는 권한 요청 안 함', !st.calls.includes('requestAuthorization'), JSON.stringify(st.calls));
 
   // 3) 연결 버튼 → 읽기 전용 권한 요청 → 홈 카드 표시
   await evaluate(`document.getElementById('health-connect').click(); await new Promise(r => setTimeout(r, 300)); return true;`);
-  st = await evaluate(`const auth = window.__healthCalls.find(c => c[0] === 'requestAuthorization'); return { auth: auth && auth[1], home: document.getElementById('heart-rate-card').hidden, avg: document.getElementById('heart-rate-average').textContent, latest: document.getElementById('heart-rate-latest').textContent, btn: document.getElementById('health-connect').textContent, writes: window.__healthCalls.filter(c => c[0] === 'saveSample').length }`);
+  st = await evaluate(`const auth = window.__healthCalls.find(c => c[0] === 'requestAuthorization'); return { auth: auth && auth[1], home: document.getElementById('glance-heart').hidden, avg: document.getElementById('heart-rate-average').dataset.value, latest: document.getElementById('heart-rate-latest').dataset.value, btn: document.getElementById('health-connect').textContent, writes: window.__healthCalls.filter(c => c[0] === 'saveSample').length }`);
   check('권한 요청은 읽기(심박수·걸음 수)만, 쓰기·체중 없음', JSON.stringify(st.auth) === JSON.stringify({ read: ['heartRate', 'steps'], write: [] }) && st.writes === 0, JSON.stringify(st.auth));
   check('홈에 오늘 평균 72 / 최근 80 bpm 표시', !st.home && st.avg === '72' && st.latest === '80', JSON.stringify(st));
-  st = await evaluate(`return { steps: document.getElementById('health-steps-value').textContent, perm: document.getElementById('health-steps-permission').hidden, label: document.getElementById('health-day-label').textContent, under: document.getElementById('heart-rate-card').previousElementSibling?.className }`);
-  check('오늘 걸음 3,456, 권한 추가 버튼 숨김, 캐릭터 카드 바로 아래', st.steps === '3,456' && st.perm && st.label === '오늘' && st.under === 'player-card', JSON.stringify(st));
+  st = await evaluate(`return { steps: document.getElementById('health-steps-value').dataset.value, perm: document.getElementById('health-steps-permission').hidden, inCard: !!document.querySelector('.player-card #health-glance #glance-steps:not([hidden])'), link: document.getElementById('health-glance-connect').hidden }`);
+  check('오늘 걸음 3,456이 캐릭터 카드 안(원래 vital 자리)에 표시, 링크·권한 추가 버튼 숨김', st.steps === '3,456' && st.perm && st.inCard && st.link, JSON.stringify(st));
 
   // 날짜 이동: 어제 → 어제 값, 8일 전 → 최근 7일 안내
   await evaluate(`await changeDate(-1); await new Promise(r => setTimeout(r, 300)); return true;`);
-  st = await evaluate(`return { avg: document.getElementById('heart-rate-average').textContent, latest: document.getElementById('heart-rate-latest').textContent, time: document.getElementById('heart-rate-latest-time').textContent, steps: document.getElementById('health-steps-value').textContent, label: document.getElementById('health-day-label').textContent }`);
-  check('어제 선택: 평균 80(HealthKit 일 평균) / 최근 90 21:30 / 걸음 8,000', st.avg === '80' && st.latest === '90' && st.time === '21:30' && st.steps === '8,000' && st.label !== '오늘', JSON.stringify(st));
+  st = await evaluate(`return { avg: document.getElementById('heart-rate-average').dataset.value, latest: document.getElementById('heart-rate-latest').dataset.value, time: document.getElementById('glance-heart').title, steps: document.getElementById('health-steps-value').dataset.value }`);
+  check('어제 선택: 평균 80(HealthKit 일 평균) / 최근 90(21:30) / 걸음 8,000', st.avg === '80' && st.latest === '90' && st.time.includes('21:30') && st.steps === '8,000', JSON.stringify(st));
   await evaluate(`for (let i = 0; i < 7; i++) await changeDate(-1); await new Promise(r => setTimeout(r, 300)); return true;`);
-  st = await evaluate(`return { avg: document.getElementById('heart-rate-average').textContent, note: document.getElementById('health-card-note').textContent }`);
+  st = await evaluate(`return { avg: document.getElementById('heart-rate-average').dataset.value, note: document.getElementById('glance-heart').title }`);
   check('8일 전: 값 없음 + "최근 7일" 안내', st.avg === '--' && st.note.includes('최근 7일'), JSON.stringify(st));
   await evaluate(`await goToToday(); await new Promise(r => setTimeout(r, 300)); return true;`);
 
   // 예전에 심박수만 연결한 사용자 → '걸음 수 권한 추가' → 재요청
-  await evaluate(`localStorage.setItem('rebuilders-health-connected', '1'); window.__healthCalls.length = 0; await refreshHeartRate({ force: true }); return true;`);
-  st = await evaluate(`return { perm: document.getElementById('health-steps-permission').hidden, stepsShown: !document.getElementById('health-steps-metric').hidden, stepQueries: window.__healthCalls.filter(c => c[1]?.dataType === 'steps').length }`);
-  check('심박수만 연결한 사용자: "걸음 수 권한 추가" 보임, 걸음 조회 안 함', !st.perm && !st.stepsShown && st.stepQueries === 0, JSON.stringify(st));
+  await evaluate(`localStorage.setItem('rebuilders-health-connected', '1'); window.__healthCalls.length = 0; renderHealthSettings(); await refreshHeartRate({ force: true }); return true;`);
+  st = await evaluate(`return { perm: document.getElementById('health-steps-permission').hidden, stepsShown: !document.getElementById('glance-steps').hidden, stepQueries: window.__healthCalls.filter(c => c[1]?.dataType === 'steps').length }`);
+  check('심박수만 연결한 사용자: 설정에 "걸음 수 권한 추가" 보임, 걸음 조회 안 함', !st.perm && !st.stepsShown && st.stepQueries === 0, JSON.stringify(st));
   await evaluate(`document.getElementById('health-steps-permission').click(); await new Promise(r => setTimeout(r, 300)); return true;`);
-  st = await evaluate(`const auth = window.__healthCalls.find(c => c[0] === 'requestAuthorization'); return { auth: auth && auth[1], perm: document.getElementById('health-steps-permission').hidden, steps: document.getElementById('health-steps-value').textContent, level: localStorage.getItem('rebuilders-health-connected') }`);
+  st = await evaluate(`const auth = window.__healthCalls.find(c => c[0] === 'requestAuthorization'); return { auth: auth && auth[1], perm: document.getElementById('health-steps-permission').hidden, steps: document.getElementById('health-steps-value').dataset.value, level: localStorage.getItem('rebuilders-health-connected') }`);
   check('권한 추가 누르면 읽기 재요청 후 걸음 표시', JSON.stringify(st.auth) === JSON.stringify({ read: ['heartRate', 'steps'], write: [] }) && st.perm && st.steps === '3,456' && st.level === '2', JSON.stringify(st));
   const btnText = await evaluate(`return document.getElementById('health-connect').textContent`);
   check('설정 버튼이 "연결 끊기"로 바뀜', btnText === '연결 끊기', btnText);
@@ -103,11 +105,11 @@ try {
 
   // 5) 새로고침 후에도 연결 유지, 연결 끊기 → 홈 카드 숨김
   await load();
-  st = await evaluate(`await new Promise(r => setTimeout(r, 300)); return document.getElementById('heart-rate-card').hidden`);
-  check('다시 열어도 연결 유지(홈 카드 보임)', st === false);
+  st = await evaluate(`await new Promise(r => setTimeout(r, 300)); return document.getElementById('glance-heart').hidden`);
+  check('다시 열어도 연결 유지(캐릭터 옆 심박수 보임)', st === false);
   await evaluate(`document.getElementById('health-connect').click(); await new Promise(r => setTimeout(r, 200)); return true;`);
-  st = await evaluate(`return { home: document.getElementById('heart-rate-card').hidden, hint: document.getElementById('health-hint').textContent }`);
-  check('연결 끊기 → 홈 카드 숨김, 설정 앱에서 권한 끄는 방법 안내', st.home && st.hint.includes('설정 > 건강'), JSON.stringify(st));
+  st = await evaluate(`return { home: document.getElementById('glance-heart').hidden, hint: document.getElementById('health-hint').textContent }`);
+  check('연결 끊기 → 캐릭터 옆 값 숨김, 설정 앱에서 권한 끄는 방법 안내', st.home && st.hint.includes('설정 > 건강'), JSON.stringify(st));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0,5).join(' | '));
