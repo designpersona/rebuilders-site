@@ -20,6 +20,57 @@
     return clone(DEFAULT_DAY);
   }
 
+  /*
+   * 장보기·창고 데이터(state.shopping). 예전 버전에는 이 키가 없었으므로 없으면 빈 목록으로 봅니다.
+   * { items: [{ id, name, group, status, bought, note?, nameEn?, noteEn?, essential?, createdAt?, boughtAt? }],
+   *   stock: [{ id, name, amount?, createdAt? }] }
+   */
+  const SHOPPING_GROUPS = Object.freeze(['priority', 'make', 'compare', 'hold']);
+  let shoppingIdSequence = 0;
+
+  function shoppingId(prefix = 's') {
+    shoppingIdSequence += 1;
+    return `${prefix}-${Date.now().toString(36)}-${shoppingIdSequence.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  }
+
+  function normalizeShopping(value) {
+    const src = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const text = (input, max = 200) => (typeof input === 'string' ? input.trim().slice(0, max) : '');
+    const time = input => (typeof input === 'number' && Number.isFinite(input) ? input : undefined);
+    const seen = new Set();
+    const uniqueId = (input, prefix) => {
+      let id = text(input, 100);
+      if (!id || seen.has(id) || id === '__proto__') id = shoppingId(prefix);
+      seen.add(id);
+      return id;
+    };
+    const items = [];
+    for (const item of Array.isArray(src.items) ? src.items : []) {
+      if (!item || typeof item !== 'object' || !text(item.name)) continue;
+      const out = {
+        id: uniqueId(item.id, 'item'),
+        name: text(item.name),
+        group: SHOPPING_GROUPS.includes(item.group) ? item.group : 'priority',
+        status: Number.isInteger(item.status) && item.status >= 0 && item.status < 10 ? item.status : 0,
+        bought: item.bought === true,
+      };
+      for (const key of ['nameEn', 'note', 'noteEn']) if (text(item[key])) out[key] = text(item[key]);
+      if (item.essential === true) out.essential = true;
+      if (time(item.createdAt) !== undefined) out.createdAt = time(item.createdAt);
+      if (out.bought && time(item.boughtAt) !== undefined) out.boughtAt = time(item.boughtAt);
+      items.push(out);
+    }
+    const stock = [];
+    for (const item of Array.isArray(src.stock) ? src.stock : []) {
+      if (!item || typeof item !== 'object' || !text(item.name)) continue;
+      const out = { id: uniqueId(item.id, 'stock'), name: text(item.name) };
+      if (text(item.amount, 100)) out.amount = text(item.amount, 100);
+      if (time(item.createdAt) !== undefined) out.createdAt = time(item.createdAt);
+      stock.push(out);
+    }
+    return { items, stock };
+  }
+
   class StorageRepository {
     async initialize() { throw new Error('StorageRepository.initialize() must be implemented'); }
     close() { throw new Error('StorageRepository.close() must be implemented'); }
@@ -35,6 +86,8 @@
     async getRecentFoods() { throw new Error('StorageRepository.getRecentFoods() must be implemented'); }
     async saveRecentFood(_food) { throw new Error('StorageRepository.saveRecentFood() must be implemented'); }
     async saveDayAndRecent(_dateKey, _day, _food) { throw new Error('StorageRepository.saveDayAndRecent() must be implemented'); }
+    async getShopping() { throw new Error('StorageRepository.getShopping() must be implemented'); }
+    async saveShopping(_shopping) { throw new Error('StorageRepository.saveShopping() must be implemented'); }
     async resolveFood(_food, _options) { throw new DOMException('자동 영양 분석은 로컬 모드에서만 사용할 수 있습니다.', 'NotSupportedError'); }
   }
 
@@ -256,6 +309,16 @@
       return { day: clone(nextDay), recentFoods: clone(recentFoods) };
     }
 
+    async getShopping() {
+      return normalizeShopping((await this.getAll()).shopping);
+    }
+
+    async saveShopping(shopping) {
+      const saved = normalizeShopping(shopping);
+      await this._update(all => ({ ...all, shopping: saved }));
+      return clone(saved);
+    }
+
     async resolveFood(_food, _options = {}) {
       throw new DOMException('자동 영양 분석은 로컬 모드에서만 사용할 수 있습니다.', 'NotSupportedError');
     }
@@ -356,6 +419,13 @@
       const recentFoods = await this.saveRecentFood(food);
       return { day: savedDay, recentFoods };
     }
+    async getShopping() { return normalizeShopping((await this.getAll()).shopping); }
+    async saveShopping(shopping) {
+      const all = await this.getAll();
+      all.shopping = normalizeShopping(shopping);
+      await this.replaceAll(all);
+      return clone(all.shopping);
+    }
     async resolveFood(food, options = {}) {
       const result = await this._request('/api/resolve', {
         method: 'POST',
@@ -404,6 +474,7 @@
 
   global.NiliriStorage = {
     StorageRepository, IndexedDbStorage, LocalApiStorage, emptyDay, MIGRATIONS,
+    SHOPPING_GROUPS, normalizeShopping, shoppingId,
     registerRepository, createRepository, requestPersistentStorage,
   };
 })(globalThis);

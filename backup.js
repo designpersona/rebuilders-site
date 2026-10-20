@@ -29,7 +29,7 @@
     return `rebuilders-backup-v${VERSION}-${localDate(now)}.json`;
   }
 
-  /** 저장소의 전체 상태(날짜별 식단, settings, customFoods, recentFoods)를 파일 구조로 감쌉니다. */
+  /** 저장소의 전체 상태(날짜별 식단, settings, customFoods, recentFoods, shopping)를 파일 구조로 감쌉니다. */
   function buildBackup(state, now = new Date()) {
     return {
       format: FORMAT,
@@ -88,6 +88,17 @@
     return out;
   }
 
+  /** 장보기·창고(shopping). storage.js 의 normalizeShopping 과 같은 규칙으로 정리합니다. */
+  function sanitizeShopping(value, errors) {
+    if (!isObject(value)) { errors.push('shopping 형식이 올바르지 않아요.'); return null; }
+    if ((value.items !== undefined && !Array.isArray(value.items)) || (value.stock !== undefined && !Array.isArray(value.stock))) {
+      errors.push('장보기 목록 형식이 올바르지 않아요.');
+      return null;
+    }
+    const normalize = global.NiliriStorage?.normalizeShopping;
+    return normalize ? normalize(value) : { items: deepCopy(value.items || []), stock: deepCopy(value.stock || []) };
+  }
+
   function summarize(state) {
     const dates = Object.keys(state).filter(key => DATE_KEY.test(key)).sort();
     let meals = 0;
@@ -98,6 +109,8 @@
       customFoods: Object.keys(state.customFoods || {}).length,
       recentFoods: (state.recentFoods || []).length,
       hasSettings: Boolean(state.settings),
+      shoppingItems: (state.shopping?.items || []).length,
+      stockItems: (state.shopping?.stock || []).length,
       firstDate: dates[0] || null,
       lastDate: dates[dates.length - 1] || null,
     };
@@ -139,6 +152,9 @@
           else if (!isObject(food)) errors.push(`내 음식 ${name}: 형식이 올바르지 않아요.`);
         }
         state.customFoods = foods;
+      } else if (key === 'shopping') {
+        const shopping = sanitizeShopping(value, errors);
+        if (shopping) state.shopping = shopping;
       } else if (key === 'recentFoods') {
         if (!Array.isArray(value)) { errors.push('recentFoods 형식이 올바르지 않아요.'); continue; }
         const list = [];
@@ -163,12 +179,26 @@
     return validateBackup(parsed);
   }
 
-  /** 합치기: 같은 날짜는 백업 우선, customFoods 는 백업 우선, recentFoods 는 백업 항목을 앞에 둡니다. */
+  function mergeById(current, incoming) {
+    const map = new Map();
+    for (const item of current || []) map.set(item.id, item);
+    for (const item of incoming || []) map.set(item.id, item);
+    return [...map.values()];
+  }
+
+  /** 합치기: 같은 날짜는 백업 우선, customFoods 는 백업 우선, recentFoods 는 백업 항목을 앞에 둡니다.
+   *  shopping 은 같은 id 항목은 백업 우선으로 합칩니다. */
   function mergeStates(current, incoming) {
     const next = { ...(current || {}) };
     for (const [key, value] of Object.entries(incoming)) {
       if (key === 'customFoods') next.customFoods = { ...(current?.customFoods || {}), ...value };
       else if (key === 'settings') next.settings = { ...(current?.settings || {}), ...value };
+      else if (key === 'shopping') {
+        next.shopping = {
+          items: mergeById(current?.shopping?.items, value.items),
+          stock: mergeById(current?.shopping?.stock, value.stock),
+        };
+      }
       else if (key === 'recentFoods') {
         const seen = new Set();
         next.recentFoods = [...value, ...(current?.recentFoods || [])]

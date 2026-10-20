@@ -475,6 +475,9 @@ const LOCAL_MODE = APP_CONFIG.allowLocalMode === true
   && LOCAL_HOSTS.has(globalThis.location?.hostname)
   && !FORCE_INDEXEDDB;
 let storageRepository = NiliriStorage.createRepository(LOCAL_MODE ? 'localapi' : 'indexeddb');
+// 장보기·창고(state.shopping). initializeApp 에서 저장소 값으로 채웁니다.
+let SHOPPING = NiliriStorage.normalizeShopping(null);
+let shoppingSaveChain = Promise.resolve();
 
 async function initializeStorageRepository() {
   if (LOCAL_MODE) {
@@ -1026,34 +1029,14 @@ function applyExtendedStaticCopy() {
   set('.shopping-section > header h2', '장보기', 'Shopping list');
   set('.shopping-section > header p', '구매할 식품을 상태별로 관리해요.', 'Organize items by what to buy next.');
   set('#shopping-add-btn', '+ 항목 추가', '+ Add item');
-  const shoppingGroups = [...document.querySelectorAll('.shopping-section > .shopping-group:not(.shopping-fridge)')];
-  const shoppingCopy = en ? [
-    ['Buy first', 'Eggs', 'Buy on the next shopping trip.', 'Essential', 'Essential'],
-    ['Make at home', 'Greek Yogurt', 'Check ingredients, then make it.', 'Ingredients ready', 'Ingredients ready|Plan to make|Done'],
-    ['Compare', 'Tangerines · Oranges · Lemon juice', 'Choose one to buy.', 'Compare', 'Compare|Selected|Plan to buy'],
-    ['Later', 'Soba noodles · Pork cutlet', 'Review again on the next shopping trip.', 'Hold', 'Hold|Review again|Plan to buy'],
-  ] : [
-    ['먼저 구매', '달걀', '다음 장보기에 구매', '필수', '필수'],
-    ['직접 만들기', '그릭요거트', '재료를 확인한 뒤 만들기', '재료 있음', '재료 있음|만들기 예정|완료'],
-    ['비교 중', '귤 · 오렌지 · 레몬즙', '하나를 골라 구매', '비교', '비교|선택함|구매 예정'],
-    ['나중에 확인', '모밀국수 · 돈까스', '다음 장보기에 다시 확인', '보류', '보류|다시 검토|구매 예정'],
-  ];
-  shoppingGroups.forEach((group, index) => {
-    const copy = shoppingCopy[index];
-    if (!copy) return;
-    const h3 = group.querySelector('h3');
-    if (h3) h3.innerHTML = `${escapeHtml(copy[0])} <span>${index + 1}</span>`;
-    const strong = group.querySelector('article strong');
-    const p = group.querySelector('article p');
-    const status = group.querySelector('article > .shopping-action');
-    if (strong) strong.textContent = copy[1];
-    if (p) p.textContent = copy[2];
-    if (status) {
-      status.textContent = copy[3];
-      if (status.dataset.statuses) status.dataset.statuses = copy[4];
-    }
+  const shoppingHeadings = en
+    ? { priority: 'Buy first', make: 'Make at home', compare: 'Compare', hold: 'Later' }
+    : { priority: '먼저 구매', make: '직접 만들기', compare: '비교 중', hold: '나중에 확인' };
+  NiliriStorage.SHOPPING_GROUPS.forEach((group, index) => {
+    const h3 = document.querySelector(`.shopping-section [data-shopping-group="${group}"] > h3`);
+    if (h3) h3.innerHTML = `${escapeHtml(shoppingHeadings[group])} <span>${index + 1}</span>`;
   });
-  refreshShoppingItemControls();
+  renderShopping();
   const fridgeHeading = document.querySelector('.shopping-fridge > h3');
   if (fridgeHeading) {
     fridgeHeading.innerHTML = `${en ? 'In stock' : '보유 중'} <span id="shopping-fridge-count">${document.querySelectorAll('#shopping-fridge-list article').length}</span>`;
@@ -4517,6 +4500,138 @@ function openProductRegistration() {
   setTimeout(() => document.getElementById('custom-name')?.focus(), 100);
 }
 
+/* ============================
+   장보기 · 창고 (state.shopping 에 저장, 재시작 후에도 유지)
+   ============================ */
+const SHOPPING_STATUS_COPY = {
+  make: { ko: ['재료 있음', '만들기 예정', '완료'], en: ['Ingredients ready', 'Plan to make', 'Done'] },
+  compare: { ko: ['비교', '선택함', '구매 예정'], en: ['Compare', 'Selected', 'Plan to buy'] },
+  hold: { ko: ['보류', '다시 검토', '구매 예정'], en: ['Hold', 'Review again', 'Plan to buy'] },
+};
+
+function shoppingStatuses(item) {
+  const en = ACTIVE_LOCALE === 'en';
+  if (item.group === 'priority' || !SHOPPING_STATUS_COPY[item.group]) {
+    if (item.essential) return [en ? 'Essential' : '필수'];
+    return [en ? 'To buy' : '구매 예정'];
+  }
+  return SHOPPING_STATUS_COPY[item.group][en ? 'en' : 'ko'];
+}
+
+function shoppingText(item, key) {
+  return ACTIVE_LOCALE === 'en' && item[`${key}En`] ? item[`${key}En`] : (item[key] || '');
+}
+
+function shoppingGroupElement(group) {
+  return document.querySelector(`.shopping-section [data-shopping-group="${group}"]`)
+    || document.querySelector('.shopping-section [data-shopping-group="priority"]');
+}
+
+async function loadShopping() {
+  SHOPPING = NiliriStorage.normalizeShopping(await storageRepository.getShopping());
+  return SHOPPING;
+}
+
+/** 장보기 데이터를 바꾸고 화면을 다시 그린 뒤 저장합니다. 저장에 실패하면 이전 상태로 되돌립니다. */
+function commitShopping(mutate) {
+  const previous = SHOPPING;
+  const draft = JSON.parse(JSON.stringify(SHOPPING));
+  mutate(draft);
+  SHOPPING = NiliriStorage.normalizeShopping(draft);
+  renderShopping();
+  const snapshot = SHOPPING;
+  const save = shoppingSaveChain.then(() => storageRepository.saveShopping(snapshot));
+  shoppingSaveChain = save.catch(() => {});
+  return save.then(() => true).catch(error => {
+    if (SHOPPING === snapshot) {
+      SHOPPING = previous;
+      renderShopping();
+    }
+    showStorageFailure(error);
+    return false;
+  });
+}
+
+function buildShoppingArticle(item) {
+  const en = ACTIVE_LOCALE === 'en';
+  const statuses = shoppingStatuses(item);
+  const statusIndex = item.status % statuses.length;
+  const name = shoppingText(item, 'name');
+  const note = shoppingText(item, 'note') || (en ? 'Added by you' : '직접 추가한 항목');
+  const article = document.createElement('article');
+  article.dataset.shoppingId = item.id;
+  article.classList.toggle('is-complete', item.bought);
+  article.classList.toggle('is-progressing', statuses.length > 1 && statusIndex > 0);
+  const statusAttr = statuses.length > 1 ? `data-statuses="${escapeHtml(statuses.join('|'))}"` : 'data-next="fridge"';
+  article.innerHTML = `<button type="button" class="shopping-check${item.bought ? ' is-complete' : ''}" aria-label="${escapeHtml(name)} ${en ? 'mark as bought' : '구매 완료 표시'}"${item.bought ? ' aria-pressed="true"' : ''}></button><div><strong>${escapeHtml(name)}</strong><p>${escapeHtml(note)}</p></div><button type="button" class="shopping-action" ${statusAttr}>${escapeHtml(statuses[statusIndex])}</button><button type="button" class="shopping-remove" aria-label="${en ? 'Delete item' : '항목 삭제'}">×</button>`;
+
+  article.querySelector('.shopping-check')?.addEventListener('click', () => {
+    const bought = !item.bought;
+    commitShopping(state => {
+      const target = state.items.find(entry => entry.id === item.id);
+      if (!target) return;
+      target.bought = bought;
+      if (bought) target.boughtAt = Date.now();
+      else {
+        delete target.boughtAt;
+        // 예전 동작처럼 장보기로 되돌린 항목은 그룹 맨 아래로
+        state.items = [...state.items.filter(entry => entry !== target), target];
+      }
+    });
+    if (bought) showToast(en ? 'Moved to stock.' : '구매 완료 → 창고로 옮겼어요.', 'success');
+    else showToast(en ? 'Moved back to the shopping list.' : '장보기 목록으로 되돌렸어요.', 'info');
+  });
+  if (statuses.length > 1) {
+    article.querySelector('.shopping-action')?.addEventListener('click', () => {
+      const next = (statusIndex + 1) % statuses.length;
+      commitShopping(state => {
+        const target = state.items.find(entry => entry.id === item.id);
+        if (target) target.status = next;
+      });
+      showToast(`${name} · ${statuses[next]}`, 'info');
+    });
+  }
+  article.querySelector('.shopping-remove')?.addEventListener('click', () => {
+    commitShopping(state => { state.items = state.items.filter(entry => entry.id !== item.id); });
+    showToast(en ? `${name} removed.` : `${name} 항목을 삭제했어요.`, 'info');
+  });
+  return article;
+}
+
+function buildStockArticle(item) {
+  const en = ACTIVE_LOCALE === 'en';
+  const article = document.createElement('article');
+  article.className = 'collection-fridge-item';
+  article.dataset.stockId = item.id;
+  article.innerHTML = `<span class="collection-fridge-marker" aria-hidden="true">✓</span><div><strong>${escapeHtml(item.name)}</strong><p>${en ? 'Added directly' : '직접 추가'} · ${escapeHtml(item.amount || (en ? 'Amount not set' : '수량 미입력'))}</p></div><span class="collection-fridge-status">${en ? 'In stock' : '보유 중'}</span><button type="button" class="collection-fridge-remove" aria-label="${en ? 'Delete' : '삭제'}">×</button>`;
+  article.querySelector('.collection-fridge-remove')?.addEventListener('click', () => {
+    commitShopping(state => { state.stock = state.stock.filter(entry => entry.id !== item.id); });
+  });
+  return article;
+}
+
+/** state.shopping 으로 장보기 그룹과 창고 목록을 다시 그립니다. 작성 중인 입력칸은 그대로 둡니다. */
+function renderShopping() {
+  NiliriStorage.SHOPPING_GROUPS.forEach(group => {
+    document.querySelector(`.shopping-section [data-shopping-group="${group}"]`)
+      ?.querySelectorAll(':scope > article:not(.shopping-item-editor)').forEach(article => article.remove());
+  });
+  const fridge = document.getElementById('shopping-fridge-list');
+  fridge?.querySelectorAll(':scope > article:not(.is-editing)').forEach(article => article.remove());
+  SHOPPING.items.filter(item => !item.bought).forEach(item => {
+    const group = shoppingGroupElement(item.group);
+    if (!group) return;
+    group.insertBefore(buildShoppingArticle(item), group.querySelector(':scope > .shopping-item-editor'));
+  });
+  if (fridge) {
+    SHOPPING.stock.forEach(item => fridge.appendChild(buildStockArticle(item)));
+    SHOPPING.items.filter(item => item.bought)
+      .sort((a, b) => (a.boughtAt || 0) - (b.boughtAt || 0))
+      .forEach(item => fridge.appendChild(buildShoppingArticle(item)));
+  }
+  updateShoppingFridge();
+}
+
 function createFridgeCollectionItem() {
   const list = document.getElementById('shopping-fridge-list');
   if (!list) return;
@@ -4524,6 +4639,8 @@ function createFridgeCollectionItem() {
   if (document.getElementById('view-search')?.dataset.hubMode === 'fridge') {
     setSearchHubView('stock');
   }
+  const existing = list.querySelector(':scope > article.is-editing');
+  if (existing) return existing.querySelector('input')?.focus();
   const article = document.createElement('article');
   article.className = 'collection-fridge-item is-editing';
   article.innerHTML = `<div class="collection-fridge-fields"><input type="text" class="settings-input collection-fridge-name" placeholder="${ACTIVE_LOCALE === 'en' ? 'Food in stock' : '보유 식품 이름'}" /><input type="text" class="settings-input collection-fridge-amount" placeholder="${ACTIVE_LOCALE === 'en' ? 'Amount, e.g. 1 box' : '수량 예: 1통'}" /></div><button type="button" class="collection-fridge-save">${ACTIVE_LOCALE === 'en' ? 'Save' : '저장'}</button><button type="button" class="collection-fridge-remove" aria-label="${ACTIVE_LOCALE === 'en' ? 'Delete' : '삭제'}">×</button>`;
@@ -4532,13 +4649,10 @@ function createFridgeCollectionItem() {
     const amount = article.querySelector('.collection-fridge-amount')?.value.trim();
     const name = nameInput?.value.trim();
     if (!name) return nameInput?.focus();
-    article.classList.remove('is-editing');
-    article.innerHTML = `<span class="collection-fridge-marker" aria-hidden="true">✓</span><div><strong>${escapeHtml(name)}</strong><p>${ACTIVE_LOCALE === 'en' ? 'Added directly' : '직접 추가'} · ${escapeHtml(amount || (ACTIVE_LOCALE === 'en' ? 'Amount not set' : '수량 미입력'))}</p></div><span class="collection-fridge-status">${ACTIVE_LOCALE === 'en' ? 'In stock' : '보유 중'}</span><button type="button" class="collection-fridge-remove" aria-label="${ACTIVE_LOCALE === 'en' ? 'Delete' : '삭제'}">×</button>`;
-    article.querySelector('.collection-fridge-remove')?.addEventListener('click', () => {
-      article.remove();
-      updateShoppingFridge();
+    article.remove();
+    commitShopping(state => {
+      state.stock.unshift({ id: NiliriStorage.shoppingId('stock'), name, amount: amount || '', createdAt: Date.now() });
     });
-    updateShoppingFridge();
     showToast(ACTIVE_LOCALE === 'en' ? 'Added to stock.' : '창고에 추가했어요.', 'success');
   });
   article.querySelector('.collection-fridge-remove')?.addEventListener('click', () => {
@@ -4558,36 +4672,6 @@ document.getElementById('stock-add-btn')?.addEventListener('click', () => {
   createFridgeCollectionItem();
 });
 
-const shoppingOriginalGroups = new WeakMap();
-let shoppingCustomSequence = 0;
-
-function bindShoppingDelete(button) {
-  if (!button || button.dataset.boundShoppingDelete === '1') return;
-  button.dataset.boundShoppingDelete = '1';
-  button.addEventListener('click', () => {
-    const article = button.closest('article');
-    const itemName = article?.querySelector('strong')?.textContent || '';
-    article?.remove();
-    updateShoppingFridge();
-    showToast(ACTIVE_LOCALE === 'en' ? `${itemName} removed.` : `${itemName} 항목을 삭제했어요.`, 'info');
-  });
-}
-
-function refreshShoppingItemControls() {
-  document.querySelectorAll('.shopping-section > .shopping-group:not(.shopping-fridge) > article, #shopping-fridge-list > article:not(.collection-fridge-item)').forEach(article => {
-    let remove = article.querySelector(':scope > .shopping-remove');
-    if (!remove) {
-      remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'shopping-remove';
-      remove.textContent = '×';
-      article.appendChild(remove);
-    }
-    remove.setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? 'Delete item' : '항목 삭제');
-    bindShoppingDelete(remove);
-  });
-}
-
 function createShoppingListItem() {
   const group = document.querySelector('[data-shopping-group="priority"]');
   if (!group) return;
@@ -4606,16 +4690,15 @@ function createShoppingListItem() {
     const input = article.querySelector('.shopping-item-name');
     const name = input?.value.trim();
     if (!name) return input?.focus();
-    article.className = '';
-    article.dataset.shoppingId = `custom-${Date.now()}-${++shoppingCustomSequence}`;
-    article.innerHTML = `<button type="button" class="shopping-check" aria-label="${escapeHtml(name)} ${ACTIVE_LOCALE === 'en' ? 'mark as bought' : '구매 완료 표시'}"></button><div><strong>${escapeHtml(name)}</strong><p>${ACTIVE_LOCALE === 'en' ? 'Added by you' : '직접 추가한 항목'}</p></div><button type="button" class="shopping-action" data-next="fridge">${ACTIVE_LOCALE === 'en' ? 'To buy' : '구매 예정'}</button>`;
-    bindShoppingCheck(article.querySelector('.shopping-check'));
-    refreshShoppingItemControls();
-    updateShoppingFridge();
+    article.remove();
+    commitShopping(state => {
+      state.items.push({ id: NiliriStorage.shoppingId('item'), name, group: 'priority', status: 0, bought: false, createdAt: Date.now() });
+    });
     showToast(ACTIVE_LOCALE === 'en' ? 'Added to the shopping list.' : '장보기 목록에 추가했어요.', 'success');
   };
   article.querySelector('.shopping-item-save')?.addEventListener('click', saveItem);
   article.querySelector('.shopping-item-name')?.addEventListener('keydown', event => {
+    if (event.isComposing) return;
     if (event.key === 'Enter') saveItem();
     if (event.key === 'Escape') closeEditor();
   });
@@ -4640,39 +4723,6 @@ function updateShoppingFridge() {
   });
 }
 
-function bindShoppingCheck(button) {
-  if (!button || button.dataset.boundShoppingCheck === '1') return;
-  button.dataset.boundShoppingCheck = '1';
-  const article = button.closest('article');
-  if (article?.parentElement) shoppingOriginalGroups.set(article, article.parentElement);
-  button.addEventListener('click', () => {
-    const completed = button.classList.toggle('is-complete');
-    const item = button.closest('article');
-    item?.classList.toggle('is-complete', completed);
-    button.setAttribute('aria-pressed', String(completed));
-    if (completed) {
-      document.getElementById('shopping-fridge-list')?.appendChild(item);
-      showToast(ACTIVE_LOCALE === 'en' ? 'Moved to stock.' : '구매 완료 → 창고로 옮겼어요.', 'success');
-    } else {
-      shoppingOriginalGroups.get(item)?.appendChild(item);
-      showToast(ACTIVE_LOCALE === 'en' ? 'Moved back to the shopping list.' : '장보기 목록으로 되돌렸어요.', 'info');
-    }
-    updateShoppingFridge();
-  });
-}
-
-document.querySelectorAll('.shopping-check').forEach(bindShoppingCheck);
-refreshShoppingItemControls();
-
-document.querySelectorAll('.shopping-action[data-statuses]').forEach(button => {
-  button.addEventListener('click', () => {
-    const statuses = button.dataset.statuses.split('|');
-    const next = (statuses.indexOf(button.textContent.trim()) + 1) % statuses.length;
-    button.textContent = statuses[next];
-    button.closest('article')?.classList.toggle('is-progressing', next > 0);
-    showToast(`${button.closest('article')?.querySelector('strong')?.textContent || ''} · ${statuses[next]}`, 'info');
-  });
-});
 updateShoppingFridge();
 
 document.querySelectorAll('.nav-item').forEach(btn => {
@@ -5164,12 +5214,13 @@ let pendingImport = null; // { state, summary }
 const tx = (ko, en) => (ACTIVE_LOCALE === 'en' ? en : ko);
 
 function describeSummary(summary) {
+  const shopping = (summary.shoppingItems || 0) + (summary.stockItems || 0);
   const range = summary.firstDate
     ? `${summary.firstDate} ~ ${summary.lastDate}`
     : tx('식단 기록 없음', 'No meal records');
   return ACTIVE_LOCALE === 'en'
-    ? `${summary.days} days · ${summary.foods} foods · ${summary.customFoods} custom foods · ${range}`
-    : `${summary.days}일 · 음식 ${summary.foods}개 · 내 음식 ${summary.customFoods}개 · ${range}`;
+    ? `${summary.days} days · ${summary.foods} foods · ${summary.customFoods} custom foods${shopping ? ` · ${shopping} shopping/stock items` : ''} · ${range}`
+    : `${summary.days}일 · 음식 ${summary.foods}개 · 내 음식 ${summary.customFoods}개${shopping ? ` · 장보기·창고 ${shopping}개` : ''} · ${range}`;
 }
 
 function hideImportPreview() {
@@ -5294,12 +5345,17 @@ document.getElementById('load-sample')?.addEventListener('click', async event =>
   btn.dataset.actionLocked = 'true';
   try {
     if (!confirm(tx(
-      '가상의 샘플 식단 4일치를 기록이 비어 있는 날짜에 추가해요. 실제 기록이 아니며, 필요 없으면 날짜별로 직접 지워야 해요. 추가할까요?',
-      'This adds four fictional sample days to dates with no records. They are not real records, and you must delete them day by day if you do not want them. Add them?',
+      '가상의 샘플 식단 4일치를 기록이 비어 있는 날짜에, 장보기 예시 4개를 장보기·창고가 비어 있을 때 추가해요. 실제 기록이 아니며, 필요 없으면 직접 지워야 해요. 추가할까요?',
+      'This adds four fictional sample days to dates with no records, and four example shopping items if Shopping and Stock are empty. They are not real records, and you must delete them yourself if you do not want them. Add them?',
     ))) return;
-    const { state, added } = RebuildersDemo.addSampleDays(await storageRepository.getAll());
+    const days = RebuildersDemo.addSampleDays(await storageRepository.getAll());
+    const shopping = RebuildersDemo.addSampleShopping
+      ? RebuildersDemo.addSampleShopping(days.state)
+      : { state: days.state, added: 0 };
+    const state = shopping.state;
+    const added = days.added + shopping.added;
     if (!added) {
-      showToast(tx('오늘 기준 최근 4일에 이미 기록이 있어 추가하지 않았어요.', 'The last four days already have records, so nothing was added.'), 'info');
+      showToast(tx('최근 4일에 이미 기록이 있고 장보기도 비어 있지 않아 추가하지 않았어요.', 'The last four days already have records and Shopping is not empty, so nothing was added.'), 'info');
       return;
     }
     await storageRepository.replaceAll(state);
@@ -5339,6 +5395,7 @@ async function initializeApp() {
   NiliriStorage.requestPersistentStorage();
   await loadSettings();
   await loadCustomFoods();
+  await loadShopping();
   await loadCurrentDay();
   statsCache = await loadStorage();
   setupTimeControls();
@@ -5348,6 +5405,7 @@ async function initializeApp() {
   updateProfileUI();
   updateLevelMessage('hungry');
   applyLanguage(false);
+  renderShopping();
   displayedCalories = 0;
   setRingVisual(0);
   renderAll(false);

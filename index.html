@@ -695,37 +695,18 @@
           <div class="shopping-toolbar">
             <button type="button" class="shopping-add-btn" id="shopping-add-btn">+ 항목 추가</button>
           </div>
+          <!-- 장보기 항목은 저장소(state.shopping)에서 app.js 의 renderShopping() 이 채웁니다. -->
           <div class="shopping-group is-priority" data-shopping-group="priority">
-            <h3>우선 채우기 <span>1</span></h3>
-            <article data-shopping-id="eggs"><button type="button" class="shopping-check" aria-label="달걀 구매 완료 표시"></button>
-              <div><strong>달걀</strong>
-                <p>다음 장보기에 구매</p>
-              </div><button type="button" class="shopping-action" data-next="fridge">필수</button>
-            </article>
+            <h3>우선 채우기 <span>0</span></h3>
           </div>
-          <div class="shopping-group">
-            <h3>집에서 만들기 <span>2</span></h3>
-            <article data-shopping-id="greek-yogurt"><button type="button" class="shopping-check" aria-label="그릭요거트 구매 완료 표시"></button>
-              <div><strong>그릭요거트</strong>
-                <p>재료를 확인한 뒤 만들기</p>
-              </div><button type="button" class="shopping-action" data-statuses="재료 있음|만들기 예정|완료">재료 있음</button>
-            </article>
+          <div class="shopping-group" data-shopping-group="make">
+            <h3>집에서 만들기 <span>0</span></h3>
           </div>
-          <div class="shopping-group">
-            <h3>후보 비교 <span>3</span></h3>
-            <article data-shopping-id="citrus"><button type="button" class="shopping-check" aria-label="과일 구매 완료 표시"></button>
-              <div><strong>귤 · 오렌지 · 레몬즙</strong>
-                <p>하나를 골라 구매</p>
-              </div><button type="button" class="shopping-action" data-statuses="비교|선택함|구매 예정">비교</button>
-            </article>
+          <div class="shopping-group" data-shopping-group="compare">
+            <h3>후보 비교 <span>0</span></h3>
           </div>
-          <div class="shopping-group is-hold">
-            <h3>잠시 보류 <span>4</span></h3>
-            <article data-shopping-id="soba-pork"><button type="button" class="shopping-check" aria-label="모밀국수 · 돈까스 구매 완료 표시"></button>
-              <div><strong>모밀국수 · 돈까스</strong>
-                <p>다음 장보기에 다시 확인</p>
-              </div><button type="button" class="shopping-action" data-statuses="보류|다시 검토|구매 예정">보류</button>
-            </article>
+          <div class="shopping-group is-hold" data-shopping-group="hold">
+            <h3>잠시 보류 <span>0</span></h3>
           </div>
         </div>
       </section>
@@ -1251,12 +1232,12 @@
   <div class="toast-host" id="toast-host" aria-live="polite"></div>
   <script src="app-config.js?v=1"></script>
   <script src="food-catalog.js?v=2"></script>
-  <script src="storage.js?v=4"></script>
-  <script src="backup.js?v=1"></script>
+  <script src="storage.js?v=5"></script>
+  <script src="backup.js?v=2"></script>
   <script src="notifications.js?v=1"></script>
   <script src="keyboard.js?v=1"></script>
-  <script src="demo-seed.js?v=2"></script>
-  <script src="app.js?v=78"></script>
+  <script src="demo-seed.js?v=3"></script>
+  <script src="app.js?v=79"></script>
 </body>
 
 </html>

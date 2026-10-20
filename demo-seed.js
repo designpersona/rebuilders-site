@@ -90,5 +90,28 @@
     return { state: next, added };
   }
 
-  global.RebuildersDemo = { buildSampleDays, addSampleDays };
+  /** 장보기 예시(예전 화면에 고정돼 있던 4개). 샘플 불러오기에서만 추가됩니다. */
+  function buildSampleShopping() {
+    const now = Date.now();
+    return {
+      items: [
+        { id: 'sample-eggs', name: '달걀', nameEn: 'Eggs', note: '다음 장보기에 구매', noteEn: 'Buy on the next shopping trip.', group: 'priority', status: 0, bought: false, essential: true, createdAt: now },
+        { id: 'sample-greek-yogurt', name: '그릭요거트', nameEn: 'Greek Yogurt', note: '재료를 확인한 뒤 만들기', noteEn: 'Check ingredients, then make it.', group: 'make', status: 0, bought: false, createdAt: now },
+        { id: 'sample-citrus', name: '귤 · 오렌지 · 레몬즙', nameEn: 'Tangerines · Oranges · Lemon juice', note: '하나를 골라 구매', noteEn: 'Choose one to buy.', group: 'compare', status: 0, bought: false, createdAt: now },
+        { id: 'sample-soba-pork', name: '모밀국수 · 돈까스', nameEn: 'Soba noodles · Pork cutlet', note: '다음 장보기에 다시 확인', noteEn: 'Review again on the next shopping trip.', group: 'hold', status: 0, bought: false, createdAt: now },
+      ],
+      stock: [],
+    };
+  }
+
+  /** 장보기·창고가 완전히 비어 있을 때만 예시를 넣습니다. */
+  function addSampleShopping(existing) {
+    const next = { ...(existing || {}) };
+    const shopping = next.shopping || {};
+    if ((shopping.items || []).length || (shopping.stock || []).length) return { state: next, added: 0 };
+    next.shopping = buildSampleShopping();
+    return { state: next, added: next.shopping.items.length };
+  }
+
+  global.RebuildersDemo = { buildSampleDays, addSampleDays, buildSampleShopping, addSampleShopping };
 })(globalThis);
