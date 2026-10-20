@@ -151,12 +151,19 @@
     try { await request('/forget', { method: 'POST', body: { names: clean } }); return true; } catch { return false; }
   }
 
+  /** 사진(JPEG base64, 2MB 이하) → 맥 미니가 음식 인식 + 영양 찾기 */
+  async function lookupPhoto({ image, date, meal }) {
+    if (typeof image !== 'string' || !image || image.length > 2900000) throw new BridgeError('bad_request');
+    const data = await request('/photo', { method: 'POST', body: { image, date, meal } });
+    return { items: Array.isArray(data.items) ? data.items : [], failed: Array.isArray(data.failed) ? data.failed : [] };
+  }
+
   async function lookup({ date, meal, items }) {
     const data = await request('/log', { method: 'POST', body: { date, meal, items } });
     return { items: Array.isArray(data.items) ? data.items : [], failed: Array.isArray(data.failed) ? data.failed : [] };
   }
 
-  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, forget, BridgeError, MAX_ATTEMPTS };
+  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupPhoto, forget, BridgeError, MAX_ATTEMPTS };
   global.RebuildersBridge = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

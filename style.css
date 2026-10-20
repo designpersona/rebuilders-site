@@ -11921,3 +11921,98 @@ body.keyboard-open .bottom-nav {
 }
 .recent-edit-btn[hidden] { display: none; }
 .quick-foods.is-editing .swipe-row .swipe-content { transform: translateX(-84px) !important; transition: transform 0.2s ease; }
+
+/* ============================
+   홈 하단 AI 입력창(탭바 바로 위, 메신저처럼)
+   ============================ */
+.home-ai-dock {
+  position: relative;
+  flex-shrink: 0;
+  padding: 6px max(12px, var(--safe-right)) 6px max(12px, var(--safe-left));
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.home-ai-dock[hidden] { display: none !important; }
+.ai-dock-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.ai-dock-icon,
+.ai-dock-send {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 0;
+  cursor: pointer;
+}
+.ai-dock-icon:active { background: var(--bg3); }
+.ai-dock-icon.is-listening { background: #dc2626; color: #fff; }
+.ai-dock-send { background: var(--text-primary); color: var(--bg); }
+.ai-dock-send[hidden] { display: none !important; }
+.ai-dock-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  padding: 0 14px;
+  border: 1.5px solid var(--text-primary);
+  border-radius: 20px;
+  background: #fff;
+  color: var(--text-primary);
+  font: 600 16px/1.2 var(--font); /* 16px: iOS 자동 확대 방지 */
+  text-overflow: ellipsis;
+}
+.ai-dock-input::placeholder { color: var(--text-secondary); opacity: 1; }
+.ai-dock-toggle {
+  position: absolute;
+  right: max(12px, var(--safe-right));
+  bottom: calc(100% + 6px);
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text-secondary);
+  font: 800 11px/1.2 var(--font);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+}
+.ai-dock-toggle[hidden] { display: none !important; }
+.ai-dock-panel {
+  margin: 0 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+.ai-dock-panel[hidden] { display: none !important; }
+.ai-dock-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font: 800 12px/1.2 var(--font);
+}
+.ai-dock-panel-actions { display: inline-flex; gap: 10px; }
+.ai-dock-text-btn { border: 0; background: transparent; color: var(--text-secondary); font: 700 12px/1 var(--font); padding: 4px 0; cursor: pointer; }
+.agent-log.ai-dock-log {
+  max-height: 34vh;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+  margin: 0;
+  flex: none;
+}
+body.keyboard-open .home-ai-dock { padding-bottom: 8px; }
+
+/* 홈 입력창이 있을 땐 토스트를 입력창 위로 */
+body.has-ai-dock .toast-host { bottom: calc(150px + var(--safe-bottom)); }
+body.has-ai-dock.keyboard-open .toast-host { bottom: 70px; }

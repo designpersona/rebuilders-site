@@ -86,5 +86,11 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>집 와이파이에서 맥 미니의 리빌더스 AI에게 음식 이름을 보내 영양성분을 받아 기록하려고 같은 네트워크의 기기에 연결해요.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>말로 먹은 음식을 입력할 때 음성을 글자로 바꾸려고 음성 인식을 사용해요. 가능하면 기기 안에서만 처리해요.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>마이크 버튼을 눌러 먹은 음식을 말로 입력할 때만 마이크를 사용해요.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>사진으로 음식을 기록할 때 카메라로 사진을 찍으려고 사용해요.</string>
 </dict>
 </plist>

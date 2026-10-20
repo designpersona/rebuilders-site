@@ -1061,8 +1061,8 @@ function applyExtendedStaticCopy() {
   const agentInput = document.getElementById('agent-input');
   if (agentInput) {
     agentInput.placeholder = en
-      ? 'Try "breakfast banana" or "lunch toast, iced americano".'
-      : '"아침 바나나", "점심 햄치즈 토스트, 아아"처럼 짧게 써도 돼요.';
+      ? 'Banana for breakfast'
+      : '아침 바나나';
   }
   set('#telegram-open-btn strong', '기록 안내', 'Logging guide');
   set('#telegram-open-btn small', '연결 후 텔레그램 사용', 'Set up Telegram');
@@ -4075,6 +4075,7 @@ function closeFoodexLibrary() {
 }
 
 function setActiveView(view) {
+  if (view === 'ai') { setActiveView('home'); setTimeout(() => focusAiDock(), 50); return; } // 예전 AI 탭 → 홈 하단 입력창
   if (view !== 'profile') {
     previousView = view;
   }
@@ -4082,6 +4083,9 @@ function setActiveView(view) {
   document.getElementById('view-meal-detail').hidden = true;
   document.body.classList.remove('meal-page-open');
   activeView = view;
+  const aiDock = document.getElementById('home-ai-dock');
+  if (aiDock) aiDock.hidden = view !== 'home';
+  document.body.classList.toggle('has-ai-dock', view === 'home'); // 토스트를 입력창 위로
   if (view !== 'home') {
     document.querySelectorAll('#view-home .meal-card.expanded, #view-home .snack-card.expanded').forEach(card => {
       card.classList.remove('expanded', 'auto-expanded');
@@ -5258,6 +5262,8 @@ function appendAgentMessage(text, kind = 'agent') {
   setAgentMessageText(message, text);
   log.appendChild(message);
   log.scrollTop = log.scrollHeight;
+  if (kind !== 'user' && document.getElementById('ai-dock-panel')?.hidden) showToast(text, 'info');
+  refreshAiDockToggle();
   return message;
 }
 
@@ -5293,6 +5299,7 @@ async function handleAgentCommand() {
   if (!text) return;
   appendAgentMessage(text, 'user');
   input.value = '';
+  refreshAiDockSend();
   const parsed = parseQuickFoodText(text);
   if (!parsed || !parsed.items.length) {
     appendAgentMessage(ACTIVE_LOCALE === 'en'
@@ -5379,50 +5386,223 @@ agentHelpDialog?.addEventListener('click', event => {
   if (event.target === agentHelpDialog) closeAgentHelp();
 });
 
-const SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+/* ============================
+   홈 하단 AI 입력창: 보내기 버튼·최근 대화·음성·사진
+   ============================ */
+const agentInputEl = document.getElementById('agent-input');
+const agentSendEl = document.getElementById('agent-send');
 const agentVoiceButton = document.getElementById('agent-voice');
-let agentRecognition = null;
 
-if (!SpeechRecognitionApi && agentVoiceButton) {
-  agentVoiceButton.disabled = true;
-  agentVoiceButton.title = ACTIVE_LOCALE === 'en' ? 'Voice input is not available in this browser.' : '이 브라우저에서는 음성 입력을 사용할 수 없어요.';
+function refreshAiDockSend() {
+  if (agentSendEl) agentSendEl.hidden = !agentInputEl?.value.trim();
+}
+agentInputEl?.addEventListener('input', refreshAiDockSend);
+
+function focusAiDock(text = '') {
+  if (activeView !== 'home') setActiveView('home');
+  if (!agentInputEl) return;
+  if (text) agentInputEl.value = text;
+  refreshAiDockSend();
+  agentInputEl.focus();
 }
 
-agentVoiceButton?.addEventListener('click', () => {
-  if (!SpeechRecognitionApi || agentRecognition) return;
-  agentRecognition = new SpeechRecognitionApi();
-  agentRecognition.lang = ACTIVE_LOCALE === 'en' ? 'en-US' : 'ko-KR';
-  agentRecognition.interimResults = false;
-  agentRecognition.maxAlternatives = 1;
-  agentVoiceButton.classList.add('is-listening');
-  agentVoiceButton.setAttribute('aria-pressed', 'true');
-  agentRecognition.addEventListener('result', event => {
-    const transcript = event.results?.[0]?.[0]?.transcript?.trim();
-    const input = document.getElementById('agent-input');
-    if (transcript && input) {
-      input.value = transcript;
-      input.focus();
-    }
+function setAiDockPanel(open) {
+  const panel = document.getElementById('ai-dock-panel');
+  const toggle = document.getElementById('ai-dock-toggle');
+  if (!panel || !toggle) return;
+  panel.hidden = !open;
+  toggle.setAttribute('aria-expanded', String(open));
+  refreshAiDockToggle();
+  if (open) { const log = document.getElementById('agent-log'); if (log) log.scrollTop = log.scrollHeight; }
+}
+function refreshAiDockToggle() {
+  const toggle = document.getElementById('ai-dock-toggle');
+  const panel = document.getElementById('ai-dock-panel');
+  const count = document.querySelectorAll('#agent-log .agent-message').length;
+  if (!toggle) return;
+  toggle.hidden = !count || !panel?.hidden;
+  toggle.textContent = ACTIVE_LOCALE === 'en' ? `Recent messages ${count}` : `최근 대화 ${count}`;
+}
+document.getElementById('ai-dock-toggle')?.addEventListener('click', () => setAiDockPanel(true));
+document.getElementById('ai-dock-panel-close')?.addEventListener('click', () => setAiDockPanel(false));
+
+/* 음성 입력: 앱은 @capgo/capacitor-speech-recognition(iOS 음성 인식, 가능하면 기기 안 인식, ko-KR),
+   브라우저는 Web Speech, 둘 다 없으면 입력칸에 포커스(키보드의 받아쓰기 마이크 사용) */
+let voiceSession = null;
+function speechPlugin() {
+  const cap = globalThis.Capacitor;
+  if (!cap?.isNativePlatform?.()) return null;
+  return cap.Plugins?.SpeechRecognition || cap.registerPlugin?.('SpeechRecognition') || null;
+}
+function setVoiceUi(listening) {
+  agentVoiceButton?.classList.toggle('is-listening', listening);
+  agentVoiceButton?.setAttribute('aria-pressed', String(listening));
+  agentVoiceButton?.setAttribute('aria-label', listening
+    ? (ACTIVE_LOCALE === 'en' ? 'Stop voice input' : '음성 입력 멈추기')
+    : (ACTIVE_LOCALE === 'en' ? 'Voice input' : '음성으로 입력'));
+  if (agentInputEl) agentInputEl.placeholder = listening ? (ACTIVE_LOCALE === 'en' ? 'Listening…' : '듣고 있어요…') : (ACTIVE_LOCALE === 'en' ? 'Banana for breakfast' : '아침 바나나');
+}
+function fillFromVoice(text) {
+  const value = String(text || '').trim();
+  if (!value || !agentInputEl) return;
+  agentInputEl.value = value;
+  refreshAiDockSend();
+}
+function voiceFallbackToKeyboard() {
+  focusAiDock();
+  showToast(ACTIVE_LOCALE === 'en' ? 'Use the mic key on the keyboard to dictate.' : '키보드의 마이크 버튼으로 받아쓰기할 수 있어요.', 'info');
+}
+async function stopVoice() {
+  const session = voiceSession;
+  voiceSession = null;
+  setVoiceUi(false);
+  try { await session?.stop?.(); } catch { /* 이미 멈춤 */ }
+  try { session?.cleanup?.(); } catch { /* ignore */ }
+}
+async function startNativeVoice(plugin) {
+  const lang = ACTIVE_LOCALE === 'en' ? 'en-US' : 'ko-KR';
+  const { available } = await plugin.available();
+  if (!available) throw new Error('unavailable');
+  let perm = await plugin.checkPermissions();
+  if (perm.speechRecognition !== 'granted') perm = await plugin.requestPermissions();
+  if (perm.speechRecognition !== 'granted') {
+    showToast(ACTIVE_LOCALE === 'en' ? 'Allow speech recognition in Settings to use the mic.' : '설정에서 음성 인식·마이크를 허용하면 쓸 수 있어요.', 'info');
+    return;
+  }
+  let onDevice = false;
+  try { onDevice = Boolean((await plugin.isOnDeviceRecognitionAvailable({ language: lang }))?.available); } catch { /* 지원 안 함 */ }
+  const handles = [];
+  const session = {
+    stop: () => plugin.stop(),
+    cleanup: () => handles.forEach(h => { try { h.remove(); } catch { /* ignore */ } }),
+  };
+  voiceSession = session;
+  setVoiceUi(true);
+  handles.push(await plugin.addListener('partialResults', event => fillFromVoice(event?.matches?.[0])));
+  handles.push(await plugin.addListener('listeningState', event => {
+    if (voiceSession === session && event?.state === 'stopped') { voiceSession = null; setVoiceUi(false); session.cleanup(); }
+  }));
+  handles.push(await plugin.addListener('error', () => {
+    if (voiceSession === session) stopVoice();
+  }));
+  const result = await plugin.start({ language: lang, maxResults: 1, partialResults: true, popup: false, addPunctuation: false, useOnDeviceRecognition: onDevice });
+  if (result?.matches?.[0]) fillFromVoice(result.matches[0]);
+}
+function startWebVoice(Api) {
+  const recognition = new Api();
+  recognition.lang = ACTIVE_LOCALE === 'en' ? 'en-US' : 'ko-KR';
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+  voiceSession = { stop: () => recognition.stop() };
+  setVoiceUi(true);
+  recognition.addEventListener('result', event => {
+    const last = event.results?.[event.results.length - 1];
+    fillFromVoice(last?.[0]?.transcript);
   });
-  agentRecognition.addEventListener('error', () => {
-    appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? 'Voice input could not start. You can continue by typing.'
-      : '음성 입력을 시작하지 못했어요. 텍스트로 계속 입력할 수 있어요.');
-  });
-  agentRecognition.addEventListener('end', () => {
-    agentRecognition = null;
-    agentVoiceButton.classList.remove('is-listening');
-    agentVoiceButton.setAttribute('aria-pressed', 'false');
-  });
+  recognition.addEventListener('error', () => { voiceSession = null; setVoiceUi(false); voiceFallbackToKeyboard(); });
+  recognition.addEventListener('end', () => { voiceSession = null; setVoiceUi(false); });
+  recognition.start();
+}
+agentVoiceButton?.addEventListener('click', async () => {
+  if (voiceSession) { await stopVoice(); return; }
   try {
-    agentRecognition.start();
+    const plugin = speechPlugin();
+    if (plugin) { await startNativeVoice(plugin); return; }
+    const WebApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (WebApi) { startWebVoice(WebApi); return; }
+    voiceFallbackToKeyboard();
+  } catch {
+    await stopVoice();
+    voiceFallbackToKeyboard();
+  }
+});
+
+/* 사진으로 기록: 사진을 줄여(긴 변 1280px, 약 2MB 이하 JPEG) 맥 미니로 보내면
+   맥 미니가 사진 속 음식을 알아보고(Grok 이미지 모델) 영양성분을 찾아 바로 기록 */
+const PHOTO_CONSENT_KEY = 'rebuilders-photo-consent';
+let bridgePhotoBusy = false;
+
+async function resizePhoto(file, maxSide = 1280, maxBytes = 2 * 1024 * 1024) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('image'));
+      el.src = url;
+    });
+    const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.82, 0.7, 0.55, 0.4]) {
+      const data = canvas.toDataURL('image/jpeg', quality).split(',')[1] || '';
+      if (data.length * 0.75 <= maxBytes) return data;
+    }
+    throw new Error('too_big');
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function confirmPhotoConsent() {
+  try { if (localStorage.getItem(PHOTO_CONSENT_KEY) === '1') return true; } catch { /* ignore */ }
+  const ok = confirm(ACTIVE_LOCALE === 'en'
+    ? 'The photo goes to your Mac mini, which sends it to xAI (Grok) to recognize the food. Nothing else from the app is sent. Continue?'
+    : '사진은 집의 맥 미니를 거쳐 xAI(Grok)로 보내 음식을 알아봐요. 앱의 다른 정보는 보내지 않아요. 계속할까요?');
+  if (ok) { try { localStorage.setItem(PHOTO_CONSENT_KEY, '1'); } catch { /* ignore */ } }
+  return ok;
+}
+
+document.getElementById('ai-photo')?.addEventListener('click', async () => {
+  const en = ACTIVE_LOCALE === 'en';
+  if (!globalThis.RebuildersBridge?.isConfigured()) {
+    showToast(en ? 'Connect the Mac mini in Settings to log from photos.' : '사진 기록은 설정에서 맥 미니를 연결하면 쓸 수 있어요.', 'info');
+    return;
+  }
+  if (bridgePhotoBusy) return;
+  if (!(await confirmPhotoConsent())) return;
+  document.getElementById('ai-photo-input')?.click();
+});
+
+document.getElementById('ai-photo-input')?.addEventListener('change', async event => {
+  const input = event.currentTarget;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  const en = ACTIVE_LOCALE === 'en';
+  const typed = agentInputEl?.value.trim() || '';
+  const parsed = typed ? parseQuickFoodText(typed) : null;
+  const mealId = parsed?.mealExplicit ? parsed.mealId : (globalThis.RebuildersQuickEntry?.mealForTime(new Date()) || 'lunch');
+  if (parsed?.dateExplicit) await goToEntryDate(parsed);
+  bridgePhotoBusy = true;
+  renderBridgePending();
+  try {
+    const image = await resizePhoto(file);
+    const result = await RebuildersBridge.lookupPhoto({ image, date: dateKey(currentDate), meal: mealId });
+    const foods = result.items.map(item => {
+      const fields = RebuildersBridge.toFoodFields(item);
+      if (!fields) return null;
+      const { displayName, ...rest } = fields;
+      return { name: displayName || item.name, ...rest, inputName: item.name, loggedVia: 'bridge-photo' };
+    }).filter(Boolean);
+    if (!foods.length) {
+      showToast(en ? 'Could not find food in the photo.' : '사진에서 음식을 찾지 못했어요.', 'info');
+      return;
+    }
+    if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
+    await addFoods(mealId, foods);
+    if (typed && parsed && !parsed.items.length) { agentInputEl.value = ''; refreshAiDockSend(); }
+    appendAgentMessage(en ? `Photo → ${mealLabel(mealId)}: ${foods.map(quickItemSummary).join(', ')} (AI estimate)` : `사진 → ${mealLabel(mealId)}에 기록: ${foods.map(quickItemSummary).join(', ')} (AI 추정)`);
+    showToast(en ? `Logged ${foods.length} from the photo (AI estimate)` : `사진에서 ${foods.length}개 찾아 기록했어요 (AI 추정)`, 'success');
   } catch (error) {
-    agentRecognition = null;
-    agentVoiceButton.classList.remove('is-listening');
-    agentVoiceButton.setAttribute('aria-pressed', 'false');
-    appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? 'Voice input is already active or unavailable. You can continue by typing.'
-      : '음성 입력을 시작할 수 없어요. 텍스트로 계속 입력해주세요.');
+    const kind = error instanceof RebuildersBridge.BridgeError ? error.kind : (error?.message || 'error');
+    showToast(kind === 'too_big' ? (en ? 'The photo is too large.' : '사진이 너무 커요.')
+      : bridgeStopMessage(kind === 'unreachable' || kind === 'unauthorized' ? kind : 'agent_failed').replace('대기 중이에요. 집 와이파이에서 앱을 열면 자동으로 채워요.', '사진은 집 와이파이에서 다시 보내주세요.'), 'info');
+  } finally {
+    bridgePhotoBusy = false;
+    renderBridgePending();
   }
 });
 
@@ -5767,7 +5947,6 @@ function renderHealthSettings(message = '') {
 let healthRefreshSeq = 0;
 function setGlanceRows({ heart = false, steps = false, link = false } = {}) {
   document.getElementById('glance-heart').hidden = !heart;
-  document.getElementById('glance-heart-avg').hidden = !heart;
   document.getElementById('glance-steps').hidden = !steps;
   document.getElementById('health-glance-connect').hidden = !link;
 }
@@ -5789,10 +5968,8 @@ async function refreshHeartRate(options = {}) {
     const hasHeart = !day.outOfRange && day.heartCount > 0;
     const setValue = (id, value, text) => { const el = document.getElementById(id); el.dataset.value = value; el.textContent = text; };
     const latest = hasHeart ? String(day.heartLatest) : '--';
-    const average = hasHeart ? String(day.heartAverage) : '--';
     const steps = !day.outOfRange && day.steps != null ? day.steps.toLocaleString(en ? 'en-US' : 'ko-KR') : '--';
     setValue('heart-rate-latest', latest, `${latest} bpm`);
-    setValue('heart-rate-average', average, `${en ? 'Avg' : '평균'} ${average}`);
     setValue('health-steps-value', steps, steps);
     let latestTime = '';
     if (hasHeart && day.heartLatestAt) {
@@ -6276,7 +6453,10 @@ function renderBridgePending() {
   const en = ACTIVE_LOCALE === 'en';
   el.hidden = !count;
   el.classList.toggle('is-working', bridgeProcessing);
-  el.textContent = bridgeProcessing ? (en ? 'AI is finding…' : 'AI가 찾는 중…') : (en ? `AI waiting ${count}` : `AI 대기 ${count}`);
+  const photo = typeof bridgePhotoBusy !== 'undefined' && bridgePhotoBusy;
+  el.hidden = !count && !photo;
+  el.classList.toggle('is-working', bridgeProcessing || photo);
+  el.textContent = photo ? (en ? 'AI is looking at the photo…' : 'AI가 사진 보는 중…') : bridgeProcessing ? (en ? 'AI is finding…' : 'AI가 찾는 중…') : (en ? `AI waiting ${count}` : `AI 대기 ${count}`);
   el.setAttribute('aria-label', en
     ? `${count} foods waiting for the Mac mini AI. Tap to try again.`
     : `맥 미니 AI가 채울 음식 ${count}개 대기 중. 누르면 다시 시도해요.`);
@@ -6314,6 +6494,9 @@ function saveBridgeSettingsFromInputs() {
 }
 
 function setupBridge() {
+  const dock = document.getElementById('home-ai-dock');
+  if (dock) dock.hidden = activeView !== 'home';
+  document.body.classList.toggle('has-ai-dock', activeView === 'home');
   renderBridgeSettings();
   renderBridgePending();
   processBridgeQueue();

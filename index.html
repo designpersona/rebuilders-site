@@ -102,9 +102,6 @@
               <img class="vital-icon" src="assets/icon/Health status/heart.png" width="12" height="12" alt="" />
               <strong id="heart-rate-latest" data-value="--">-- bpm</strong>
             </div>
-            <div id="glance-heart-avg" aria-label="평균 심박수" hidden>
-              <strong id="heart-rate-average" data-value="--">평균 --</strong>
-            </div>
             <div id="glance-steps" aria-label="걸음수" hidden>
               <img class="vital-icon" src="assets/icon/Health status/Step.png" width="12" height="12" alt="" />
               <strong id="health-steps-value" data-value="--">--</strong>
@@ -743,52 +740,8 @@
       <div class="content-end-spacer"></div>
     </div>
 
-    <!-- 채팅(AI): 안내 + 텔레그램 이동 + 앱 내 기록 데모 -->
-    <div class="app-content view-panel" id="view-ai" hidden>
-      <header class="agent-page-head">
-        <div class="agent-brand-row">
-          <div class="agent-brand-logo-wrap">
-            <img class="agent-brand-logo" src="assets/logo/Logo.png" width="1022" height="224" alt="Rebuilders" />
-          </div>
-          <h1 id="agent-page-title">AI 채팅</h1>
-        </div>
-        <small id="agent-connection-status" data-state="web" hidden>앱에서 바로 기록 · 이 기기에만 저장</small>
-        <div class="home-utilities">
-          <button type="button" class="home-utility-btn agent-help-btn" id="agent-help" aria-label="채팅 도움말">
-            <img class="home-utility-icon" src="assets/icon/buttons/info.svg" width="22" height="22" alt=""
-              aria-hidden="true" />
-          </button>
-          <button class="home-utility-btn open-profile-btn" type="button" aria-label="설정과 내정보 열기">
-            <img class="home-utility-icon" src="assets/icon/buttons/settings.svg" width="22" height="22" alt=""
-              aria-hidden="true" />
-          </button>
-        </div>
-      </header>
-
-      <div class="agent-log" id="agent-log" aria-live="polite">
-        <div class="agent-message is-agent is-greeting" aria-label="AI 식단관리사 안내">
-          <img class="agent-avatar" src="assets/icon/buttons/robot.svg" width="40" height="40" alt=""
-            aria-hidden="true" />
-          <div class="agent-message-body">
-            <span class="agent-name" id="agent-display-name">AI 식단관리사</span>
-            <div class="agent-bubble">
-              <span class="agent-bubble-text" id="agent-greeting-text">오늘 무엇을 먹었나요?</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="agent-composer">
-        <input id="agent-input" type="text" placeholder='"아침 바나나", "점심 햄치즈 토스트, 아아"처럼 짧게 써도 돼요.' autocomplete="off" />
-        <button id="agent-voice" class="agent-voice" type="button" aria-label="음성으로 입력"><svg width="20" height="20"
-            viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <rect x="7" y="2" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.6" />
-            <path d="M4.5 9.5C4.5 12.5 6.8 15 10 15C13.2 15 15.5 12.5 15.5 9.5M10 15V18M7.5 18H12.5"
-              stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-          </svg></button>
-        <button id="agent-send" type="button" aria-label="메시지 보내기">↑</button>
-      </div>
-    </div>
+    <!-- (예전 AI 탭: 홈 하단 AI 입력창으로 옮김. 코드 호환용 빈 패널) -->
+    <div class="app-content view-panel" id="view-ai" hidden></div>
 
     <!-- 내정보 페이지 -->
     <div class="app-content view-panel" id="view-profile" hidden>
@@ -970,6 +923,28 @@
     </div>
 
     <!-- Bottom Navigation: 내 냉장고 · 채팅 · 홈 · Foodex · 통계 -->
+    <!-- 홈 하단 AI 입력창: 메신저처럼 탭바 바로 위. 키보드가 열리면 탭바가 숨고 입력창이 키보드 위에 붙음 -->
+    <div class="home-ai-dock" id="home-ai-dock">
+      <div class="ai-dock-panel" id="ai-dock-panel" hidden>
+        <div class="ai-dock-panel-head">
+          <strong>최근 대화</strong>
+          <span class="ai-dock-panel-actions">
+            <button type="button" class="ai-dock-text-btn" id="agent-help" aria-label="AI 입력 도움말">도움말</button>
+            <button type="button" class="ai-dock-text-btn" id="ai-dock-panel-close" aria-label="최근 대화 닫기">닫기</button>
+          </span>
+        </div>
+        <div class="agent-log ai-dock-log" id="agent-log" aria-live="polite"></div>
+      </div>
+      <button type="button" class="ai-dock-toggle" id="ai-dock-toggle" aria-expanded="false" aria-controls="ai-dock-panel" hidden>최근 대화</button>
+      <div class="ai-dock-bar">
+        <button type="button" class="ai-dock-icon" id="ai-photo" aria-label="사진으로 기록"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 8.5C4 7.4 4.9 6.5 6 6.5H8L9.5 4.5H14.5L16 6.5H18C19.1 6.5 20 7.4 20 8.5V17.5C20 18.6 19.1 19.5 18 19.5H6C4.9 19.5 4 18.6 4 17.5V8.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.7"/></svg></button>
+        <input type="file" id="ai-photo-input" accept="image/*" hidden />
+        <input id="agent-input" class="ai-dock-input" type="text" placeholder="아침 바나나" autocomplete="off" enterkeyhint="send" aria-label="먹은 음식 입력" />
+        <button type="button" class="ai-dock-icon agent-voice" id="agent-voice" aria-label="음성으로 입력" aria-pressed="false"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="7" y="2" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M4.5 9.5C4.5 12.5 6.8 15 10 15C13.2 15 15.5 12.5 15.5 9.5M10 15V18M7.5 18H12.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+        <button type="button" class="ai-dock-send" id="agent-send" aria-label="보내기" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12L20 4L13 20L11 13L4 12Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+      </div>
+    </div>
+
     <nav class="bottom-nav" aria-label="하단 네비게이션">
       <button class="nav-item" id="nav-shopping" data-view="fridge" aria-label="내 냉장고">
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
@@ -978,10 +953,6 @@
             stroke-linecap="round" />
         </svg>
         <span>내 냉장고</span>
-      </button>
-      <button class="nav-item" id="nav-chat" data-view="ai" aria-label="채팅">
-        <img class="nav-icon" src="assets/icon/buttons/ai.svg" width="27" height="27" alt="" aria-hidden="true" />
-        <span>채팅</span>
       </button>
       <button class="nav-item active" id="nav-home" data-view="home" aria-label="홈">
         <img class="nav-icon" src="assets/icon/buttons/home.svg" width="27" height="27" alt="" aria-hidden="true" />
@@ -1304,8 +1275,8 @@
   <script src="quick-entry.js?v=2"></script>
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
-  <script src="bridge.js?v=2"></script>
-  <script src="app.js?v=89"></script>
+  <script src="bridge.js?v=3"></script>
+  <script src="app.js?v=90"></script>
 </body>
 
 </html>

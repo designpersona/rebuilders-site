@@ -160,6 +160,13 @@ try {
   await evaluate(chat('내일 아침 바나나'));
   const tomorrow = await evaluate(`${keyOf} const d = new Date(); d.setDate(d.getDate() + 1); const a = await storageRepository.getAll(); return { t: (a[key(d)]?.breakfast || []).map(f => f.name), today: (a[key(new Date())]?.breakfast || []).map(f => f.name), shown: dateKey(currentDate) === key(d) };`);
   check('내일 아침 바나나 → 내일 아침 [바나나], 오늘엔 없음', tomorrow.t.includes('바나나') && !tomorrow.t.some(n => n.includes('내일')) && !tomorrow.today.some(n => /내일|바나나/.test(n)) && tomorrow.shown, JSON.stringify(tomorrow));
+  // 8) 홈 하단 AI 입력창(AI 탭 없음)
+  const dockUi = await evaluate(`setActiveView('home'); const i = document.getElementById('agent-input'); const send = document.getElementById('agent-send'); const emptyHidden = send.hidden; i.value = '간식 바나나'; i.dispatchEvent(new Event('input')); const shown = !send.hidden; const nav = document.querySelector('.bottom-nav').getBoundingClientRect(); const bar = document.querySelector('.ai-dock-bar').getBoundingClientRect(); return { noTab: !document.getElementById('nav-chat'), emptyHidden, shown, above: bar.bottom <= nav.top + 1, placeholder: i.placeholder, dock: !document.getElementById('home-ai-dock').hidden, photo: !!document.getElementById('ai-photo'), mic: !!document.getElementById('agent-voice') };`);
+  check('AI 탭 없음 + 홈 하단 입력창(사진·입력·마이크, 글자 있으면 보내기)', dockUi.noTab && dockUi.emptyHidden && dockUi.shown && dockUi.above && dockUi.dock && dockUi.photo && dockUi.mic && dockUi.placeholder === '아침 바나나', JSON.stringify(dockUi));
+  const dockSend = await evaluate(`document.getElementById('agent-send').click(); await new Promise(r => setTimeout(r, 600)); return { cleared: document.getElementById('agent-input').value === '', sendHidden: document.getElementById('agent-send').hidden, toggle: !document.getElementById('ai-dock-toggle').hidden };`);
+  check('보내기 → 기록·입력칸 비움·최근 대화 버튼', dockSend.cleared && dockSend.sendHidden && dockSend.toggle, JSON.stringify(dockSend));
+  const other = await evaluate(`setActiveView('stats'); const hidden = document.getElementById('home-ai-dock').hidden; setActiveView('ai'); await new Promise(r => setTimeout(r, 100)); return { hidden, back: activeView === 'home' };`);
+  check('다른 탭에선 입력창 숨김, 예전 AI 화면 요청은 홈으로', other.hidden && other.back, JSON.stringify(other));
   check('스크립트 오류 없음', !errors.length, errors.slice(0, 3).join(' | '));
 } catch (error) {
   check('실행', false, String(error?.message || error));
