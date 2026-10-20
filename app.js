@@ -550,7 +550,8 @@ function storageErrorMessage(error) {
 
 function showStorageFailure(error) {
   console.error('브라우저 저장소 오류:', error);
-  showToast(storageErrorMessage(error), 'error');
+  const code = error?.name && error.name !== 'Error' ? error.name : (error?.message || '').slice(0, 40);
+  showToast(storageErrorMessage(error) + (code ? ` (${code})` : ''), 'error');
 }
 
 function setButtonPending(button, pending) {
@@ -691,12 +692,149 @@ async function loadCurrentDay() {
 }
 
 function applyCurrentDayData(data) {
+  const day = normalizeDayRecord(data || {}).day;
   MEAL_IDS.forEach(id => {
-    meals[id].foods = (data[id] || []).map(f => ({ ...f }));
+    meals[id].foods = day[id].map(f => ({ ...f }));
   });
   // snack은 MEAL_IDS에 없지만 별도로 로드
-  meals.snack.foods = (data.snack || []).map(f => ({ ...f }));
-  mealTimes = normaliseMealTimes(data.mealTimes);
+  meals.snack.foods = day.snack.map(f => ({ ...f }));
+  mealTimes = normaliseMealTimes(data?.mealTimes);
+}
+
+/* ============================
+   예전 방식으로 저장된 기록 정리(텔레그램 링크·이름만·AI 새 필드·'내일, 바나나' 등)
+   - 지우지 않고 고침: id 부여, 이름은 글자로, 숫자 필드는 숫자 또는 비움(null), 간식 슬롯 보정
+   ============================ */
+const FOOD_NUMBER_FIELDS = ['cal', 'carbs', 'protein', 'fat', 'sugar', 'fiber', 'sodium', 'servingAmount'];
+let foodIdSequence = 0;
+function newFoodId() {
+  foodIdSequence += 1;
+  return `f-${Date.now().toString(36)}-${foodIdSequence.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = typeof value === 'number' ? value : Number.parseFloat(String(value).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+function normalizeFoodEntry(raw, mealId) {
+  if (raw === null || raw === undefined) return null;
+  let food;
+  if (typeof raw === 'string') food = { name: raw };
+  else if (typeof raw === 'object' && !Array.isArray(raw)) food = { ...raw };
+  else food = { name: String(raw) };
+  // 예전 코드가 글자 하나짜리 기록('바나나')을 펼쳐 저장한 경우 {0:'바',1:'나',2:'나'} → 이름 되살리기
+  if ((typeof food.name !== 'string' || !food.name.trim()) && typeof food[0] === 'string') {
+    let chars = '';
+    for (let i = 0; typeof food[i] === 'string'; i += 1) { chars += food[i]; delete food[i]; }
+    if (chars.trim()) food.name = chars.trim();
+  }
+  if (typeof food.name !== 'string' || !food.name.trim()) {
+    const alt = [food.name, food.officialName, food.displayName, food.inputName].find(v => (typeof v === 'string' && v.trim()) || typeof v === 'number');
+    food.name = alt !== undefined ? String(alt).trim() : (ACTIVE_LOCALE === 'en' ? 'Unnamed food' : '이름 없는 음식');
+  }
+  if (typeof food.id !== 'string' || !food.id) food.id = newFoodId();
+  if ((food.cal === undefined || food.cal === null) && food.nutrition && typeof food.nutrition === 'object') {
+    const n = food.nutrition;
+    const pick = (...keys) => keys.map(k => toNumberOrNull(n[k])).find(v => v !== null);
+    const cal = pick('cal', 'kcal', 'calories');
+    if (cal !== undefined) food.cal = cal;
+    ['carbs', 'protein', 'fat'].forEach(k => { if (food[k] === undefined || food[k] === null) { const v = pick(k); if (v !== undefined) food[k] = v; } });
+  }
+  FOOD_NUMBER_FIELDS.forEach(key => {
+    if (!(key in food)) return;
+    const value = food[key];
+    if (value === null || typeof value === 'number' && Number.isFinite(value)) return;
+    food[key] = toNumberOrNull(value);
+  });
+  if (food.serving !== undefined && food.serving !== null && typeof food.serving !== 'string') {
+    const s = food.serving;
+    food.serving = typeof s === 'number' ? String(s)
+      : Array.isArray(s) ? s.filter(v => typeof v === 'string' || typeof v === 'number').join(' ')
+      : (typeof s === 'object' && typeof s.text === 'string') ? s.text
+      : (typeof s === 'object' && s.amount !== undefined) ? `${s.amount}${typeof s.unit === 'string' ? s.unit : ''}`
+      : '';
+  }
+  if (food.servingUnit !== undefined && food.servingUnit !== null && typeof food.servingUnit !== 'string') food.servingUnit = String(food.servingUnit);
+  if (mealId === 'snack') {
+    const slot = Number(food.slot);
+    food.slot = SNACK_SLOTS.includes(slot) ? slot : 3;
+  }
+  return food;
+}
+function normalizeDayRecord(day) {
+  const src = day && typeof day === 'object' ? day : {};
+  const next = { ...src };
+  ['breakfast', 'lunch', 'dinner', 'snack'].forEach(mealId => {
+    let list = src[mealId];
+    if (!Array.isArray(list)) list = list && typeof list === 'object' ? Object.values(list) : [];
+    next[mealId] = list.map(item => normalizeFoodEntry(item, mealId)).filter(Boolean);
+  });
+  let changed = false;
+  try { changed = JSON.stringify(next) !== JSON.stringify(src); } catch { changed = true; }
+  return { day: next, changed };
+}
+/* 한 번만: 저장된 모든 날짜 기록 정리. 'YYYY-M-D'·'YYYY/MM/DD'·시간이 붙은 키는 'YYYY-MM-DD' 로 옮겨 합침(지우지 않음) */
+const LEGACY_MIGRATION_KEY = 'rebuilders.entriesMigrated.v1';
+async function migrateLegacyEntriesOnce() {
+  try {
+    if (localStorage.getItem(LEGACY_MIGRATION_KEY)) return { skipped: true };
+  } catch { /* localStorage 없음 → 그래도 진행 */ }
+  try {
+    const all = await storageRepository.getAll();
+    const next = { ...all };
+    let changed = false;
+    let moved = 0;
+    let fixed = 0;
+    Object.keys(all).forEach(key => {
+      const m = /^(\d{4})[-./](\d{1,2})[-./](\d{1,2})(?:$|[T\s])/.exec(key);
+      if (!m) return;
+      const canonical = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+      const { day, changed: dayChanged } = normalizeDayRecord(all[key]);
+      if (canonical !== key) {
+        const target = normalizeDayRecord(next[canonical] || {}).day;
+        ['breakfast', 'lunch', 'dinner', 'snack'].forEach(id => { target[id] = [...target[id], ...day[id]]; });
+        if (!target.mealTimes && day.mealTimes) target.mealTimes = day.mealTimes;
+        next[canonical] = target;
+        delete next[key];
+        moved += 1;
+        changed = true;
+      } else if (dayChanged) {
+        next[key] = day;
+        fixed += 1;
+        changed = true;
+      }
+    });
+    if (changed) await storageRepository.replaceAll(next);
+    try { localStorage.setItem(LEGACY_MIGRATION_KEY, new Date().toISOString()); } catch { /* ignore */ }
+    if (changed) console.info('예전 기록 정리:', { fixed, moved });
+    return { fixed, moved };
+  } catch (error) {
+    console.warn('예전 기록 정리 실패(앱은 계속 동작):', error);
+    return { error: String(error) };
+  }
+}
+/* 화면에 그리기 전 id 가 없는 항목에 id 부여(새로 추가한 항목 포함) */
+function ensureFoodIds() {
+  Object.entries(meals).forEach(([mealId, meal]) => {
+    if (!Array.isArray(meal.foods)) { meal.foods = []; return; }
+    if (meal.foods.some(f => !f || typeof f !== 'object' || typeof f.id !== 'string' || typeof f.name !== 'string')) {
+      meal.foods = meal.foods.map(f => normalizeFoodEntry(f, mealId)).filter(Boolean);
+    }
+  });
+}
+/* 지금 목록에서 이 음식의 위치(id → 같은 객체 → 원래 번호 순) */
+function resolveFoodIndex(mealId, idx, food) {
+  const list = meals[mealId]?.foods;
+  if (!Array.isArray(list)) return -1;
+  if (food && typeof food === 'object' && food.id) {
+    const byId = list.findIndex(f => f && f.id === food.id);
+    if (byId >= 0) return byId;
+  }
+  if (food) {
+    const byRef = list.indexOf(food);
+    if (byRef >= 0) return byRef;
+  }
+  return Number.isInteger(idx) && idx >= 0 && idx < list.length ? idx : -1;
 }
 
 async function saveCurrentDay() {
@@ -1470,6 +1608,7 @@ function dragHandleSvg() {
 }
 
 function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
+  if (!food || typeof food !== 'object') food = { name: String(food ?? '') };
   const visibleName = displayFoodName(food);
   const dragLabel = ACTIVE_LOCALE === 'en' ? `${visibleName} drag to move` : `${visibleName} 드래그해서 이동`;
   const editLabel = ACTIVE_LOCALE === 'en' ? `Edit ${visibleName}` : `${visibleName} 수정`;
@@ -1556,8 +1695,8 @@ function renderMeal(mealId) {
       itemsEl.appendChild(createFoodItemEl(
         food,
         { kind: 'meal', mealId, idx },
-        () => openFoodEdit(mealId, idx),
-        () => removeFood(mealId, idx),
+        () => openFoodEdit(mealId, resolveFoodIndex(mealId, idx, food)),
+        () => removeFood(mealId, idx, food),
       ));
     });
   }
@@ -1659,6 +1798,7 @@ function updateTimelineStates() {
 }
 
 function renderAll(skipAnimation = false) {
+  ensureFoodIds();
   MEAL_IDS.forEach(renderMeal);
   renderSnack();
   updateTimelineStates();
@@ -1746,8 +1886,8 @@ function renderSnackSlot(slot) {
       itemsEl.appendChild(createFoodItemEl(
         food,
         { kind: 'snack', mealId: 'snack', idx, slot },
-        () => openFoodEdit('snack', idx),
-        () => removeFood('snack', idx),
+        () => openFoodEdit('snack', resolveFoodIndex('snack', idx, food)),
+        () => removeFood('snack', idx, food),
       ));
     });
   }
@@ -1806,8 +1946,8 @@ function renderMealPage() {
     const item = createFoodItemEl(
       food,
       { kind: mealId === 'snack' ? 'snack' : 'meal', mealId, idx, slot },
-      () => openFoodEdit(mealId, idx),
-      () => removeFood(mealId, idx),
+      () => openFoodEdit(mealId, resolveFoodIndex(mealId, idx, food)),
+      () => removeFood(mealId, idx, food),
     );
     item.querySelector('.food-drag-handle')?.addEventListener('pointerdown', () => {
       if (timelineEditing) closeMealPage();
@@ -1926,7 +2066,7 @@ function syncSnackSlotSelector(slot) {
 function snapshotMeals() {
   return {
     foods: Object.fromEntries(
-      Object.entries(meals).map(([id, meal]) => [id, meal.foods.map(food => ({ ...food }))])
+      Object.entries(meals).map(([id, meal]) => [id, (meal.foods || []).filter(Boolean).map(food => ({ ...food }))])
     ),
     mealTimes: cloneMealTimes(),
   };
@@ -1951,16 +2091,21 @@ async function persistMealsOrRestore(before) {
   }
 }
 
-async function removeFood(mealId, idx) {
+async function removeFood(mealId, idx, food = null) {
+  if (!meals[mealId]) return;
+  const at = resolveFoodIndex(mealId, idx, food);
+  if (at < 0) { try { renderAll(false); } catch (error) { console.error(error); } return; }
   const before = snapshotMeals();
-  meals[mealId].foods.splice(idx, 1);
-  if (mealId === 'snack') {
-    const slot = before.foods.snack[idx]?.slot ?? 3;
-    if (!snackFoodsForSlot(slot).length) resetCardTime('snack', slot);
-  } else if (!meals[mealId].foods.length) {
-    resetCardTime(mealId);
-  }
-  renderAll(false);
+  const [removed] = meals[mealId].foods.splice(at, 1);
+  try {
+    if (mealId === 'snack') {
+      const slot = removed?.slot ?? 3;
+      if (!snackFoodsForSlot(slot).length) resetCardTime('snack', slot);
+    } else if (!meals[mealId].foods.length) {
+      resetCardTime(mealId);
+    }
+  } catch (error) { console.error('시간 초기화 실패(삭제는 계속):', error); }
+  try { renderAll(false); } catch (error) { console.error('다시 그리기 실패(삭제는 계속):', error); }
   await persistMealsOrRestore(before);
 }
 
@@ -1979,7 +2124,7 @@ async function clearMealRecord(mealId, slot = null) {
 
 async function addFood(mealId, foodData) {
   const before = snapshotMeals();
-  const data = { ...foodData, _isNew: true };
+  const data = { ...foodData, id: newFoodId(), _isNew: true };
   // 간식이면 현재 선택된 슬롯을 자동으로 태깅
   if (mealId === 'snack') data.slot = currentSnackSlot;
   const destinationSlot = mealId === 'snack' ? currentSnackSlot : null;
@@ -6724,6 +6869,7 @@ async function initializeApp() {
   await loadSettings();
   await loadCustomFoods();
   await loadShopping();
+  await migrateLegacyEntriesOnce();
   await loadCurrentDay();
   statsCache = await loadStorage();
   setupTimeControls();
