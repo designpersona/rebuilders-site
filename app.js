@@ -829,9 +829,9 @@ function applyExtendedStaticCopy() {
   set('label[for="reminder-dinner"]', '저녁', 'Dinner');
   set('#reminder-save', '알림 저장', 'Save reminders');
 
-  label('#fab-menu', '메뉴', 'Menu');
+  label('#page-tabs', '페이지', 'Pages');
   label('#nav-settings', '설정', 'Settings');
-  set('#nav-settings .fab-label', '설정', 'Settings');
+  set('#nav-settings span', '설정', 'Settings');
   label('#nav-home', '홈', 'Home');
   label('#nav-search', '음식사전', 'Foodpedia');
   label('#nav-stats', '통계', 'Stats');
@@ -5419,7 +5419,10 @@ agentHelpDialog?.addEventListener('click', event => {
    ============================ */
 const agentInputEl = document.getElementById('agent-input');
 const agentSendEl = document.getElementById('agent-send');
-const agentVoiceButton = document.getElementById('agent-voice');
+// 마이크(음성 입력)는 잠시 숨김. 플러그인은 그대로 두고 이 값만 true 로 바꾸면 다시 보임
+const VOICE_ENABLED = false;
+const agentVoiceButton = VOICE_ENABLED ? document.getElementById('agent-voice') : null;
+if (!VOICE_ENABLED) document.getElementById('agent-voice')?.setAttribute('hidden', '');
 
 /* 보내기 버튼은 항상 보이고, 글자가 없을 땐 흐리게(눌러도 아무 일 없음).
    iOS 한글 입력(조합 중)은 input 이벤트가 늦을 수 있어 여러 이벤트에서 확인 */
@@ -5494,6 +5497,96 @@ document.getElementById('fab-toggle')?.addEventListener('click', () => {
 });
 document.getElementById('fab-backdrop')?.addEventListener('click', () => setFabMenu(false));
 document.addEventListener('keydown', event => { if (event.key === 'Escape') setFabMenu(false); });
+
+/* ============================
+   위쪽 글자 탭 + 좌우로 밀어 옆 페이지로
+   ============================ */
+const PAGE_ORDER = ['fridge', 'home', 'foodex', 'stats', 'profile'];
+function pageIndexOf(view) {
+  if (view === 'shopping') return 0;
+  if (view === 'search') return 2;
+  return PAGE_ORDER.indexOf(view);
+}
+function visiblePanel() {
+  return [...document.querySelectorAll('.app-content.view-panel')].find(el => !el.hidden) || null;
+}
+function slideToPage(view, dir) {
+  if (foodDex?.classList.contains('open')) closeFoodDex();
+  if (view !== 'foodex') closeFoodexLibrary();
+  setActiveView(view);
+  const panel = visiblePanel();
+  if (panel && dir) {
+    panel.classList.remove('page-in-left', 'page-in-right');
+    void panel.offsetWidth;
+    panel.classList.add(dir > 0 ? 'page-in-right' : 'page-in-left');
+    setTimeout(() => panel.classList.remove('page-in-left', 'page-in-right'), 320);
+  }
+  document.querySelector('#page-tabs .page-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+function pageSwipeBlocked(target, x) {
+  if (x < 20 || x > innerWidth - 20) return true; // iOS 가장자리 뒤로가기와 겹치지 않게
+  const panel = target.closest?.('.app-content.view-panel');
+  if (!panel || panel.hidden || panel.id === 'view-meal-detail') return true;
+  if (document.body.classList.contains('meal-page-open') || document.body.classList.contains('food-dex-open') || document.body.classList.contains('foodex-library-open')) return true;
+  if (document.querySelector('.modal-overlay.open, .agent-help-overlay.open')) return true;
+  if (!document.getElementById('ai-dock-panel')?.hidden) return true;
+  if (target.closest('.swipe-row, .page-tabs, input, textarea, select, [contenteditable="true"], .ai-dock-panel, .home-ai-dock, .no-page-swipe')) return true;
+  // 가로로 스크롤되는 영역 안에서 시작하면 그 영역이 우선
+  for (let el = target; el && el !== panel; el = el.parentElement) {
+    const ox = getComputedStyle(el).overflowX;
+    if ((ox === 'auto' || ox === 'scroll') && el.scrollWidth > el.clientWidth + 2) return true;
+  }
+  return false;
+}
+(function setupPageSwipe() {
+  const frame = document.querySelector('.phone-frame');
+  if (!frame) return;
+  let sx = 0; let sy = 0; let st = 0; let mode = null; let active = false; let panel = null;
+  const reset = animate => {
+    if (!panel) return;
+    panel.style.transition = animate ? 'transform 0.2s ease' : '';
+    panel.style.transform = '';
+    const p = panel;
+    if (animate) setTimeout(() => { p.style.transition = ''; }, 220);
+  };
+  frame.addEventListener('touchstart', event => {
+    active = false; mode = null; panel = null;
+    if (event.touches.length !== 1) return;
+    const t = event.touches[0];
+    if (pageSwipeBlocked(event.target, t.clientX)) return;
+    active = true; sx = t.clientX; sy = t.clientY; st = Date.now(); panel = visiblePanel();
+  }, { passive: true });
+  frame.addEventListener('touchmove', event => {
+    if (!active) return;
+    const t = event.touches[0];
+    const dx = t.clientX - sx; const dy = t.clientY - sy;
+    if (!mode && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) mode = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'h' : 'v';
+    if (mode === 'v' || document.body.classList.contains('meal-drag-active') || document.body.classList.contains('card-drag-active')) { if (mode !== 'h') { active = false; } return; }
+    if (mode === 'h' && panel) {
+      const idx = pageIndexOf(activeView);
+      const edge = (dx > 0 && idx <= 0) || (dx < 0 && idx >= PAGE_ORDER.length - 1);
+      panel.style.transition = 'none';
+      panel.style.transform = `translateX(${Math.round(dx * (edge ? 0.12 : 0.35))}px)`;
+    }
+  }, { passive: true });
+  const finish = event => {
+    if (!active) return;
+    active = false;
+    const t = event.changedTouches?.[0];
+    if (mode !== 'h' || !t) { reset(true); return; }
+    const dx = t.clientX - sx; const dy = t.clientY - sy;
+    const v = Math.abs(dx) / Math.max(1, Date.now() - st);
+    const idx = pageIndexOf(activeView);
+    const dir = dx < 0 ? 1 : -1;
+    const next = PAGE_ORDER[idx + dir];
+    const enough = (Math.abs(dx) >= 60 || (v > 0.45 && Math.abs(dx) >= 30)) && Math.abs(dx) > Math.abs(dy) * 1.5;
+    if (!enough || idx < 0 || !next) { reset(true); return; }
+    if (panel) { panel.style.transition = ''; panel.style.transform = ''; }
+    slideToPage(next, dir);
+  };
+  frame.addEventListener('touchend', finish, { passive: true });
+  frame.addEventListener('touchcancel', () => { active = false; reset(true); }, { passive: true });
+})();
 document.getElementById('ai-dock-panel-close')?.addEventListener('click', () => setAiDockPanel(false));
 
 /* 음성 입력: 앱은 @capgo/capacitor-speech-recognition(iOS 음성 인식, 가능하면 기기 안 인식, ko-KR),

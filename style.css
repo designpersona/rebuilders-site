@@ -12210,3 +12210,57 @@ body.has-ai-dock .toast-host { bottom: calc(150px + var(--safe-bottom)); }
 .ai-dock-panel-head .ai-dock-text-btn#ai-dock-panel-close { color: var(--text-primary); font-size: 13px; padding: 6px 4px; }
 body.has-ai-dock #view-home { padding-bottom: 48px; scroll-padding-bottom: 48px; }
 body.fab-open .ai-dock-toggle { display: none !important; }
+
+/* ============================
+   머리말(로고·검색) 제거 → 위쪽 글자 탭, 떠 있는 메뉴 버튼 제거
+   ============================ */
+#view-home > .home-brand,
+.stats-brand-logo-wrap,
+.search-brand-logo-wrap { display: none !important; }
+.fab-menu, .fab-backdrop { display: none !important; }
+.page-tabs {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px max(18px, var(--safe-right)) 8px max(18px, var(--safe-left));
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg);
+}
+.page-tabs::-webkit-scrollbar { display: none; }
+.page-tabs .nav-item.page-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 6px 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+  font: 600 15px/1.2 var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+  transform: none;
+}
+.page-tabs .nav-item.page-tab span { font: inherit; color: inherit; display: inline; opacity: 1; }
+.page-tabs .nav-item.page-tab.active { color: var(--text-primary); font-weight: 800; background: transparent; }
+body.meal-page-open .page-tabs { display: none; }
+/* 아래 여백: 메뉴 버튼이 없어졌으니 원래대로 */
+body:not(.keyboard-open) .ai-dock-bar { padding-right: 0; }
+body:not(.has-ai-dock) .app-content { padding-bottom: calc(20px + var(--safe-bottom)); }
+.toast-host { bottom: calc(24px + var(--safe-bottom)); }
+/* 페이지 넘김 */
+@keyframes page-in-right { from { transform: translateX(28%); opacity: 0.4; } to { transform: none; opacity: 1; } }
+@keyframes page-in-left { from { transform: translateX(-28%); opacity: 0.4; } to { transform: none; opacity: 1; } }
+.app-content.view-panel.page-in-right { animation: page-in-right 0.26s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.app-content.view-panel.page-in-left { animation: page-in-left 0.26s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .app-content.view-panel.page-in-right, .app-content.view-panel.page-in-left { animation: none; }
+}
