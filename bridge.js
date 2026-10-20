@@ -154,6 +154,7 @@
   /** 사진(JPEG base64, 2MB 이하) → 맥 미니가 음식 인식 + 영양 찾기 */
   async function lookupPhoto({ image, date, meal }) {
     if (typeof image !== 'string' || !image || image.length > 2900000) throw new BridgeError('bad_request');
+    // 브리지에서 사진이 꺼져 있으면 403(photo_disabled) → bad_request 로 처리됨
     const data = await request('/photo', { method: 'POST', body: { image, date, meal } });
     return { items: Array.isArray(data.items) ? data.items : [], failed: Array.isArray(data.failed) ? data.failed : [] };
   }

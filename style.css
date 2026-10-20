@@ -12016,3 +12016,5 @@ body.keyboard-open .home-ai-dock { padding-bottom: 8px; }
 /* 홈 입력창이 있을 땐 토스트를 입력창 위로 */
 body.has-ai-dock .toast-host { bottom: calc(150px + var(--safe-bottom)); }
 body.has-ai-dock.keyboard-open .toast-host { bottom: 70px; }
+
+.ai-dock-icon[hidden] { display: none !important; }

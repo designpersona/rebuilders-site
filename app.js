@@ -5520,6 +5520,10 @@ agentVoiceButton?.addEventListener('click', async () => {
 /* 사진으로 기록: 사진을 줄여(긴 변 1280px, 약 2MB 이하 JPEG) 맥 미니로 보내면
    맥 미니가 사진 속 음식을 알아보고(Grok 이미지 모델) 영양성분을 찾아 바로 기록 */
 const PHOTO_CONSENT_KEY = 'rebuilders-photo-consent';
+// 사진 기록은 보류 중: false 면 버튼을 숨기고 사진 경로를 막음(코드는 그대로 둠). 맥 미니 브리지도 REBUILDERS_PHOTO=1 일 때만 받음
+const PHOTO_ENABLED = false;
+const aiPhotoButton = document.getElementById('ai-photo');
+if (aiPhotoButton) aiPhotoButton.hidden = !PHOTO_ENABLED;
 let bridgePhotoBusy = false;
 
 async function resizePhoto(file, maxSide = 1280, maxBytes = 2 * 1024 * 1024) {
@@ -5557,6 +5561,7 @@ async function confirmPhotoConsent() {
 
 document.getElementById('ai-photo')?.addEventListener('click', async () => {
   const en = ACTIVE_LOCALE === 'en';
+  if (!PHOTO_ENABLED) { showToast(en ? 'Photo logging is coming soon.' : '사진 인식은 준비 중이에요.', 'info'); return; }
   if (!globalThis.RebuildersBridge?.isConfigured()) {
     showToast(en ? 'Connect the Mac mini in Settings to log from photos.' : '사진 기록은 설정에서 맥 미니를 연결하면 쓸 수 있어요.', 'info');
     return;
@@ -5570,7 +5575,7 @@ document.getElementById('ai-photo-input')?.addEventListener('change', async even
   const input = event.currentTarget;
   const file = input.files?.[0];
   input.value = '';
-  if (!file) return;
+  if (!file || !PHOTO_ENABLED) return;
   const en = ACTIVE_LOCALE === 'en';
   const typed = agentInputEl?.value.trim() || '';
   const parsed = typed ? parseQuickFoodText(typed) : null;
