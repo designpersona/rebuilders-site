@@ -12697,3 +12697,126 @@ body.no-character #view-home .player-card.dash-card .health-glance.dash-vitals {
 body.no-character #view-home .dash-card .dash-vitals:has(> #glance-heart[hidden]) { grid-template-columns: 1fr !important; }
 body.no-character #view-home .dash-card .dash-vitals > p span { font-size: 14px !important; font-weight: 800 !important; color: inherit !important; }
 body.no-character #view-home .dash-card .dash-vitals > .health-glance-link { grid-column: 1 / -1; }
+
+/* 위쪽 탭: 켜진 탭은 [아이콘+글자] 묶음째 칸 가운데 → 양옆 탭과 보이는 간격이 같음(글자는 약 9px 오른쪽) */
+.page-tabs .nav-item.page-tab .page-tab-icon,
+.page-tabs .nav-item.page-tab.active .page-tab-icon {
+  position: static !important; right: auto !important; top: auto !important; margin: 0 4px 0 0 !important;
+}
+
+/* 게이지 크게(고정 192×107), 가운데 글자도 1.2배 · 탄단지 칸은 좁게 */
+body.no-character #view-home .dash-card .dash-top { gap: 10px !important; }
+body.no-character #view-home .dash-card .dash-top .kcal-gauge { flex: 0 0 192px !important; width: 192px !important; max-width: 192px !important; }
+body.no-character #view-home .player-card .kcal-gauge .kcal-gauge-svg { width: 192px !important; height: 107px !important; }
+body.no-character #view-home .kcal-gauge .kcal-gauge-center { left: 17px !important; right: 17px !important; bottom: 5px !important; }
+body.no-character #view-home .kcal-gauge-value { font-size: 36px !important; }
+body.no-character #view-home .kcal-gauge-value.is-long { font-size: 29px !important; }
+body.no-character #view-home .kcal-gauge-value.is-xlong { font-size: 23px !important; }
+body.no-character #view-home .kcal-gauge .kcal-gauge-unit { font-size: 13px !important; line-height: 16px !important; }
+body.no-character #view-home .kcal-gauge .kcal-gauge-status { font-size: 13px !important; line-height: 16px !important; min-height: 16px !important; font-weight: 600; }
+body.no-character #view-home .kcal-gauge.is-over[data-mode="left"] .kcal-gauge-status { font-weight: 700; }
+body.no-character #view-home .dash-card .macros-panel { gap: 10px !important; }
+body.no-character #view-home .dash-card .macro-row { gap: 3px 4px !important; }
+body.no-character #view-home .dash-card .macro-row .macro-label { font-size: 11px !important; }
+body.no-character #view-home .dash-card .macro-row .macro-val { font-size: 10px !important; letter-spacing: -0.02em; }
+/* 아래 건강 줄: 아이콘 없이 글자만 — 작은 회색 이름 + 진한 값 */
+body.no-character #view-home .dash-card .dash-vitals .vital-label { font-size: 12px !important; font-weight: 600 !important; color: var(--text-secondary) !important; }
+body.no-character #view-home .dash-card .dash-vitals strong { font-size: 14px !important; font-weight: 700 !important; color: var(--text-primary) !important; }
+body.no-character #view-home .dash-card .dash-vitals .vital-icon { display: none !important; }
+
+/* =====================================================================
+   공통 디자인 토큰 — 모든 페이지(그로서리·식도감·식단·리포트·설정·끼니 상세)가 같이 씀
+   ===================================================================== */
+:root {
+  --rb-page-pad: 28px;            /* 식단과 같은 좌우 여백 */
+  --rb-card-gap: 12px;            /* 카드 사이 세로 간격 */
+  --rb-card-radius: 20px;
+  --rb-inner-radius: 14px;
+  --rb-hairline: #E8E9ED;
+  --rb-label: #5E6470;
+  --rb-ink: #111216;
+  --rb-surface: #FFFFFF;
+  --rb-soft: #F4F5F7;
+  --rb-btn-bg: #F1F2F5;
+  --rb-pill-dark: #1F2329;
+  --rb-card-border: 1px solid rgba(17, 18, 22, 0.06);
+  --rb-card-shadow: 0 1px 2px rgba(17, 18, 22, 0.04), 0 6px 18px rgba(17, 18, 22, 0.05);
+  --rb-row-h: 48px;
+  --rb-row-pad: 12px 14px;
+  --rb-input-h: 46px;
+}
+/* 페이지 좌우 여백 */
+.app-content.view-panel { padding-left: var(--rb-page-pad) !important; padding-right: var(--rb-page-pad) !important; }
+/* 카드: 흰 바탕 + 머리카락 선 + 옅은 그림자 + 20px */
+:is(#view-home .day-summary, #view-home .meal-card, #view-home .snack-card.has-items, .cal-card, .stats-day-card, .profile-summary-card, .profile-form-card, .meal-page-summary, .shopping-list-card, .grocery-card) {
+  background: var(--rb-surface) !important; border: var(--rb-card-border) !important; box-shadow: var(--rb-card-shadow) !important; border-radius: var(--rb-card-radius) !important;
+}
+:is(.cal-card, .stats-day-card, .profile-summary-card, .profile-form-card, .meal-page-summary, .meal-page-list-section) + :is(.cal-card, .stats-day-card, .profile-summary-card, .profile-form-card, .meal-page-summary, .meal-page-list-section) { margin-top: var(--rb-card-gap) !important; }
+/* 안쪽 카드·줄: 14px */
+:is(#view-meal-detail .food-item, .search-category-card, .collection-card, .stats-day-meal-link, .shopping-item, .collection-product-item, .collection-fridge-item) {
+  background: var(--rb-surface) !important; border: var(--rb-card-border) !important; box-shadow: var(--rb-card-shadow) !important; border-radius: var(--rb-inner-radius) !important;
+}
+:is(#view-meal-detail .food-item, .shopping-item, .collection-product-item, .quick-food-row) { min-height: var(--rb-row-h); padding: var(--rb-row-pad) !important; }
+/* 섹션 이름: 작게 #5E6470 */
+:is(.stats-section-title, .stats-day-label, .profile-summary-label, .data-mode-label, .settings-label, .meal-page-summary span, #meal-page-list-title, .meal-page-date) {
+  font-size: 12px !important; font-weight: 700 !important; color: var(--rb-label) !important; letter-spacing: 0 !important;
+}
+/* 입력칸: 옅은 바탕 + 머리카락 선, 14px */
+:is(.settings-input, .search-input, .shopping-item-editor input, .modal-sheet input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), .modal-sheet select, .modal-sheet textarea) {
+  min-height: var(--rb-input-h); background: var(--rb-soft) !important; border: 1px solid var(--rb-hairline) !important; border-radius: var(--rb-inner-radius) !important; box-shadow: none !important; color: var(--rb-ink);
+}
+:is(.settings-input, .search-input, .modal-sheet input, .modal-sheet select, .modal-sheet textarea):focus { outline: none !important; border-color: #C9CBD2 !important; background: var(--rb-surface) !important; }
+/* 버튼: 밝은 바탕, 굵은 테두리 없음(주 버튼만 진한 바탕) */
+:is(.data-action-btn, .modal-close-btn, .meal-page-add, .meal-page-empty-add, .meal-page-back, .shopping-item-cancel, .custom-edit-btn, .custom-delete-btn, .food-item-edit, .food-item-delete, .food-dex-back, .modal-x-btn) {
+  background: var(--rb-btn-bg) !important; color: var(--rb-ink) !important; border: 0 !important; box-shadow: none !important;
+}
+:is(.data-action-btn, .modal-close-btn, .meal-page-empty-add) { border-radius: var(--rb-inner-radius) !important; min-height: 44px; }
+:is(.settings-save-btn, .shopping-item-save, .food-dex-edit-record) { border: 0 !important; border-radius: var(--rb-inner-radius) !important; box-shadow: none !important; }
+
+/* ---------- 식단 시간 띠: 모두 같은 알약, 지금 끼니만 진하게, 화살표 없음, 얇은 연회색 줄 ---------- */
+#view-home#view-home .timeline-time-control { width: 50px !important; }
+#view-home#view-home .timeline-time-control .timeline-time-button {
+  width: 50px !important; min-width: 0 !important; height: 22px !important; padding: 0 !important; border-radius: 999px !important;
+  border: 0 !important; clip-path: none !important; box-shadow: none !important; background: var(--rb-hairline) !important; color: var(--rb-label) !important;
+  font-size: 11px !important; font-weight: 700 !important; line-height: 22px !important; text-align: center !important;
+}
+#view-home#view-home .is-current .timeline-time-control .timeline-time-button { background: var(--rb-pill-dark) !important; color: #fff !important; }
+#view-home#view-home .meals-section::before { width: 1px !important; background: var(--rb-hairline) !important; }
+#view-home#view-home .meal-card::before, #view-home#view-home .snack-card::before { display: none !important; }
+
+/* ---------- 끼니 상세: 흰 카드·머리카락 선·밝은 버튼 ---------- */
+#view-meal-detail .meal-page-header { border: 0 !important; box-shadow: none !important; }
+#view-meal-detail .meal-page-back { width: 40px; height: 40px; border-radius: 999px !important; }
+#view-meal-detail .meal-page-add { border-radius: 999px !important; }
+#view-meal-detail .meal-page-add svg, #view-meal-detail .meal-page-add img { filter: none; }
+#view-meal-detail .meal-page-missing { border: 0 !important; border-radius: var(--rb-inner-radius) !important; }
+#view-meal-detail .meal-page-list-head { border: 0 !important; }
+#view-meal-detail .food-item :is(button, .food-tag, .macro-chip) { border-color: var(--rb-hairline) !important; }
+.food-dex-nutrition { border-top: 1px solid var(--rb-hairline) !important; }
+:is(.meal-card.expanded, .meal-card.drop-target, .snack-card.drop-target, .food-item.is-dragging, .food-item.is-selected) { border-color: var(--rb-hairline) !important; }
+
+/* ---------- 끼니 카드 끌기: 들어 올림 + 빈 자리 ---------- */
+.meal-drag-ghost.is-lifted { scale: 1.03; opacity: 1 !important; box-shadow: 0 18px 40px rgba(17, 18, 22, 0.18), 0 2px 6px rgba(17, 18, 22, 0.08) !important; border: var(--rb-card-border) !important; transition: none; }
+#view-home .meal-card.is-drag-source, #view-home .snack-card.is-drag-source { opacity: 0 !important; }
+
+/* ---------- 페이지 넘김 들어오기: 300ms 감속, 튕김 없음 ---------- */
+.app-content.view-panel.page-in-right { animation: page-in-right 0.3s cubic-bezier(0.22, 1, 0.36, 1) !important; }
+.app-content.view-panel.page-in-left { animation: page-in-left 0.3s cubic-bezier(0.22, 1, 0.36, 1) !important; }
+@media (prefers-reduced-motion: reduce) { .app-content.view-panel.page-in-right, .app-content.view-panel.page-in-left { animation: none !important; } }
+/* 남은 굵은 테두리: 장보기 추가 버튼, 달력 고른 날 */
+.shopping-add-btn { border: 0 !important; box-shadow: none !important; border-radius: 999px !important; }
+.cal-day.is-selected { border-color: transparent !important; box-shadow: none !important; background: var(--rb-hairline) !important; border-radius: 999px; }
+#view-stats#view-stats .cal-day:is(.is-selected, .is-today) { border-color: transparent !important; outline: none !important; }
+/* 모든 페이지 같은 좌우 여백(예전 탭별 15px 덮어씀) */
+.app-content.view-panel:is(#view-home, #view-search, #view-stats, #view-profile, #view-meal-detail, #view-ai) { padding-left: var(--rb-page-pad) !important; padding-right: var(--rb-page-pad) !important; }
+/* 끌기 복제본은 항상 화면 기준으로 떠 있게(카드 규칙의 position 이 이기지 않게) */
+.meal-drag-ghost.meal-drag-ghost { position: fixed !important; margin: 0 !important; z-index: 220 !important; pointer-events: none !important; transform: none !important; background: var(--rb-surface) !important; border-radius: var(--rb-card-radius) !important; }
+/* 펼친 끼니 카드 안 구분선도 머리카락 선 */
+#view-home .meal-card *:not(.timeline-time-button) { border-color: var(--rb-hairline) !important; }
+/* 끼니 상세 머리: 배경 없이, 뒤로 버튼은 원래 크기 */
+#view-meal-detail .meal-page-header { background: transparent !important; }
+#view-meal-detail .meal-page-back { width: auto !important; height: auto !important; min-height: 36px; padding: 0 12px 0 8px !important; }
+/* 게이지 가운데 글자가 호에 닿지 않게 */
+body.no-character #view-home .kcal-gauge .kcal-gauge-center { bottom: 2px !important; }
+body.no-character #view-home .kcal-gauge-value { font-size: 34px !important; line-height: 1 !important; }
+body.no-character #view-home .kcal-gauge .kcal-gauge-unit, body.no-character #view-home .kcal-gauge .kcal-gauge-status { font-size: 12px !important; line-height: 14px !important; min-height: 14px !important; }

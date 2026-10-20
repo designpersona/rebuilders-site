@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=111163" />
+  <link rel="stylesheet" href="style.css?v=111169" />
 </head>
 
 <body>
@@ -380,12 +380,12 @@
           <!-- 아래: 심박 · 몸무게 · 걸음. 건강 앱 값은 연결했을 때만, 몸무게는 프로필 값 -->
           <div class="health-glance dash-vitals" id="health-glance" aria-label="건강 정보">
             <div id="glance-heart" aria-label="최근 심박수" hidden>
-              <img class="vital-icon" src="assets/icon/Health status/heart.png" width="12" height="12" alt="" />
+              <span class="vital-label" data-ko="심박" data-en="Heart">심박</span>
               <strong id="heart-rate-latest" data-value="--">-- bpm</strong>
             </div>
-            <p class="vital-weight" id="glance-weight"><span>Wt</span> <strong id="health-weight">50kg</strong></p>
+            <p class="vital-weight" id="glance-weight"><span class="vital-label" data-ko="체중" data-en="Weight">체중</span> <strong id="health-weight">50kg</strong></p>
             <div id="glance-steps" aria-label="걸음수" hidden>
-              <img class="vital-icon" src="assets/icon/Health status/Step.png" width="12" height="12" alt="" />
+              <span class="vital-label" data-ko="걸음" data-en="Steps">걸음</span>
               <strong id="health-steps-value" data-value="--">--</strong>
             </div>
             <button type="button" class="health-glance-link" id="health-glance-connect" hidden>건강 앱 연결</button>
@@ -1296,7 +1296,7 @@
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=3"></script>
-  <script src="app.js?v=114"></script>
+  <script src="app.js?v=117"></script>
 </body>
 
 </html>

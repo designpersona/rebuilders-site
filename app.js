@@ -938,6 +938,7 @@ function applyExtendedStaticCopy() {
   label('#prev-day', '이전 날', 'Previous day');
   label('#next-day', '다음 날', 'Next day');
   label('.player-measurements', '신체 정보', 'Body information');
+  document.querySelectorAll('.vital-label[data-en]').forEach(el => { el.textContent = ACTIVE_LOCALE === 'en' ? el.dataset.en : el.dataset.ko; });
   label('.main-avatar', '사용자 픽셀 캐릭터', 'User pixel character');
   const macroAria = [t('carbs'), t('protein'), t('fat')];
   document.querySelectorAll('#view-home .macro-bar-track').forEach((item, index) => {
@@ -1361,11 +1362,11 @@ function setKcalGaugeVisual(cal) {
   const value = document.getElementById('kcal-gauge-value');
   const goalEl = document.getElementById('kcal-gauge-goal');
   if (label) label.textContent = labelText;
-  // 가운데 세 줄: 위 kcal · 큰 숫자 · 아래 상태(먹은 보기는 빈 줄, 남음, 초과)
+  // 가운데 세 줄: 위 kcal · 큰 숫자 · 아래 줄(먹은 보기는 '/ 목표', 남음, 초과)
   const unitEl = gauge.querySelector('.kcal-gauge-unit');
   if (unitEl) unitEl.textContent = 'kcal';
   const statusEl = gauge.querySelector('.kcal-gauge-status');
-  if (statusEl) statusEl.textContent = !isLeft ? '' : (ACTIVE_LOCALE === 'en' ? (isOver ? 'over' : 'left') : (isOver ? '초과' : '남음'));
+  if (statusEl) statusEl.textContent = !isLeft ? (goal > 0 ? `/ ${goal.toLocaleString()}` : '') : (ACTIVE_LOCALE === 'en' ? (isOver ? 'over' : 'left') : (isOver ? '초과' : '남음'));
   if (value) {
     value.textContent = valueText;
     // 긴 숫자는 글자를 줄여 게이지 안에 맞춤 (게이지 크기는 고정)
@@ -2307,6 +2308,7 @@ function updateSnackDropPlaceholderAtPoint(x, y) {
 }
 
 function cleanupDrag(drag) {
+  clearCardReorder(drag);
   drag?.ghost?.remove();
   document.querySelectorAll('.food-item.is-dragging').forEach(el => el.classList.remove('is-dragging'));
   document.body.classList.remove('meal-drag-active', 'food-drag-active', 'card-drag-active');
@@ -2320,6 +2322,83 @@ function destinationAtPoint(x, y) {
   return { target, dest: destinationFromDropTarget(target) };
 }
 
+/* 끼니 카드 끌어 옮기기: 집은 카드는 들려서 손가락을 따라가고, 나머지 카드가 실시간으로 비켜 자리를 만듦.
+   놓으면 그 자리로 내려앉고(250ms), 사이 카드들의 내용이 한 칸씩 밀림(자리 이름·시간 순서는 그대로) */
+let cardSwapBatch = false;
+const CARD_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+function cardDesc(card) {
+  const h = card.querySelector('.drag-handle');
+  return h?.dataset.drag === 'snack' ? { kind: 'snack', slot: parseInt(h.dataset.slot, 10) } : { kind: 'meal', mealId: h?.dataset.meal };
+}
+function setupCardReorder(drag) {
+  const items = [...document.querySelectorAll('#view-home .meal-card, #view-home .snack-card')]
+    .filter(c => c.getBoundingClientRect().height > 0 && c.querySelector('.drag-handle') && (c.classList.contains('meal-card') || c.classList.contains('has-items')));
+  const from = items.indexOf(drag.card);
+  if (from < 0 || items.length < 2) return;
+  drag.reorder = { items, from, to: from, rects: items.map(c => c.getBoundingClientRect()) };
+  drag.card.classList.add('is-drag-source');
+  drag.ghost.classList.add('is-lifted');
+}
+function updateCardReorder(drag, forced, clientY) {
+  const r = drag.reorder; if (!r) return;
+  let to = forced;
+  if (to == null) {
+    // 손가락 위치 기준(복제본 크기·확대와 무관)
+    const cy = clientY - drag.offsetY + r.rects[r.from].height / 2;
+    to = 0;
+    r.items.forEach((c, k) => { if (k !== r.from && r.rects[k].top + r.rects[k].height / 2 < cy) to++; });
+  }
+  if (to === r.to) return;
+  r.to = to;
+  const anim = reduceMotion() ? 'none' : `transform 200ms ${CARD_EASE}`;
+  r.items.forEach((c, k) => {
+    if (k === r.from) return;
+    // 아래로 옮기면 사이 카드가 한 칸 위로, 위로 옮기면 한 칸 아래로
+    const shift = (r.from < k && k <= to) ? r.rects[k - 1].top - r.rects[k].top
+      : (to <= k && k < r.from) ? r.rects[k + 1].bottom - r.rects[k].bottom : 0;
+    c.style.transition = anim;
+    c.style.transform = shift ? `translateY(${Math.round(shift)}px)` : '';
+  });
+}
+function clearCardReorder(drag) {
+  const r = drag?.reorder; if (!r) return;
+  r.items.forEach(c => { c.style.transition = 'none'; c.style.transform = ''; c.classList.remove('is-drag-source'); });
+  requestAnimationFrame(() => r.items.forEach(c => { c.style.transition = ''; }));
+  drag.reorder = null;
+}
+async function swapCardContents(a, b) {
+  if (a.kind === 'meal' && b.kind === 'meal') return swapMealFoods(a.mealId, b.mealId);
+  if (a.kind === 'snack' && b.kind === 'snack') return swapSnackSlots(a.slot, b.slot);
+  const meal = a.kind === 'meal' ? a : b; const snack = a.kind === 'snack' ? a : b;
+  return swapMealAndSnack(meal.mealId, snack.slot);
+}
+async function finishCardReorder(drag) {
+  const r = drag.reorder;
+  const { from, to, rects } = r;
+  const ghost = drag.ghost;
+  if (ghost && !reduceMotion()) {
+    const top = to > from ? rects[to].bottom - rects[from].height : rects[to].top;
+    try {
+      await ghost.animate([
+        { left: ghost.style.left, top: ghost.style.top, scale: '1.03' },
+        { left: `${rects[from].left}px`, top: `${top}px`, scale: '1' },
+      ], { duration: 250, easing: CARD_EASE, fill: 'forwards' }).finished;
+    } catch { /* 취소됨 */ }
+  }
+  if (to === from) { clearCardReorder(drag); cleanupDrag(drag); return; }
+  const before = snapshotMeals();
+  const descs = r.items.map(cardDesc);
+  cardSwapBatch = true;
+  try {
+    const step = to > from ? 1 : -1;
+    for (let k = from; k !== to; k += step) await swapCardContents(descs[k], descs[k + step]);
+  } finally { cardSwapBatch = false; }
+  clearCardReorder(drag);
+  renderAll(false);
+  cleanupDrag(drag);
+  try { await persistMealsOrRestore(before); } catch (error) { showStorageFailure(error); }
+}
+
 async function swapMealFoods(a, b) {
   if (a === b) return;
   const before = snapshotMeals();
@@ -2329,6 +2408,7 @@ async function swapMealFoods(a, b) {
   const time = mealTimes[a];
   mealTimes[a] = mealTimes[b];
   mealTimes[b] = time;
+  if (cardSwapBatch) return; // 카드 끌어 옮기기: 한 번에 그리고 저장
   withFlip(() => renderAll(false));
   await persistMealsOrRestore(before);
 }
@@ -2356,6 +2436,7 @@ async function swapMealAndSnack(mealId, snackSlot) {
   if (mealTime) mealTimes.snack[snackSlot] = mealTime;
   else resetCardTime('snack', snackSlot);
 
+  if (cardSwapBatch) return; // 카드 끌어 옮기기: 한 번에 그리고 저장
   withFlip(() => renderAll(false));
   await persistMealsOrRestore(before);
 }
@@ -2381,6 +2462,7 @@ async function swapSnackSlots(slotA, slotB) {
   if (timeA) mealTimes.snack[slotB] = timeA;
   else resetCardTime('snack', slotB);
 
+  if (cardSwapBatch) return; // 카드 끌어 옮기기: 한 번에 그리고 저장
   withFlip(() => renderAll(false));
   await persistMealsOrRestore(before);
 }
@@ -2531,6 +2613,7 @@ function setupDragHandles() {
         };
         document.body.classList.add('meal-drag-active', 'card-drag-active');
         renderSnack();
+        setupCardReorder(drag);
       }
 
       if (!drag) return;
@@ -2538,7 +2621,10 @@ function setupDragHandles() {
       drag.ghost.style.top = `${event.clientY - drag.offsetY}px`;
       document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
       const { target, dest } = destinationAtPoint(event.clientX, event.clientY);
-      if (target && target !== drag.card) {
+      // 빈 간식 자리 위면 예전처럼 '교체' 표시, 아니면 카드들이 비켜서 자리를 만듦
+      const overPlaceholder = !!(target && drag.reorder && !drag.reorder.items.includes(target));
+      if (drag.reorder) updateCardReorder(drag, overPlaceholder ? drag.reorder.from : null, event.clientY);
+      if (target && target !== drag.card && (!drag.reorder || overPlaceholder)) {
         target.classList.add('drop-target');
         const srcLabel = drag.kind === 'meal' ? mealLabel(drag.mealId) : t('snack');
         const destLabel = dest?.type === 'meal' ? mealLabel(dest.mealId) : t('snack');
@@ -2552,6 +2638,13 @@ function setupDragHandles() {
 
       if (drag) {
         const { target, dest } = destinationAtPoint(event.clientX, event.clientY);
+        const overPlaceholder = !!(target && drag.reorder && !drag.reorder.items.includes(target));
+        if (drag.reorder && !overPlaceholder) {
+          const d = drag; drag = null; pending = null;
+          try { await finishCardReorder(d); } catch (error) { cleanupDrag(d); showStorageFailure(error); }
+          return;
+        }
+        clearCardReorder(drag);
         if (dest && (dest.type === 'snack' || target !== drag.card)) {
           try {
             if (drag.kind === 'meal' && dest.type === 'meal') {
@@ -5826,7 +5919,7 @@ function slideToPage(view, dir) {
   document.querySelector('#page-tabs .page-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
 function pageSwipeBlocked(target, x) {
-  if (x < 20 || x > innerWidth - 20) return true; // iOS 가장자리 뒤로가기와 겹치지 않게
+  if (x < 24 || x > innerWidth - 24) return true; // iOS 가장자리 제스처(뒤로가기·앱 전환)와 겹치지 않게 양쪽 24px 비움
   const panel = target.closest?.('.app-content.view-panel');
   if (!panel || panel.hidden || panel.id === 'view-meal-detail') return true;
   if (document.body.classList.contains('meal-page-open') || document.body.classList.contains('food-dex-open') || document.body.classList.contains('foodex-library-open')) return true;
@@ -5843,20 +5936,22 @@ function pageSwipeBlocked(target, x) {
 (function setupPageSwipe() {
   const frame = document.querySelector('.phone-frame');
   if (!frame) return;
-  const SNAP = 'transform 0.28s cubic-bezier(0.25, 0.8, 0.25, 1)';
-  let sx = 0; let sy = 0; let st = 0; let mode = null; let active = false; let panel = null; let lastDx = 0;
+  // 손가락의 0.6배만 따라오고, 너비 35% 넘기거나 빠르게(0.5px/ms) 튕겨야 넘어감, 300ms 감속(튕김 없음)
+  const SNAP = 'transform 0.3s cubic-bezier(0.22, 1, 0.36, 1)';
+  const DAMP = 0.6;
+  let sx = 0; let sy = 0; let st = 0; let mode = null; let active = false; let panel = null; let lastDx = 0; let samples = [];
   const reset = animate => {
     if (!panel) return;
     const p = panel;
     p.style.transition = animate && !reduceMotion() ? SNAP : '';
     p.style.transform = '';
-    if (animate) setTimeout(() => { if (!p.style.transform) p.style.transition = ''; }, 300);
+    if (animate) setTimeout(() => { if (!p.style.transform) p.style.transition = ''; }, 320);
   };
   // 끝 페이지: 당길수록 덜 따라오고 40px 를 넘지 않음
   const rubber = d => Math.sign(d) * 40 * (1 - Math.exp(-Math.abs(d) / 110));
   const isEdge = d => { const idx = pageIndexOf(activeView); return (d > 0 && idx <= 0) || (d < 0 && idx >= PAGE_ORDER.length - 1); };
   frame.addEventListener('touchstart', event => {
-    active = false; mode = null; panel = null; lastDx = 0;
+    active = false; mode = null; panel = null; lastDx = 0; samples = [];
     if (event.touches.length !== 1) return;
     const t = event.touches[0];
     if (pageSwipeBlocked(event.target, t.clientX)) return;
@@ -5869,14 +5964,17 @@ function pageSwipeBlocked(target, x) {
     if (!mode) {
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
       mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
-      if (mode === 'h') { sx = t.clientX; st = Date.now(); dx = 0; } // 방향이 정해진 지점부터 1:1
+      if (mode === 'h') { sx = t.clientX; st = Date.now(); dx = 0; } // 방향이 정해진 지점부터
     }
     if (mode === 'v' || document.body.classList.contains('meal-drag-active') || document.body.classList.contains('card-drag-active')) { active = false; reset(false); return; }
     if (event.cancelable) event.preventDefault(); // 가로로 정해지면 세로 스크롤 막음
     lastDx = dx;
+    const now = performance.now();
+    samples.push({ x: t.clientX, t: now });
+    while (samples.length > 2 && now - samples[0].t > 100) samples.shift();
     if (panel) {
       panel.style.transition = 'none';
-      panel.style.transform = `translateX(${Math.round(isEdge(dx) ? rubber(dx) : dx)}px)`;
+      panel.style.transform = `translateX(${Math.round(isEdge(dx) ? rubber(dx) : dx * DAMP)}px)`;
     }
   }, { passive: false });
   const finish = event => {
@@ -5884,11 +5982,14 @@ function pageSwipeBlocked(target, x) {
     active = false;
     if (mode !== 'h') { reset(true); return; }
     const dx = lastDx;
-    const v = Math.abs(dx) / Math.max(1, Date.now() - st);
+    // 최근 100ms 속도(같은 방향일 때만)
+    const a = samples[0]; const b = samples[samples.length - 1];
+    const vx = a && b && b.t > a.t ? (b.x - a.x) / (b.t - a.t) : 0;
+    const v = Math.sign(vx) === Math.sign(dx) ? Math.abs(vx) : 0;
     const idx = pageIndexOf(activeView);
     const dir = dx < 0 ? 1 : -1;
     const next = PAGE_ORDER[idx + dir];
-    const enough = Math.abs(dx) >= 60 || (v > 0.45 && Math.abs(dx) >= 30);
+    const enough = Math.abs(dx) >= innerWidth * 0.35 || (v > 0.5 && Math.abs(dx) >= 40);
     if (!enough || idx < 0 || !next || isEdge(dx)) { reset(true); return; }
     if (panel) { panel.style.transition = ''; panel.style.transform = ''; }
     slideToPage(next, dir);
@@ -6449,7 +6550,7 @@ async function refreshHeartRate(options = {}) {
     const setValue = (id, value, text) => { const el = document.getElementById(id); el.dataset.value = value; el.textContent = text; };
     const latest = hasHeart ? String(day.heartLatest) : '--';
     const steps = !day.outOfRange && day.steps != null ? day.steps.toLocaleString(en ? 'en-US' : 'ko-KR') : '--';
-    setValue('heart-rate-latest', latest, `${latest} bpm`);
+    setValue('heart-rate-latest', latest, `${latest}bpm`);
     setValue('health-steps-value', steps, steps);
     let latestTime = '';
     if (hasHeart && day.heartLatestAt) {
