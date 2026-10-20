@@ -2650,7 +2650,7 @@ function renderQuickFoods(entries) {
   // 검색 중인 한 단어(예: "바나")는 검색 결과를 먼저, 끼니·여러 음식이 들어간 입력은 바로 기록을 먼저 보여줍니다.
   const quickFirst = quickButton && !(quickButton.dataset.singleUnknown === 'true' && entries.length);
   if (quickButton && quickFirst) container.appendChild(quickButton);
-  const askButton = quickButton?.dataset.askItems ? buildAskAiButton(quickButton.dataset.askMeal, JSON.parse(quickButton.dataset.askItems)) : null;
+  const askButton = quickButton?.dataset.askItems ? buildAskAiButton(quickButton.dataset.askMeal, JSON.parse(quickButton.dataset.askItems), 'ask-ai-btn', { query: q }) : null;
   if (askButton && quickFirst) container.appendChild(askButton);
 
   const sectionLabel = ACTIVE_LOCALE === 'en'
@@ -3198,7 +3198,7 @@ function openFoodEdit(mealId, idx) {
     </section>`;
 
   const askHost = mealDetailEditGrid.querySelector('.meal-edit-ask-host');
-  if (askHost) askHost.appendChild(buildAskAiButton(mealId, [{ name: food.name, serving: food.serving || '' }]));
+  if (askHost) askHost.appendChild(buildAskAiButton(mealId, [{ name: food.name, serving: food.serving || '' }], 'ask-ai-btn', { afterFill: () => closeFoodEdit() }));
   mealDetailModal.classList.add('open');
 }
 
@@ -5693,9 +5693,11 @@ function openAiLookupSettings() {
   setTimeout(() => document.getElementById('ai-lookup-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
 }
 
-async function askAiForFoods(mealId, items) {
+async function askAiForFoods(mealId, items, options = {}) {
   const clean = (items || []).filter(item => item?.name).slice(0, 10);
   if (!clean.length) return;
+  // 맥 미니 주소·토큰이 있으면 텔레그램·클립보드 없이 바로 찾아서 저장
+  if (globalThis.RebuildersBridge?.isConfigured()) return askBridgeForFoods(mealId, clean, options);
   const bot = getTelegramBotId();
   if (!bot) {
     showToast(ACTIVE_LOCALE === 'en' ? 'Enter your Telegram bot ID in Settings first.' : '설정에서 텔레그램 봇 아이디를 먼저 넣어주세요.', 'info');
@@ -5711,13 +5713,13 @@ async function askAiForFoods(mealId, items) {
     : (ACTIVE_LOCALE === 'en' ? 'Opening Telegram…' : '텔레그램을 열고 있어요…'), 'info');
 }
 
-function buildAskAiButton(mealId, items, className = 'ask-ai-btn') {
+function buildAskAiButton(mealId, items, className = 'ask-ai-btn', options = {}) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = className === 'agent-confirm' ? 'agent-confirm ask-ai-btn' : className;
   button.dataset.askAi = 'true';
   button.textContent = ACTIVE_LOCALE === 'en' ? 'Ask AI' : 'AI에게 물어보기';
-  button.addEventListener('click', event => { event.stopPropagation(); askAiForFoods(mealId, items); });
+  button.addEventListener('click', event => { event.stopPropagation(); askAiForFoods(mealId, items, { ...options, button }); });
   return button;
 }
 
@@ -5856,6 +5858,8 @@ logLinkModal?.addEventListener('click', event => { if (event.target === logLinkM
    ============================ */
 let bridgeProcessing = false;
 let bridgeRerun = false;
+let bridgeAnnounce = false;
+let bridgeRunPromise = null;
 let bridgeListenersReady = false;
 
 function bridgeItemsFrom(foods) {
@@ -5928,10 +5932,9 @@ function bridgeStopMessage(kind) {
   return en ? 'The AI could not answer right now. It will try again later.' : 'AI가 지금 답을 못 했어요. 조금 뒤에 다시 시도할게요.';
 }
 
-async function processBridgeQueue({ announce = false } = {}) {
-  if (!globalThis.RebuildersBridge) return;
-  if (bridgeProcessing) { bridgeRerun = true; return; }
-  if (!RebuildersBridge.isConfigured() || !RebuildersBridge.getQueue().length) { renderBridgePending(); return; }
+/* 대기 목록을 한 번 훑어 처리. 반환: { filled, stopKind } */
+async function runBridgeQueueOnce({ announce = false } = {}) {
+  if (!RebuildersBridge.isConfigured() || !RebuildersBridge.getQueue().length) return { filled: 0, stopKind: '' };
   bridgeProcessing = true;
   renderBridgePending();
   let total = 0;
@@ -5959,13 +5962,76 @@ async function processBridgeQueue({ announce = false } = {}) {
   const en = ACTIVE_LOCALE === 'en';
   if (total) showToast(en ? `AI filled in nutrition for ${total} (AI estimate)` : `AI가 ${total}개 영양성분을 채웠어요 (AI 추정)`, 'success');
   if (failedNames.length && announce) {
-    showToast(en ? `Could not find: ${failedNames.join(', ')}. Enter it yourself or ask AI.` : `${failedNames.join(', ')}은(는) 못 찾았어요. 직접 입력하거나 'AI에게 물어보기'를 써주세요.`, 'info');
+    showToast(en ? `Could not find: ${failedNames.join(', ')}. Please enter it yourself.` : `${failedNames.join(', ')}은(는) 못 찾았어요. 직접 입력해 주세요.`, 'info');
   } else if (!total && announce && stopKind) {
     showToast(bridgeStopMessage(stopKind), stopKind === 'unauthorized' ? 'error' : 'info');
   }
-  if (bridgeRerun) {
+  return { filled: total, stopKind };
+}
+
+/* 대기 목록 처리(이미 도는 중이면 같은 작업을 기다림). 반환: 채운 개수 */
+function processBridgeQueue({ announce = false } = {}) {
+  if (!globalThis.RebuildersBridge) return Promise.resolve(0);
+  if (announce) bridgeAnnounce = true;
+  if (bridgeRunPromise) { bridgeRerun = true; return bridgeRunPromise; }
+  if (!RebuildersBridge.isConfigured() || !RebuildersBridge.getQueue().length) {
+    bridgeAnnounce = false;
+    renderBridgePending();
+    return Promise.resolve(0);
+  }
+  bridgeRunPromise = (async () => {
+    let total = 0;
+    do {
+      bridgeRerun = false;
+      const announceNow = bridgeAnnounce;
+      bridgeAnnounce = false;
+      const { filled, stopKind } = await runBridgeQueueOnce({ announce: announceNow });
+      total += filled;
+      if (stopKind === 'unreachable' || stopKind === 'unauthorized') break;
+    } while (bridgeRerun);
+    return total;
+  })().finally(() => {
+    bridgeRunPromise = null;
     bridgeRerun = false;
-    if (stopKind !== 'unreachable' && stopKind !== 'unauthorized') processBridgeQueue({ announce });
+    renderBridgePending();
+  });
+  return bridgeRunPromise;
+}
+
+/* 'AI에게 물어보기'(브리지 설정 시): 텔레그램·클립보드 없이 맥 미니에 바로 물어보고 기록을 채움.
+   - query: 음식 추가 검색에서 누른 경우 → 이름만 먼저 저장하고 채움
+   - 그 외(채팅·수정 시트): 이미 저장된 '미입력' 기록을 이름으로 찾아 채움 */
+async function askBridgeForFoods(mealId, items, { button, query, afterFill } = {}) {
+  if (button?.dataset.bridgeBusy === 'true') return;
+  const en = ACTIVE_LOCALE === 'en';
+  const label = button?.textContent;
+  if (button) {
+    button.dataset.bridgeBusy = 'true';
+    button.disabled = true;
+    button.classList.add('is-busy');
+    button.textContent = en ? 'AI is finding…' : 'AI가 찾는 중…';
+  }
+  try {
+    let filled = 0;
+    if (query) {
+      const saved = await submitQuickRecord(query);
+      if (saved) filled = await processBridgeQueue({ announce: true });
+    } else {
+      const clean = (items || []).filter(item => item?.name).slice(0, 8);
+      if (!clean.length || !RebuildersBridge.enqueue({ date: dateKey(currentDate), meal: mealId, items: clean })) return;
+      renderBridgePending();
+      filled = await processBridgeQueue({ announce: true });
+    }
+    if (filled && afterFill) afterFill();
+  } catch (error) {
+    showStorageFailure(error);
+  } finally {
+    if (button) {
+      delete button.dataset.bridgeBusy;
+      button.disabled = false;
+      button.classList.remove('is-busy');
+      if (label) button.textContent = label;
+    }
   }
 }
 
@@ -5976,7 +6042,7 @@ function renderBridgePending() {
   const en = ACTIVE_LOCALE === 'en';
   el.hidden = !count;
   el.classList.toggle('is-working', bridgeProcessing);
-  el.textContent = bridgeProcessing ? (en ? 'AI finding…' : 'AI 찾는 중') : (en ? `AI waiting ${count}` : `AI 대기 ${count}`);
+  el.textContent = bridgeProcessing ? (en ? 'AI is finding…' : 'AI가 찾는 중…') : (en ? `AI waiting ${count}` : `AI 대기 ${count}`);
   el.setAttribute('aria-label', en
     ? `${count} foods waiting for the Mac mini AI. Tap to try again.`
     : `맥 미니 AI가 채울 음식 ${count}개 대기 중. 누르면 다시 시도해요.`);
