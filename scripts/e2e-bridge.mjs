@@ -39,7 +39,7 @@ async function waitFor(expr, ms = 70000) {
 const results = []; let failed = 0;
 function check(name, cond, info = '') { results.push(`${cond ? 'PASS' : 'FAIL'} ${name}${info ? ' — ' + info : ''}`); if (!cond) failed++; }
 const keyOf = `const key = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');`;
-const stored = meal => `${keyOf} const a = await storageRepository.getAll(); return (a[key(new Date())]?.${meal} || []).map(f => ({ name: f.name, cal: f.cal ?? null, carbs: f.carbs ?? null, protein: f.protein ?? null, fat: f.fat ?? null, aiEstimate: !!f.aiEstimate, sourceNote: f.sourceNote ?? null, sourceUrl: f.sourceUrl ?? null }));`;
+const stored = meal => `${keyOf} const a = await storageRepository.getAll(); return (a[key(new Date())]?.${meal} || []).map(f => ({ name: f.name, cal: f.cal ?? null, carbs: f.carbs ?? null, protein: f.protein ?? null, fat: f.fat ?? null, aiEstimate: !!f.aiEstimate, sourceNote: f.sourceNote ?? null, serving: f.serving ?? null, sourceUrl: f.sourceUrl ?? null }));`;
 const chat = text => `const i = document.getElementById('agent-input'); i.value = ${JSON.stringify(text)}; await handleAgentCommand(); return true;`;
 const setCfg = (url, token) => `const u = document.getElementById('bridge-url'); const t = document.getElementById('bridge-token'); u.value = ${JSON.stringify(url)}; t.value = ${JSON.stringify(token)}; document.getElementById('bridge-save').click(); return document.getElementById('bridge-hint').textContent;`;
 try {
@@ -63,9 +63,10 @@ try {
 
   // 2) 채팅 빠른 기록 → 자동 채움
   await evaluate(chat('점심 이삭 햄치즈'));
-  const filled = await waitFor(`const l = await (async () => { ${stored('lunch')} })(); return l.some(f => f.name === '이삭 햄치즈' && f.cal !== null)`);
+  const filled = await waitFor(`const l = await (async () => { ${stored('lunch')} })(); return l.some(f => f.aiEstimate && f.cal !== null)`);
   const lunch = await evaluate(stored('lunch'));
-  const ham = lunch.find(f => f.name === '이삭 햄치즈');
+  const ham = lunch.find(f => f.aiEstimate);
+  check('제목은 공식 이름만(양·괄호 없음), 양은 따로', ham && ham.name.includes('햄치즈') && !/[()（）]|\d/.test(ham.name) && !!ham.serving && !/[()]/.test(ham.serving), `${ham?.name} | ${ham?.serving}`);
   check('점심 이삭 햄치즈 자동 채움(칼로리·탄·단·지)', filled && ham && [ham.cal, ham.carbs, ham.protein, ham.fat].every(v => typeof v === 'number'), JSON.stringify(ham));
   check('AI 추정·출처 저장', ham?.aiEstimate === true && !!ham?.sourceNote, ham?.sourceNote || '');
   const tag = await evaluate(`return [...document.querySelectorAll('#lunch-card .ai-estimate-tag, .ai-estimate-tag')].map(t => t.textContent)[0] || ''`);
@@ -80,7 +81,7 @@ try {
   check('연결 안 되면 대기 + 작은 표시', waiting.queue === 1 && waiting.shown, JSON.stringify(waiting));
   await evaluate(setCfg(BRIDGE, ''));
   await evaluate(`document.dispatchEvent(new Event('visibilitychange')); return true;`);
-  const retried = await waitFor(`const l = await (async () => { ${stored('dinner')} })(); return l.some(f => f.name === '이삭 햄치즈' && f.cal !== null) && RebuildersBridge.getQueue().length === 0`);
+  const retried = await waitFor(`const l = await (async () => { ${stored('dinner')} })(); return l.some(f => f.aiEstimate && f.cal !== null) && RebuildersBridge.getQueue().length === 0`);
   check('다시 연결되면 대기분 자동 채움', retried);
   check('대기 표시 사라짐', await evaluate(`return document.getElementById('bridge-pending').hidden`));
 
@@ -90,7 +91,7 @@ try {
   check('토큰 틀리면 unauthorized', unauth === 'unauthorized', unauth);
 
   // 5) 사용자가 고치면 배지 사라짐(직접 수정값 우선)
-  const editable = await evaluate(`const f = meals.lunch.foods.find(x => x.name === '이삭 햄치즈'); return aiEstimateTag({ ...f, sourceTrust: 'user' }) === ''`);
+  const editable = await evaluate(`const f = meals.lunch.foods.find(x => x.aiEstimate); return aiEstimateTag({ ...f, sourceTrust: 'user' }) === ''`);
   check('직접 수정한 값에는 AI 추정 배지 없음', editable);
   check('스크립트 오류 없음', !errors.length, errors.slice(0, 3).join(' | '));
 } catch (error) {

@@ -5883,7 +5883,10 @@ function fillFoodsFromBridge(list, found) {
     const idx = list.findIndex(existing => isNutritionMissing(existing) && compactFoodName(existing.name) === compactFoodName(name));
     if (idx < 0) return; // 그사이 지웠거나 직접 채웠으면 건드리지 않음
     const existing = list[idx];
-    const next = { ...existing, ...fields, name: existing.name };
+    const { displayName, ...rest } = fields;
+    // 제목 = 공식 브랜드+메뉴명(양·괄호 없음), 양 = 따로(사용자가 적은 양 우선), 영양 = kcal·탄·단·지
+    const next = { ...existing, ...rest, name: displayName || existing.name };
+    if (displayName && displayName !== existing.name) next.inputName = existing.name;
     if (existing.serving) next.serving = existing.serving;
     if (existing.slot !== undefined) next.slot = existing.slot;
     list[idx] = next;

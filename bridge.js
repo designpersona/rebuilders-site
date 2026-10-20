@@ -85,7 +85,11 @@
     const cal = num(item.kcal, 5000), carbs = num(item.carbs_g, 1000), protein = num(item.protein_g, 1000), fat = num(item.fat_g, 1000);
     if ([cal, carbs, protein, fat].some(v => v === null)) return null;
     const out = { cal, carbs, protein, fat, estimate: true, aiEstimate: true, source: 'openclaw', sourceTrust: 'estimate', loggedVia: 'bridge' };
-    const serving = String(item.serving || '').trim().slice(0, 40);
+    // 이름은 공식 브랜드+메뉴명만, 양은 따로(괄호 없이)
+    const noParen = text => String(text || '').replace(/\s*[([（［][^)\]）］]*[)\]）］]/g, ' ').replace(/[()[\]（）［］]/g, ' ').replace(/\s+/g, ' ').trim();
+    const displayName = noParen(item.display_name).slice(0, 60);
+    if (displayName) out.displayName = displayName;
+    const serving = noParen(item.serving).split(/\s*[·,/]\s*/)[0].slice(0, 20);
     if (serving) out.serving = serving;
     const note = String(item.source_note || '').replace(/\s+/g, ' ').trim().slice(0, 120);
     if (note) out.sourceNote = note;
