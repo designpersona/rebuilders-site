@@ -8680,17 +8680,6 @@ body.meal-page-open .bottom-nav {
   margin-top: 7px;
 }
 
-.collection-demo-product {
-  margin-top: 14px;
-  padding: 10px 14px;
-  border: 0;
-  border-radius: 10px;
-  background: #18181b;
-  color: #fff;
-  font: 800 11px/1 var(--font);
-  cursor: pointer;
-}
-
 @media (max-width: 359px) {
   .search-hub-tabs {
     gap: 5px;

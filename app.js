@@ -4225,20 +4225,7 @@ function renderCollectionProducts() {
   if (!list) return;
   const entries = Object.entries(CUSTOM_FOODS);
   if (!entries.length) {
-    list.innerHTML = `<div class="collection-products-empty"><strong>${ACTIVE_LOCALE === 'en' ? 'No saved products yet' : '저장한 제품이 아직 없어요'}</strong><p>${ACTIVE_LOCALE === 'en' ? 'Foods registered by you or confirmed by AI are kept here and reused.' : '직접 등록하거나 AI로 확인한 제품은 여기에 보관되어 다음 기록에서 다시 사용됩니다.'}</p><button type="button" class="collection-demo-product">${ACTIVE_LOCALE === 'en' ? 'Add demo product' : '데모 제품 추가'}</button></div>`;
-    list.querySelector('.collection-demo-product')?.addEventListener('click', event => {
-      runButtonAction(event.currentTarget, async () => {
-        await saveCustomFood('테스트 프로틴 요거트', {
-          nameEn: 'Demo Protein Yogurt', serving: '150g', cal: 92,
-          carbs: 8, protein: 12, fat: 1.5,
-          description: '내 제품 저장과 재사용 흐름을 확인하기 위한 데모 제품입니다.',
-          descriptionEn: 'A demo product for trying saved-product reuse.',
-        });
-        renderCollectionProducts();
-        renderSearchHub();
-        showToast(ACTIVE_LOCALE === 'en' ? 'Demo product saved.' : '데모 제품을 내 제품에 저장했어요.', 'success');
-      });
-    });
+    list.innerHTML = `<div class="collection-products-empty"><strong>${ACTIVE_LOCALE === 'en' ? 'No saved products yet' : '저장한 제품이 아직 없어요'}</strong><p>${ACTIVE_LOCALE === 'en' ? 'Foods registered by you or confirmed by AI are kept here and reused.' : '직접 등록하거나 AI로 확인한 제품은 여기에 보관되어 다음 기록에서 다시 사용됩니다.'}</p></div>`;
     return;
   }
   list.innerHTML = '';
