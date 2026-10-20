@@ -12649,3 +12649,10 @@ body.no-character #view-home .player-card .health-glance > [hidden] { display: n
 .kcal-gauge-unit { margin-top: 1px; font-size: 11px; line-height: 1.2; }
 body.no-character #view-home .kcal-gauge .kcal-gauge-center { bottom: 12px !important; }
 .kcal-gauge.is-over[data-mode="left"] .kcal-gauge-unit { color: var(--danger); }
+
+/* 게이지 가운데 세 줄: 작은 kcal / 큰 숫자 / 작은 상태(먹은 보기는 빈 줄로 자리만 지켜 보기 바꿔도 숫자가 안 움직임) */
+.kcal-gauge-unit { margin: 0 !important; font-size: 11px !important; line-height: 13px !important; color: var(--text-secondary) !important; }
+.kcal-gauge-status { display: block; min-height: 13px; font-size: 11px; font-weight: 700; line-height: 13px; color: var(--text-secondary); }
+.kcal-gauge.is-over[data-mode="left"] .kcal-gauge-status { color: var(--danger); }
+.kcal-gauge.is-over[data-mode="left"] .kcal-gauge-unit { color: var(--text-secondary) !important; }
+body.no-character #view-home .kcal-gauge .kcal-gauge-center { bottom: 4px !important; }
