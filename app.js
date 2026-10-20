@@ -1312,9 +1312,38 @@ let ringAnimationFrame = null;
 let displayedCalories = 0;
 const RING_METRIC_MODES = ['eaten', 'remaining', 'target'];
 let activeRingMetric = 'eaten';
+/* 반원 게이지(캐릭터 자리): 먹은 ↔ 남은 칼로리. 고른 보기는 이 기기 localStorage 에만 기억 */
+const KCAL_GAUGE_MODE_KEY = 'rebuilders.kcalGaugeMode.v1';
+let kcalGaugeMode = (() => { try { return localStorage.getItem(KCAL_GAUGE_MODE_KEY) === 'left' ? 'left' : 'eaten'; } catch { return 'eaten'; } })();
+
+function setKcalGaugeVisual(cal) {
+  const gauge = document.getElementById('kcal-gauge');
+  if (!gauge) return;
+  const goal = Math.round(TARGETS.cal || 0);
+  const eaten = Math.max(0, Math.round(cal));
+  const diff = goal - eaten;
+  const isOver = diff < 0;
+  const isLeft = kcalGaugeMode === 'left';
+  const ratio = goal > 0 ? Math.min(Math.max(cal, 0) / goal, 1) : 0;
+  const fill = document.getElementById('kcal-gauge-fill');
+  if (fill) fill.style.strokeDashoffset = String(Math.round((100 - ratio * 100) * 100) / 100);
+  const labelText = isLeft ? t(isOver ? 'calorieOver' : 'calorieRemaining') : t('calorieEaten');
+  const valueText = (isLeft ? Math.abs(diff) : eaten).toLocaleString();
+  const label = document.getElementById('kcal-gauge-label');
+  const value = document.getElementById('kcal-gauge-value');
+  const goalEl = document.getElementById('kcal-gauge-goal');
+  if (label) label.textContent = labelText;
+  if (value) value.textContent = valueText;
+  if (goalEl) goalEl.textContent = goal.toLocaleString();
+  gauge.dataset.mode = kcalGaugeMode;
+  gauge.classList.toggle('is-over', isOver);
+  gauge.setAttribute('aria-pressed', String(isLeft));
+  gauge.setAttribute('aria-label', `${labelText} ${valueText}kcal / ${goal.toLocaleString()}kcal. ${t('calorieSwitch')}`);
+}
 
 function setRingVisual(cal) {
   const roundedCal = Math.round(cal);
+  setKcalGaugeVisual(cal);
   const progress = document.getElementById('calorie-progress-fill');
   const isOver = roundedCal > TARGETS.cal;
   const displayMax = isOver ? Math.max(roundedCal, TARGETS.cal + 1) : TARGETS.cal;
@@ -1398,6 +1427,12 @@ document.getElementById('calorie-summary-toggle')?.addEventListener('click', () 
   const currentIndex = RING_METRIC_MODES.indexOf(activeRingMetric);
   activeRingMetric = RING_METRIC_MODES[(currentIndex + 1) % RING_METRIC_MODES.length];
   setRingVisual(displayedCalories);
+});
+
+document.getElementById('kcal-gauge')?.addEventListener('click', () => {
+  kcalGaugeMode = kcalGaugeMode === 'left' ? 'eaten' : 'left';
+  try { localStorage.setItem(KCAL_GAUGE_MODE_KEY, kcalGaugeMode); } catch {}
+  setKcalGaugeVisual(displayedCalories);
 });
 
 function updateRing(totals, animate = false) {
@@ -3789,6 +3824,8 @@ function updateProfileUI() {
   if (healthWeight) healthWeight.textContent = `${PROFILE.weight}kg`;
   if (healthHeight) healthHeight.textContent = `${PROFILE.height}cm`;
   if (kcalTarget) kcalTarget.textContent = PROFILE.targetCal.toLocaleString();
+  const gaugeGoal = document.getElementById('kcal-gauge-goal');
+  if (gaugeGoal) gaugeGoal.textContent = PROFILE.targetCal.toLocaleString();
   updateProfilePageSummary();
 }
 

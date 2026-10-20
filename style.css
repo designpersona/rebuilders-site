@@ -12333,3 +12333,58 @@ body.no-character #view-home .day-summary { grid-template-rows: none !important;
 body.no-character #view-home .player-card { align-self: start !important; margin-bottom: 0 !important; }
 body.no-character #view-home .player-card .player-measurements,
 body.no-character #view-home .player-card .health-glance { height: auto !important; min-height: 0 !important; }
+
+/* ===== 홈 카드: 반원 칼로리 게이지(캐릭터 자리) + 탄단지 한 줄 ===== */
+.kcal-gauge { display: none; }
+body.no-character #view-home .kcal-meter { display: none !important; }
+body.no-character #view-home .kcal-gauge {
+  display: block !important; position: relative; width: 100%; max-width: 236px; margin: 0 auto !important;
+  padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.kcal-gauge-svg { display: block; width: 100%; height: auto; overflow: visible; transition: transform .15s ease; }
+.kcal-gauge:active .kcal-gauge-svg { transform: scale(.98); }
+.kcal-gauge-track, .kcal-gauge-fill { fill: none; stroke-width: 16; stroke-linecap: round; }
+.kcal-gauge-track { stroke: #dedfe2; }
+.kcal-gauge-fill { stroke: var(--accent); stroke-dasharray: 100 100; transition: stroke-dashoffset .7s cubic-bezier(.22, 1, .36, 1), stroke .3s ease; }
+.kcal-gauge.is-over .kcal-gauge-fill { stroke: #e23d3d; }
+.kcal-gauge-center { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; line-height: 1.15; pointer-events: none; }
+.kcal-gauge-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.kcal-gauge-value { font-size: 36px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--text-primary); line-height: 1.05; }
+.kcal-gauge.is-over[data-mode="left"] .kcal-gauge-value { color: #e23d3d; }
+.kcal-gauge-goal { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+body.no-character #view-home .macros-panel {
+  display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 12px !important;
+  height: auto !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important;
+}
+body.no-character #view-home .macro-row {
+  display: grid !important; grid-template-columns: minmax(0, 1fr) !important; grid-template-areas: "label" "bar" "val" !important;
+  gap: 5px !important; min-width: 0 !important; height: auto !important; margin: 0 !important; padding: 0 !important;
+}
+body.no-character #view-home .macro-row .macro-label { grid-area: label; font-size: 12px !important; font-weight: 700; white-space: nowrap; text-align: left; width: auto !important; }
+body.no-character #view-home .macro-row .macro-bar-track { grid-area: bar; width: 100% !important; height: 8px !important; margin: 0 !important; }
+body.no-character #view-home .macro-row .macro-val { grid-area: val; font-size: 11px !important; color: var(--text-muted); white-space: nowrap; text-align: left !important; justify-self: start; width: auto !important; font-variant-numeric: tabular-nums; }
+
+/* 게이지 양옆: 왼쪽 Ht/Wt, 오른쪽 심박·걸음 (예전 캐릭터 배치) */
+body.no-character #view-home .player-card { align-items: center !important; gap: 8px !important; padding: 14px 14px 12px !important; }
+body.no-character #view-home .player-card .player-measurements,
+body.no-character #view-home .player-card .health-glance {
+  flex: 0 0 72px !important; width: 72px !important; display: flex !important; flex-direction: column !important;
+  justify-content: center !important; gap: 10px !important;
+}
+body.no-character #view-home .player-card .player-measurements { align-items: flex-start !important; }
+body.no-character #view-home .player-card .health-glance { align-items: flex-end !important; text-align: right; }
+body.no-character #view-home .player-card .health-glance > div { display: flex !important; flex-direction: row-reverse !important; align-items: center; gap: 4px; }
+body.no-character #view-home .player-card .kcal-gauge { flex: 1 1 auto !important; min-width: 0 !important; max-width: 200px !important; }
+body.no-character #view-home .kcal-gauge-value { font-size: 30px; }
+body.no-character #view-home .kcal-gauge-label, body.no-character #view-home .kcal-gauge-goal { font-size: 11px; }
+
+body.no-character #view-home .player-card .kcal-gauge { flex: 1 1 0 !important; width: 100% !important; max-width: 190px !important; }
+body.no-character #view-home .player-card { padding: 12px 10px 10px !important; gap: 4px !important; }
+/* 보내기: 검은 원 + 흰 위쪽 화살표 (iMessage 식) */
+.ai-dock-send, .ai-dock-send.is-empty { background: #000 !important; color: #fff !important; border: 0 !important; }
+.ai-dock-send svg { width: 22px; height: 22px; }
+.ai-dock-send:active { transform: scale(.94); }
+body.no-character #view-home .day-summary > .player-card { width: auto !important; max-width: none !important; justify-self: stretch !important; align-self: stretch !important; margin: 0 !important; padding: 10px 8px !important; gap: 4px !important; }
+body.no-character #view-home .player-card .player-measurements, body.no-character #view-home .player-card .health-glance { flex-basis: 62px !important; width: 62px !important; }
+body.no-character #view-home .player-card .kcal-gauge { max-width: 200px !important; }
