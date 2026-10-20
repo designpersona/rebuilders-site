@@ -11671,3 +11671,8 @@ body.meal-page-open .bottom-nav {
     transform: translate(-50%, 0);
   }
 }
+
+/* 화면 키보드가 열려 있는 동안 하단 탭바 숨김 (keyboard.js 가 body.keyboard-open 토글) */
+body.keyboard-open .bottom-nav {
+  display: none !important;
+}
