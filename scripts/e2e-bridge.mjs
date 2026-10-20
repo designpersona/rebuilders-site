@@ -186,7 +186,7 @@ try {
   await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await evaluate(`setActiveView('home'); return 1`);
   const toStats = await (async () => { const a = await swipeTo(100, 260, 600); const b = await swipeTo(100, 260, 600); return [a, b]; })();
-  const back = await swipeTo(300, 150, 600);
+  const back = await swipeTo(330, 140, 600); // 넘김 기준(너비 35%)보다 확실히 길게
   const edge = await swipeTo(8, 200, 600);
   const small = await swipeTo(300, 270, 600);
   const vertical = await (async () => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 200 }] }); for (let k = 1; k <= 6; k++) { await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200 - k * 12, y: 200 + k * 40 }] }); await sleep(16); } await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(300); return evaluate('return activeView'); })();

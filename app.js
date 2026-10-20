@@ -1362,11 +1362,11 @@ function setKcalGaugeVisual(cal) {
   const value = document.getElementById('kcal-gauge-value');
   const goalEl = document.getElementById('kcal-gauge-goal');
   if (label) label.textContent = labelText;
-  // 가운데 세 줄: 위 kcal · 큰 숫자 · 아래 줄(먹은 보기는 '/ 목표', 남음, 초과)
+  // 가운데 세 줄: 위 kcal · 큰 숫자 · 아래 줄(먹은 보기는 목표 숫자, 남음, 초과)
   const unitEl = gauge.querySelector('.kcal-gauge-unit');
   if (unitEl) unitEl.textContent = 'kcal';
   const statusEl = gauge.querySelector('.kcal-gauge-status');
-  if (statusEl) statusEl.textContent = !isLeft ? (goal > 0 ? `/ ${goal.toLocaleString()}` : '') : (ACTIVE_LOCALE === 'en' ? (isOver ? 'over' : 'left') : (isOver ? '초과' : '남음'));
+  if (statusEl) statusEl.textContent = !isLeft ? (goal > 0 ? goal.toLocaleString() : '') : (ACTIVE_LOCALE === 'en' ? (isOver ? 'over' : 'left') : (isOver ? '초과' : '남음'));
   if (value) {
     value.textContent = valueText;
     // 긴 숫자는 글자를 줄여 게이지 안에 맞춤 (게이지 크기는 고정)

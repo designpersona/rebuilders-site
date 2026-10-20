@@ -12867,3 +12867,5 @@ body.no-character #view-home .dash-card .dash-vitals > :is(div, p), body.no-char
   body.no-character #view-home .dash-card .dash-vitals .vital-label { font-size: 11px !important; }
   body.no-character #view-home .dash-card .dash-vitals strong { font-size: 13px !important; }
 }
+/* 건강 줄 값: 보통 굵기 */
+body.no-character #view-home .dash-card .dash-vitals strong { font-weight: 500 !important; }
