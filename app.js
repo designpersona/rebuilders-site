@@ -3106,15 +3106,15 @@ function finishSwipeGesture() {
   if (swipeRenderPending) { swipeRenderPending = false; setTimeout(renderRecentFoods, 0); }
 }
 function enableSwipeDelete(row, onDelete) {
-  const WIDTH = 84;
-  const OPEN_AT = 28;
+  const WIDTH = 52; // 열면 카드가 이만큼 비켜서 휴지통 아이콘(식단 편집과 같은 delete.svg)이 보임
+  const OPEN_AT = 20;
   const content = document.createElement('div');
   content.className = 'swipe-content';
   while (row.firstChild) content.appendChild(row.firstChild);
   const del = document.createElement('button');
   del.type = 'button';
   del.className = 'swipe-delete-btn';
-  del.textContent = ACTIVE_LOCALE === 'en' ? 'Delete' : '삭제';
+  del.innerHTML = `<img src="assets/icon/buttons/delete.svg" width="16" height="16" alt="" aria-hidden="true" /><span class="sr-only">${ACTIVE_LOCALE === 'en' ? 'Delete' : '삭제'}</span>`;
   del.tabIndex = -1;
   del.setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? 'Delete from recent foods' : '최근 음식에서 삭제');
   row.classList.add('swipe-row');

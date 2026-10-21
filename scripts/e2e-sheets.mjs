@@ -58,8 +58,10 @@ try {
   await touch('touchStart', r0[0], r0[1]);
   for (let k = 1; k <= 8; k++) { await touch('touchMove', r0[0] - k * 14, r0[1]); await sleep(16); }
   await touch('touchEnd'); await sleep(350);
-  const swiped = await evaluate(`const row = document.querySelector('#recent-foods .swipe-row'); const d = row.querySelector('.swipe-delete-btn'); const s = getComputedStyle(d); const chip = row.querySelector('.quick-food-chip'); return { open: row.classList.contains('is-open'), vis: s.visibility, op: +s.opacity, rad: [s.borderTopLeftRadius, getComputedStyle(chip).borderTopLeftRadius], gap: Math.round(d.getBoundingClientRect().left - chip.getBoundingClientRect().right) };`);
-  check('왼쪽으로 밀면 둥근 빨간 삭제가 카드 옆에(같은 둥글기, 사이 띄움)', swiped.open && swiped.vis === 'visible' && swiped.op === 1 && swiped.rad[0] === swiped.rad[1] && swiped.gap >= 4, JSON.stringify(swiped));
+  const swiped = await evaluate(`const row = document.querySelector('#recent-foods .swipe-row'); const d = row.querySelector('.swipe-delete-btn'); const s = getComputedStyle(d); const chip = row.querySelector('.quick-food-chip'); const b = d.getBoundingClientRect();
+    const rgb = c => c.match(/[\\d.]+/g).map(Number); const reddish = c => { const [r, g, bl, a = 1] = rgb(c); return a > 0.1 && r > 150 && r - g > 60 && r - bl > 60; };
+    return { open: row.classList.contains('is-open'), vis: s.visibility, op: +s.opacity, icon: d.querySelector('img')?.getAttribute('src'), w: Math.round(b.width), h: Math.round(b.height), round: s.borderRadius, red: reddish(s.backgroundColor) || reddish(s.color), bg: s.backgroundColor, gap: Math.round(b.left - chip.getBoundingClientRect().right) };`);
+  check('왼쪽으로 밀면 작은 휴지통 아이콘(연회색 동그라미, 식단 편집과 같은 delete.svg), 빨간 덩어리 없음', swiped.open && swiped.vis === 'visible' && swiped.op === 1 && swiped.icon === 'assets/icon/buttons/delete.svg' && swiped.w <= 40 && swiped.h <= 40 && swiped.round === '50%' && !swiped.red && swiped.gap >= 4, JSON.stringify(swiped));
   await evaluate(`document.querySelectorAll('#recent-foods .swipe-row.is-open').forEach(r => r.__swipeClose?.()); ${W8(300)} return 1;`);
   // 3. 편집: 카드가 잘리지 않고 폭만 줄고, 모든 줄에 둥근 삭제
   const edit = await evaluate(`const b = document.getElementById('recent-edit'); const bs = getComputedStyle(b); const before = { border: bs.borderTopWidth + ' ' + bs.borderTopStyle, bg: bs.backgroundColor };
@@ -67,10 +69,10 @@ try {
     const sheet = document.getElementById('modal-sheet').getBoundingClientRect();
     const rows = [...document.querySelectorAll('#recent-foods .swipe-row')].map(row => { const rr = row.getBoundingClientRect(); const chip = row.querySelector('.quick-food-chip').getBoundingClientRect(); const d = row.querySelector('.swipe-delete-btn'); const db = d.getBoundingClientRect(); const s = getComputedStyle(d);
       const name = row.querySelector('.quick-food-chip strong, .quick-food-name, .quick-food-chip span'); const nr = name?.getBoundingClientRect();
-      return { inside: chip.left >= rr.left - 0.5 && chip.right <= db.left - 4, vis: s.visibility === 'visible' && +s.opacity === 1, rad: s.borderTopLeftRadius === getComputedStyle(row.querySelector('.quick-food-chip')).borderTopLeftRadius, text: !nr || (nr.left >= chip.left - 0.5 && nr.right <= chip.right + 0.5) }; });
+      const [cr, cg, cb] = s.backgroundColor.match(/[\\d.]+/g).map(Number); return { inside: chip.left >= rr.left - 0.5 && chip.right <= db.left - 4, vis: s.visibility === 'visible' && +s.opacity === 1, rad: s.borderRadius === '50%' && db.width <= 40 && !(cr > 150 && cr - cg > 60) && !!d.querySelector('img[src$="delete.svg"]'), text: !nr || (nr.left >= chip.left - 0.5 && nr.right <= chip.right + 0.5) }; });
     const label = b.textContent; b.click(); ${W8(300)}
     return { before, label, rows };`);
-  check("편집: 카드는 잘리지 않고 폭만 줄고(글자 안 잘림) 모든 줄에 카드와 같은 둥근 빨간 삭제, '편집'은 테두리 없는 연한 버튼", edit.label === '완료' && edit.rows.length >= 4 && edit.rows.every(r => r.inside && r.vis && r.rad && r.text) && edit.before.border.startsWith('0px') && edit.before.bg === 'rgb(241, 242, 245)', JSON.stringify(edit));
+  check("편집: 카드는 잘리지 않고 폭만 조금 줄고(글자 안 잘림) 모든 줄에 작은 휴지통 아이콘(빨강 없음), '편집'은 테두리 없는 연한 버튼", edit.label === '완료' && edit.rows.length >= 4 && edit.rows.every(r => r.inside && r.vis && r.rad && r.text) && edit.before.border.startsWith('0px') && edit.before.bg === 'rgb(241, 242, 245)', JSON.stringify(edit));
   // 4. 최근/내 제품/직접 등록 = 리포트 일/주/월과 같은 회색 세그먼트
   const seg = await evaluate(`const t = document.querySelector('#modal-sheet .food-tabs'); const ts = getComputedStyle(t); const active = t.querySelector('.food-tab.active'); const as = getComputedStyle(active); const thumb = t.querySelector('.rb-seg-thumb');
     const rr = document.getElementById('report-range'); const rs = getComputedStyle(rr);

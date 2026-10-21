@@ -13008,3 +13008,14 @@ body.foodex-page.keyboard-open .toast-host { bottom: 70px; }
 /* 남은 진한 선: 도움말 카드 위·음식 상세 머리 아래 → 얇은 선 */
 .agent-help-card { border: 1px solid var(--rb-hairline) !important; box-shadow: var(--rb-card-shadow) !important; }
 .food-dex-section-head { border-bottom-color: var(--rb-hairline) !important; }
+
+/* 음식 추가 시트 삭제: 빨간 덩어리 대신 앱의 다른 삭제와 같은 휴지통 아이콘(delete.svg)을 연회색 동그라미에 — 식단 편집·끼니 상세와 같은 모양 */
+#modal-sheet .quick-foods .swipe-delete-btn {
+  top: calc(50% - 18px) !important; bottom: auto !important; right: 6px !important; width: 36px !important; height: 36px !important;
+  display: grid !important; place-items: center !important; padding: 0 !important;
+  border: 0 !important; border-radius: 50% !important; background: var(--rb-btn-bg) !important; color: var(--rb-ink) !important; box-shadow: none !important;
+}
+#modal-sheet .quick-foods .swipe-delete-btn img { width: 16px; height: 16px; display: block; pointer-events: none; }
+#modal-sheet .quick-foods .swipe-delete-btn:active { background: #E6E8EC !important; }
+#modal-sheet .quick-foods.is-editing .swipe-row .swipe-content { margin-right: 52px !important; }
+.sr-only:not(.search-index-sort > .sr-only) { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; white-space: nowrap !important; border: 0 !important; }
