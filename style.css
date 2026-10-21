@@ -12876,3 +12876,89 @@ html, body { overscroll-behavior: none; }
 .app-content.view-panel.page-peek { position: fixed !important; z-index: 2; pointer-events: none; margin: 0 !important; will-change: transform; }
 .app-content.view-panel.page-in-right { animation-duration: 0.25s !important; }
 .app-content.view-panel.page-in-left { animation-duration: 0.25s !important; }
+
+/* =====================================================================
+   f25: 홈 입력 안내 글자 · 식도감(아래 검색창·빈 그림 자리·뱃지·글자 정렬) · 대화 말풍선 · 그래프 카드 미세 조정
+   ===================================================================== */
+/* 홈 입력창 안내 글자: 연한 회색·가는 글씨 */
+#agent-input::placeholder, #foodex-search-input::placeholder { color: #A3A8B3 !important; font-weight: 400 !important; opacity: 1; }
+
+/* 식도감 검색: 홈 입력창과 같은 자리·같은 알약(화면 아래 고정, 목록 밖) */
+#foodex-search-bar.foodex-search-dock { display: block !important; flex: 0 0 auto; margin: 0 !important; }
+#foodex-search-bar.foodex-search-dock[hidden], body:not(.foodex-page) #foodex-search-bar.foodex-search-dock { display: none !important; }
+#foodex-search-bar .foodex-dock-bar { display: flex !important; align-items: center; gap: 8px; padding: 0 !important; margin: 0 !important; }
+#foodex-search-bar .foodex-search-capsule { flex: 1 1 auto !important; min-width: 0; width: auto !important; }
+#foodex-search-bar .ai-dock-input { flex: 1 1 auto; min-width: 0; -webkit-appearance: none; appearance: none; }
+#foodex-search-bar .ai-dock-input::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+/* 그림 대신 같은 크기의 빈 자리(연한 회색) */
+.food-index-placeholder { display: block !important; background: #ECEEF1 !important; border-radius: 12px !important; aspect-ratio: 1 / 1; }
+.search-index-grid .food-index-placeholder { width: 40px !important; height: 40px !important; }
+.search-index-grid.is-list-layout .food-index-placeholder { width: 36px !important; height: 36px !important; border-radius: 10px !important; }
+#food-dex-icon { display: grid !important; place-items: center !important; }
+.food-dex-placeholder { display: block; width: 96px; height: 96px; border-radius: 24px; background: #ECEEF1; }
+
+/* 정렬·보기 방식: 흰 상자 없이 글자만 */
+#view-search .search-index-viewbar { background: transparent !important; box-shadow: none !important; border: 0 !important; }
+#view-search .search-index-sort, #view-search .search-index-sort select {
+  background-color: transparent !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important;
+}
+#view-search .search-index-sort select { padding: 4px 18px 4px 0 !important; height: auto !important; min-height: 0 !important; color: var(--rb-ink) !important; font-size: 13px !important; font-weight: 600 !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235E6470' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important; background-position: right 2px center !important; -webkit-appearance: none; appearance: none; }
+#view-search .search-index-sort > .sr-only { font-size: 13px !important; font-weight: 500 !important; color: var(--rb-label) !important; }
+#view-search .search-index-view-toggle.rb-seg { background: transparent !important; box-shadow: none !important; border: 0 !important; padding: 0 !important; gap: 12px !important; }
+#view-search .search-index-view-toggle.rb-seg::before, #view-search .search-index-view-toggle.rb-seg > .rb-seg-thumb { display: none !important; }
+#view-search .search-index-view-toggle.rb-seg > button { background: transparent !important; box-shadow: none !important; border: 0 !important; padding: 4px 0 !important; min-height: 0 !important; height: auto !important;
+  color: #9AA0AA !important; font-size: 13px !important; font-weight: 500 !important; }
+#view-search .search-index-view-toggle.rb-seg > button:is(.active, [aria-pressed="true"]) { color: var(--rb-ink) !important; font-weight: 700 !important; }
+
+/* 뱃지: 아직 내용 없음 → 빈 자리 격자 */
+.badge-section { padding: 6px 0 24px; }
+.badge-head h2 { margin: 0; font-size: 20px; font-weight: 800; color: var(--rb-ink); letter-spacing: -0.02em; }
+.badge-head p { margin: 4px 0 0; font-size: 13px; color: var(--rb-label); line-height: 1.45; }
+.badge-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--rb-card-gap); margin-top: 16px; }
+.badge-slot { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 8px 14px; background: #fff; border-radius: var(--rb-card-radius); border: var(--rb-card-border); box-shadow: var(--rb-card-shadow); }
+.badge-medal { width: 56px; height: 56px; border-radius: 50%; background: #ECEEF1; box-shadow: inset 0 0 0 2px #fff, 0 0 0 1px var(--rb-hairline); }
+.badge-name { font-size: 12px; font-weight: 500; color: #9AA0AA; }
+
+/* 식도감 상세: 지우기(확인 한 번 더) */
+.food-dex-delete { margin: 16px 0 8px; }
+.food-dex-delete[hidden], .food-dex-delete [hidden] { display: none !important; }
+.food-dex-delete-btn { width: 100%; height: var(--rb-input-h); border: 0; border-radius: var(--rb-inner-radius); background: var(--rb-btn-bg); color: #D14343; font-size: 15px; font-weight: 600; }
+.food-dex-delete-confirm { padding: 14px; border-radius: var(--rb-inner-radius); background: #fff; border: 1px solid var(--rb-hairline); }
+.food-dex-delete-confirm p { margin: 0 0 12px; font-size: 14px; line-height: 1.45; color: var(--rb-ink); }
+.food-dex-delete-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.food-dex-delete-actions button { height: 44px; border: 0; border-radius: 12px; background: var(--rb-btn-bg); color: var(--rb-ink); font-size: 15px; font-weight: 600; }
+.food-dex-delete-actions button.is-danger { background: #D14343; color: #fff; }
+
+/* 최근 대화: 아이폰 메시지처럼 (내 말 오른쪽 짙은 말풍선, AI 왼쪽 연회색, 아바타·이름 없음) */
+#agent-log .agent-avatar, #agent-log .agent-name { display: none !important; }
+#agent-log .agent-message { display: flex !important; flex-direction: row !important; gap: 0 !important; margin: 0 0 10px !important; padding: 0 !important; background: none !important; border: 0 !important; box-shadow: none !important; max-width: none !important; width: auto !important; }
+#agent-log .agent-message.is-user { justify-content: flex-end !important; }
+#agent-log .agent-message:not(.is-user) { justify-content: flex-start !important; }
+#agent-log .agent-message .agent-message-body { display: flex !important; flex-direction: column !important; align-items: flex-start !important; gap: 3px !important; max-width: 75% !important; min-width: 0; margin: 0 !important; padding: 0 !important; background: none !important; }
+#agent-log .agent-message.is-user .agent-message-body { align-items: flex-end !important; }
+#agent-log .agent-message .agent-bubble { display: block !important; max-width: 100% !important; margin: 0 !important; padding: 9px 13px !important; border: 0 !important; box-shadow: none !important; border-radius: 18px !important;
+  font-size: 15px !important; line-height: 1.4 !important; font-weight: 400 !important; overflow-wrap: anywhere; }
+#agent-log .agent-message.is-user .agent-bubble { background: var(--rb-pill-dark) !important; color: #fff !important; border-bottom-right-radius: 6px !important; }
+#agent-log .agent-message:not(.is-user) .agent-bubble { background: #ECEDF0 !important; color: var(--rb-ink) !important; border-bottom-left-radius: 6px !important; }
+#agent-log .agent-message .agent-bubble * { color: inherit; }
+#agent-log .agent-time { font-size: 11px; line-height: 1; color: #A3A8B3; padding: 0 6px; font-weight: 400; }
+#agent-log .agent-message .agent-confirm { margin-top: 2px !important; border: 0 !important; border-radius: 999px !important; background: var(--rb-btn-bg) !important; color: var(--rb-ink) !important; box-shadow: none !important; }
+
+/* 그래프 카드: 게이지는 위로, 탄단지는 아래로(좁게) — 눈으로 보기에 무게 맞춤 */
+body.no-character #view-home .dash-card .dash-top { align-items: start !important; padding-top: 0 !important; }
+body.no-character #view-home .dash-card .dash-top > .kcal-gauge { align-self: start !important; margin-top: -4px !important; }
+body.no-character #view-home .dash-card .dash-top > .macros-panel { align-self: end !important; justify-self: end !important; width: min(100%, 92px) !important; margin-bottom: 2px !important; gap: 9px !important; }
+body.no-character #view-home .dash-card .macro-row .macro-label { font-size: 12px !important; font-weight: 600 !important; overflow: visible !important; }
+body.no-character #view-home .dash-card .macro-row .macro-val { letter-spacing: -0.03em !important; }
+@media (max-width: 350px) {
+  body.no-character #view-home .dash-card .dash-top > .macros-panel { justify-self: center !important; width: min(100%, 200px) !important; }
+}
+/* 건강 줄 숫자: 조금 작게·조금 위로(이름과 글자 바닥선 맞춤) */
+body.no-character #view-home .dash-card .dash-vitals > :is(div, p) { align-items: baseline !important; }
+body.no-character #view-home .dash-card .dash-vitals strong { font-size: 13.5px !important; line-height: 1 !important; position: relative; top: -1px; }
+/* 식도감 아래 검색창이 있을 때도 알림은 그 위로 */
+body.foodex-page .toast-host { bottom: calc(150px + var(--safe-bottom)); }
+body.foodex-page.keyboard-open .toast-host { bottom: 70px; }

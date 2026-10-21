@@ -142,6 +142,34 @@ try {
   // 17. 페이지는 세로 스크롤만 브라우저가, 가로는 앱이(iOS 가로 끌림 막음)
   const ta = await evaluate(`return [...document.querySelectorAll('.app-content.view-panel')].map(p => getComputedStyle(p).touchAction + '/' + getComputedStyle(p).overscrollBehaviorX).join(',') + '|' + getComputedStyle(document.body).overscrollBehaviorX;`);
   check('페이지: touch-action pan-y, 가로 오버스크롤 없음', ta.split('|')[0].split(',').every(v => v === 'pan-y/none') && ta.split('|')[1] === 'none', ta);
+  // 18. 탭 누름 이동: 다른 모든 탭에서 리포트·설정을 누르면 지금 페이지와 고른 페이지가 나란히 250ms 감속으로(밀기와 같게), 여러 칸 건너뛰어도 되돌아옴 없음
+  const tapRuns = [];
+  for (const to of ['stats', 'profile']) {
+    for (const from of ['fridge', 'foodex', 'home', 'stats', 'profile'].filter(v => v !== to)) {
+      await evaluate(`setActiveView('${from}'); return 1;`); await sleep(350);
+      const run = await evaluate(`const order = PAGE_ORDER; const dir = Math.sign(order.indexOf('${to}') - order.indexOf('${from}'));
+        const pid = v => (v === 'fridge' || v === 'foodex') ? 'view-search' : 'view-' + v;
+        const cur = document.getElementById(pid('${from}')), tgt = document.getElementById(pid('${to}'));
+        const m = e => { const t = getComputedStyle(e).transform; return t === 'none' ? 0 : new DOMMatrix(t).m41; };
+        const W = cur.getBoundingClientRect().width; const frames = []; let pageIn = false, stagger = 0;
+        const t0 = performance.now();
+        await new Promise(res => { const tick = () => { frames.push([Math.round(performance.now() - t0), Math.round(m(cur) * 10) / 10, Math.round(m(tgt) * 10) / 10, activeView, !tgt.hidden]);
+          if (document.querySelector('.page-in-right, .page-in-left')) pageIn = true; stagger = Math.max(stagger, document.querySelectorAll('#' + tgt.id + ' .stagger-in').length);
+          if (performance.now() - t0 < 480) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick);
+          document.querySelector('#page-tabs .page-tab[data-view="${to}"]').click(); });
+        await new Promise(r => setTimeout(r, 80));
+        return { dir, W, frames, pageIn, stagger, view: activeView, peek: !!document.querySelector('.page-peek'), styles: [cur, tgt].map(e => e.style.transform).join(''), curHidden: cur.hidden };`);
+      const mid = run.frames.filter(f => f[3] === from && f[4]);
+      const d = run.dir;
+      const mono = mid.every((f, i) => i === 0 || (d * (f[1] - mid[i - 1][1]) <= 0.5 && d * (f[2] - mid[i - 1][2]) <= 0.5));
+      const noOver = run.frames.every(f => d * f[2] >= -0.5 && d * f[1] >= -run.W - 0.5);
+      const side = mid.length > 0 && Math.abs(mid[0][2]) >= run.W * 0.5; // 첫 프레임: 고른 페이지가 바로 옆(48px 들어오기 아님)
+      const doneAt = (run.frames.find(f => f[3] === to) || [999])[0];
+      const ok = mono && noOver && side && doneAt <= 360 && !run.pageIn && run.stagger === 0 && run.view === to && !run.peek && !run.styles && run.curHidden;
+      tapRuns.push({ from, to, ok, mono, noOver, side, doneAt, frames: mid.length, pageIn: run.pageIn, first: mid[0]?.slice(1, 3), last: mid[mid.length - 1]?.slice(1, 3) });
+    }
+  }
+  check('탭 누름 궤적: 모든 탭 → 리포트·설정, 두 페이지가 나란히 목표 쪽으로만(넘침·되돌아옴 없음), 바로 옆에서 시작, 약 250ms, 들어오기·차례로 나타나기 없음', tapRuns.every(r => r.ok), JSON.stringify(tapRuns.filter(r => !r.ok).concat(tapRuns.slice(0, 1))));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));

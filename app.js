@@ -103,7 +103,7 @@ const UI_COPY = {
     home: '식단', stats: '리포트', profile: '내정보',
     searchOnlyTitle: '음식 검색', searchOnlyKicker: '검색',
     fridgeTitle: '그로서리', fridgeKicker: '냉장고',
-    foodexNav: '식도감', foodexTab: 'Foodex', recipeTab: '레시피',
+    foodexNav: '식도감', foodexTab: '식도감', recipeTab: '레시피', badgeTab: '뱃지',
     shopping: '장보기', stockTab: '창고', storeTab: '스토어',
     languageTitle: '언어',
     languageDescription: '처음에는 기기 언어에 맞춰 표시됩니다. 여기서 선택하면 이 기기에 저장됩니다.',
@@ -123,10 +123,10 @@ const UI_COPY = {
     mealModalTitle: '{meal}에 음식 추가',
     mealTime: '섭취 시간', totalCalories: '총 칼로리', foodCount: '음식 수', loggedFoods: '기록한 음식',
     foodDetailsHint: '음식을 누르면 영양성분을 볼 수 있어요', searchFoodAction: '음식 검색', backToMeals: '식단',
-    searchHubTitle: '푸드피디아', foodIndex: 'Foodex', foodIndexAction: 'Foodex 열기 ↗', collection: '내 컬렉션', shopping: '장보기', searchLibraryNote: '내장 음식과 직접 등록한 음식을 검색합니다.',
+    searchHubTitle: '식도감', foodIndex: '식도감', foodIndexAction: '식도감 열기 ↗', collection: '내 컬렉션', shopping: '장보기', searchLibraryNote: '내장 음식과 직접 등록한 음식을 검색합니다.',
     clearDay: '전체 삭제', statsTitle: '식단 리포트', statsSub: '달력으로 기록과 추이를 살펴보세요', snackWhen: '언제 먹었나요?',
     statsSelectedDay: '선택한 날', statsCalories: '칼로리', statsCarbs: '탄수화물', statsProtein: '단백질', statsFat: '지방', statsUnder: '여유', statsOnTarget: '적정', statsOver: '초과', statsEmpty: '이 날에는 기록이 없어요.', statsWeekTitle: '최근 7일 섭취 칼로리', statsWeekHint: '진한 선 최근 7일 · 연한 선 이전 7일 · 점선 목표', statsMonthTitle: '이번 달 요약', statsLoggedDays: '기록 일수', statsAverage: '평균 kcal', statsUnderDays: '목표 이내 기록일',
-    collectionRecipes: '내 레시피', collectionProducts: '내 제품', collectionFridge: '내 냉장고', collectionMacros: '탄·단·지', collectionDelete: '삭제', collectionDeleteTitle: '컬렉션 삭제', collectionExpand: '재료 펼쳐보기', collectionCollapse: '재료 접어두기', foodexClose: 'Foodex 닫기', foodexViewOptions: 'Foodex 정렬과 보기 방식', foodexSort: '정렬', foodexFoodSort: '음식 정렬',
+    collectionRecipes: '내 레시피', collectionProducts: '내 제품', collectionFridge: '내 냉장고', collectionMacros: '탄·단·지', collectionDelete: '삭제', collectionDeleteTitle: '컬렉션 삭제', collectionExpand: '재료 펼쳐보기', collectionCollapse: '재료 접어두기', foodexClose: 'Foodpedia 닫기', foodexViewOptions: 'Foodpedia 정렬과 보기 방식', foodexSort: '정렬', foodexFoodSort: '음식 정렬',
     beforeBreakfast: '아침 전', afterBreakfast: '아침 후', afterLunch: '점심 후', afterDinner: '저녁 후',
     aiCoach: 'AI 식단 기록 도우미', aiReady: '이 기기에 저장', aiWelcome: '말로 식단 기록',
   },
@@ -145,7 +145,7 @@ const UI_COPY = {
     home: 'Meals', stats: 'Report', profile: 'Profile',
     searchOnlyTitle: 'Food search', searchOnlyKicker: 'Search',
     fridgeTitle: 'Grocery', fridgeKicker: 'Fridge',
-    foodexNav: 'Food guide', foodexTab: 'Foodex', recipeTab: 'Recipes',
+    foodexNav: 'Foodpedia', foodexTab: 'Foodpedia', recipeTab: 'Recipes', badgeTab: 'Badges',
     shopping: 'Shopping', stockTab: 'Stock', storeTab: 'Store',
     languageTitle: 'Language',
     languageDescription: 'The first visit follows your device language. Your choice here is saved on this device.',
@@ -165,10 +165,10 @@ const UI_COPY = {
     mealModalTitle: 'Add food to {meal}',
     mealTime: 'Time', totalCalories: 'Total calories', foodCount: 'Foods', loggedFoods: 'Logged foods',
     foodDetailsHint: 'Tap a food to view nutrition', searchFoodAction: 'Search food', backToMeals: 'Meals',
-    searchHubTitle: 'Food guide', foodIndex: 'Foodex', foodIndexAction: 'Go Foodex ↗', collection: 'Collection', shopping: 'Shopping', searchLibraryNote: 'Search built-in foods and foods you registered.',
+    searchHubTitle: 'Foodpedia', foodIndex: 'Foodpedia', foodIndexAction: 'Open Foodpedia ↗', collection: 'Collection', shopping: 'Shopping', searchLibraryNote: 'Search built-in foods and foods you registered.',
     clearDay: 'Delete all', statsTitle: 'Meal report', statsSub: 'Review your records and trends on the calendar', snackWhen: 'When did you eat it?',
     statsSelectedDay: 'Selected day', statsCalories: 'Calories', statsCarbs: 'Carbs', statsProtein: 'Protein', statsFat: 'Fat', statsUnder: 'Under', statsOnTarget: 'On target', statsOver: 'Over', statsEmpty: 'No meal log for this day.', statsWeekTitle: 'Calories eaten in the last 7 days', statsWeekHint: 'Dark: last 7 days · Light: previous 7 days · Dashed: target', statsMonthTitle: 'This month', statsLoggedDays: 'Days logged', statsAverage: 'Average kcal', statsUnderDays: 'Days at or under target',
-    collectionRecipes: 'My recipes', collectionProducts: 'My products', collectionFridge: 'My fridge', collectionMacros: 'Carbs·Protein·Fat', collectionDelete: 'Delete', collectionDeleteTitle: 'Delete collection', collectionExpand: 'Expand ingredients', collectionCollapse: 'Collapse ingredients', foodexClose: 'Close Foodex', foodexViewOptions: 'Foodex sorting and view options', foodexSort: 'Sort', foodexFoodSort: 'Sort foods',
+    collectionRecipes: 'My recipes', collectionProducts: 'My products', collectionFridge: 'My fridge', collectionMacros: 'Carbs·Protein·Fat', collectionDelete: 'Delete', collectionDeleteTitle: 'Delete collection', collectionExpand: 'Expand ingredients', collectionCollapse: 'Collapse ingredients', foodexClose: 'Close Foodpedia', foodexViewOptions: 'Foodpedia sorting and view options', foodexSort: 'Sort', foodexFoodSort: 'Sort foods',
     beforeBreakfast: 'Before breakfast', afterBreakfast: 'After breakfast', afterLunch: 'After lunch', afterDinner: 'After dinner',
     aiCoach: 'AI meal logging assistant', aiReady: 'Saved on this device', aiWelcome: 'Log meals by chat',
   },
@@ -236,6 +236,7 @@ function applyLanguage(render = true) {
     '#nav-shopping span': t('shoppingNav'),
     '#foodex-tab-index': t('foodexTab'),
     '#foodex-tab-recipe': t('recipeTab'),
+    '#foodex-tab-badge': t('badgeTab'),
     '#language-settings-title': t('languageTitle'),
     '.language-settings-copy': t('languageDescription'),
     '#timeline-edit-btn': timelineEditing ? t('done') : t('edit'),
@@ -274,7 +275,7 @@ function applyLanguage(render = true) {
     tab.textContent = t(key);
   });
   document.querySelectorAll('.snack-name').forEach(el => { el.textContent = t('snack'); });
-  const macroLabels = [t('carbs'), t('protein'), t('fat')];
+  const macroLabels = ACTIVE_LOCALE === 'en' ? ['C', 'P', 'F'] : ['탄', '단', '지'];
   document.querySelectorAll('#view-home .macro-label').forEach((el, index) => {
     el.textContent = macroLabels[index] || '';
   });
@@ -607,6 +608,23 @@ async function saveRecentFood(food) {
 async function saveCustomFood(name, foodData, previousName = null) {
   CUSTOM_FOODS = await storageRepository.saveCustomFood(name, foodData, previousName);
   return CUSTOM_FOODS;
+}
+
+// 기록하면서 처음 본 음식(내장 목록·내 음식에 없는 것)은 식도감에도 저장. 영양정보가 비어 있어도 이름으로 먼저 등록하고, 나중에 채워지면 갱신
+async function registerLoggedFoods(foods) {
+  let added = 0;
+  for (const food of foods || []) {
+    const name = food?.name;
+    if (!name || FOOD_DB[name] || CUSTOM_FOODS[name]) continue;
+    const { id, _isNew, slot, loggedVia, inputName, ...rest } = food;
+    void id; void _isNew; void slot; void loggedVia; void inputName;
+    try {
+      await saveCustomFood(name, { ...rest, discoveredAt: new Date().toISOString(), discoveryOrigin: 'meal', unlocked: true });
+      added += 1;
+    } catch (error) { console.warn('register food', error); }
+  }
+  if (added && activeView === 'foodex') renderSearchHub();
+  return added;
 }
 
 async function deleteCustomFood(name) {
@@ -977,11 +995,20 @@ function applyExtendedStaticCopy() {
   label('#nav-settings', '설정', 'Settings');
   set('#nav-settings span', '설정', 'Settings');
   label('#nav-home', '식단', 'Meals');
-  label('#nav-search', '식도감', 'Food guide');
+  label('#nav-search', '식도감', 'Foodpedia');
   label('#nav-stats', '리포트', 'Report');
   label('#nav-chat', '채팅', 'Chat');
   label('#nav-shopping', '그로서리', 'Grocery');
-  label('#foodex-tab-index', 'Foodex', 'Foodex');
+  label('#foodex-tab-index', '식도감', 'Foodpedia');
+  label('#foodex-tab-badge', '뱃지', 'Badges');
+  set('#badge-title', '뱃지', 'Badges');
+  set('#badge-sub', '기록을 이어가면 뱃지가 하나씩 열려요. 곧 만나요.', 'Badges unlock as you keep logging. Coming soon.');
+  document.querySelectorAll('#badge-grid .badge-name').forEach(el => { el.textContent = ACTIVE_LOCALE === 'en' ? 'Coming soon' : '준비 중'; });
+  { const fx = document.getElementById('foodex-search-input'); if (fx) { fx.placeholder = ACTIVE_LOCALE === 'en' ? 'Search Foodpedia' : '식도감에서 음식 검색'; fx.setAttribute('aria-label', fx.placeholder); } }
+  set('#food-dex-delete-btn', '식도감에서 지우기', 'Remove from Foodpedia');
+  set('#food-dex-delete-msg', '이 음식을 식도감에서 지울까요? 이미 적은 식단 기록은 그대로 남아요.', 'Remove this food from Foodpedia? Meals you already logged stay as they are.');
+  set('#food-dex-delete-cancel', '취소', 'Cancel');
+  set('#food-dex-delete-yes', '삭제', 'Delete');
   label('#foodex-tab-recipe', '레시피', 'Recipes');
 
   label('#meal-page-back', '식단으로 돌아가기', 'Back to meals');
@@ -1106,12 +1133,12 @@ function applyExtendedStaticCopy() {
   const helpCopy = en ? [
     ['Log in app chat', 'Write a known food and meal, such as “I had a banana for breakfast.”'],
     ['Check the result', 'When the confirmation shows the meal and food, it has been added to today’s log.'],
-    ['Register a new food', 'If it is not in Foodex, select Register manually, review nutrition, and save it.'],
+    ['Register a new food', 'If it is not in Foodpedia, select Register manually, review nutrition, and save it.'],
     ['Log from an AI messaging app', 'Open the agent chat → confirm Rebuilders is connected → send meal, food, and amount → check the saved reply.'],
   ] : [
     ['앱 채팅으로 기록', '“아침 바나나”, “점심 이삭 햄치즈, 아아”처럼 끼니와 음식만 짧게 적어도 돼요. 쉼표·랑·하고로 여러 개를 한 번에 기록해요.'],
     ['저장 결과 확인', '완료 메시지에 끼니와 음식이 표시되면 오늘 식단에 기록된 상태예요.'],
-    ['새 음식 등록', 'Foodex에 없는 음식은 이름만 먼저 저장돼요. 영양정보는 나중에 기록 상세에서 채우면 돼요.'],
+    ['새 음식 등록', '식도감에 없는 음식은 이름만 먼저 저장돼요. 영양정보는 나중에 기록 상세에서 채우면 돼요.'],
     ['AI 메시지 앱으로 기록', '에이전트 대화 열기 → Rebuilders 연결 확인 → 끼니·음식·양 보내기 → 저장 완료 응답 확인 순서로 사용해요.'],
   ];
   helpRows.forEach((row, index) => {
@@ -1207,8 +1234,8 @@ function applyExtendedStaticCopy() {
   const agentInput = document.getElementById('agent-input');
   if (agentInput) {
     agentInput.placeholder = en
-      ? 'Banana for breakfast'
-      : '아침 바나나';
+      ? 'Log today’s meals'
+      : '오늘 식단 기록하기';
   }
   set('#telegram-open-btn strong', '기록 안내', 'Logging guide');
   set('#telegram-open-btn small', '연결 후 텔레그램 사용', 'Set up Telegram');
@@ -3277,6 +3304,7 @@ async function submitQuickRecord(query) {
   if (mealId === 'snack' && currentMeal !== 'snack') currentSnackSlot = getDefaultSnackSlot();
   const foods = parsed.items.map(item => item.food);
   await addFoods(mealId, foods);
+  await registerLoggedFoods(foods);
   closeModal();
   const missing = foods.filter(isNutritionMissing).length;
   const queued = queueBridgeLookup(mealId, foods);
@@ -3427,9 +3455,9 @@ document.getElementById('custom-save').addEventListener('click', async () => {
       await addFood(currentMeal, { name, ...foodData });
       showToast(isNutritionMissing(foodData)
         ? (ACTIVE_LOCALE === 'en' ? `${name} saved without nutrition. Fill it in later from the log.` : `${name} 저장 · 영양정보는 기록 상세에서 채울 수 있어요`)
-        : (ACTIVE_LOCALE === 'en' ? `${name} saved and unlocked in Foodex` : `${name} 저장 · 푸덱스 해금`), 'info');
+        : (ACTIVE_LOCALE === 'en' ? `${name} saved and unlocked in Foodpedia` : `${name} 저장 · 식도감 해금`), 'info');
     } else {
-      showToast(ACTIVE_LOCALE === 'en' ? `${name} unlocked in Foodex` : `${name} 푸덱스에 해금됨`, 'info');
+      showToast(ACTIVE_LOCALE === 'en' ? `${name} unlocked in Foodpedia` : `${name} 식도감에 해금됨`, 'info');
     }
     // 실제 저장 완료 후에만 폼을 비운다.
     resetCustomFoodForm();
@@ -3491,6 +3519,43 @@ function foodDexBadge(food, count) {
   return ACTIVE_LOCALE === 'en' ? 'Tasted' : '맛봄';
 }
 
+// 식도감에서 내가 등록한 음식 지우기(확인 한 번 더). 이미 적은 식단 기록은 음식 정보를 따로 들고 있어 그대로 남음
+let foodDexDeleteName = null;
+function syncFoodDexDelete(mode, food) {
+  const wrap = document.getElementById('food-dex-delete');
+  if (!wrap) return;
+  const name = food?.name;
+  const can = mode === 'index' && !!name && !!CUSTOM_FOODS[name] && !FOOD_DB[name];
+  foodDexDeleteName = can ? name : null;
+  wrap.hidden = !can;
+  document.getElementById('food-dex-delete-confirm').hidden = true;
+  document.getElementById('food-dex-delete-btn').hidden = false;
+}
+document.getElementById('food-dex-delete-btn')?.addEventListener('click', () => {
+  document.getElementById('food-dex-delete-btn').hidden = true;
+  document.getElementById('food-dex-delete-confirm').hidden = false;
+  document.getElementById('food-dex-delete-cancel')?.focus();
+});
+document.getElementById('food-dex-delete-cancel')?.addEventListener('click', () => {
+  document.getElementById('food-dex-delete-confirm').hidden = true;
+  document.getElementById('food-dex-delete-btn').hidden = false;
+});
+document.getElementById('food-dex-delete-yes')?.addEventListener('click', async () => {
+  const name = foodDexDeleteName;
+  if (!name) return;
+  try {
+    await deleteCustomFood(name);
+  } catch (error) {
+    console.warn('delete food', error);
+    showToast(ACTIVE_LOCALE === 'en' ? 'Could not delete. Try again.' : '지우지 못했어요. 다시 해 주세요.', 'info');
+    return;
+  }
+  foodDexDeleteName = null;
+  closeFoodDex();
+  renderSearchHub();
+  showToast(ACTIVE_LOCALE === 'en' ? 'Removed from Foodpedia' : '식도감에서 지웠어요', 'success');
+});
+
 function openFoodDex(food) {
   if (!foodDex || !food) return;
   const options = arguments[1] || {};
@@ -3506,22 +3571,16 @@ function openFoodDex(food) {
   foodDexEditContext = mode === 'meal' ? (options.editContext || null) : null;
   foodDexCanonicalFood = FOOD_DB[food.name] ? { name: food.name, ...FOOD_DB[food.name] } : food;
   const referenceFood = mode === 'meal' ? food : foodDexCanonicalFood;
+  syncFoodDexDelete(mode, referenceFood);
   const visibleName = displayFoodName(referenceFood);
   document.getElementById('food-dex-number').textContent = foodDexNumber(referenceFood);
   const category = foodCategoryMeta(referenceFood.name);
   const hero = document.getElementById('food-dex-icon');
   const imagePath = FOOD_IMAGE_BY_NAME[referenceFood.name];
   hero.replaceChildren();
-  hero.classList.toggle('has-food-image', Boolean(imagePath));
-  if (imagePath) {
-    const image = document.createElement('img');
-    image.className = 'food-dex-image';
-    image.src = imagePath;
-    image.alt = '';
-    hero.appendChild(image);
-  } else {
-    hero.innerHTML = foodIndexIcon(referenceFood.name, category.key);
-  }
+  void imagePath;
+  hero.classList.remove('has-food-image');
+  hero.innerHTML = '<span class="food-dex-placeholder" aria-hidden="true"></span>';
   const categoryLabel = document.getElementById('food-dex-category');
   if (categoryLabel) {
     categoryLabel.hidden = mode === 'meal';
@@ -3553,8 +3612,8 @@ function openFoodDex(food) {
     indexLink.hidden = mode !== 'meal' || !FOOD_DB[food.name];
     indexLink.innerHTML = '<img src="assets/icon/buttons/note.svg" width="20" height="20" alt="" aria-hidden="true" />';
     indexLink.setAttribute('aria-label', ACTIVE_LOCALE === 'en'
-      ? 'View reference nutrition in Foodex'
-      : 'Foodex에서 기준 영양성분 보기');
+      ? 'View reference nutrition in Foodpedia'
+      : '식도감에서 기준 영양성분 보기');
   }
   const history = document.getElementById('food-dex-history');
   const count = foodLogCount(referenceFood.name);
@@ -4136,10 +4195,9 @@ function foodIndexIcon(name, categoryKey) {
   // Foods added outside the built-in catalog do not have artwork yet.
   // Keep the fallback neutral and consistent with the product's note action
   // instead of implying that a camera/photo workflow is already available.
-  if (!imagePath) {
-    return '<img class="food-index-image food-index-note" src="assets/icon/buttons/note.svg" alt="" aria-hidden="true" />';
-  }
-  return `<img class="food-index-image" src="${escapeHtml(imagePath)}" alt="" aria-hidden="true" />`;
+  // 음식 그림은 잠시 쓰지 않음(FOOD_IMAGE_BY_NAME 은 그대로 둠): 같은 크기의 빈 자리만
+  void imagePath;
+  return '<span class="food-index-image food-index-placeholder" aria-hidden="true"></span>';
 }
 
 function renderSearchHub() {
@@ -4249,11 +4307,11 @@ function renderSearchHub() {
   indexGrid.classList.toggle('is-product-list', searchIndexLayout === 'list');
   indexGrid.classList.toggle('is-list-layout', searchIndexLayout === 'list');
 
-  // Foodex 검색어가 있으면 카테고리 대신 결과 목록
+  // Foodpedia 검색어가 있으면 카테고리 대신 결과 목록
   if (foodexQuery) {
     categories.hidden = true;
     if (!indexEntries.length) {
-      indexGrid.innerHTML = `<p class="search-hub-empty">${ACTIVE_LOCALE === 'en' ? 'No matching food in Foodex.' : 'Foodex에서 일치하는 음식이 없어요.'}</p>`;
+      indexGrid.innerHTML = `<p class="search-hub-empty">${ACTIVE_LOCALE === 'en' ? 'No matching food in Foodpedia.' : '식도감에서 일치하는 음식이 없어요.'}</p>`;
       return;
     }
     indexEntries.forEach(entry => indexGrid.appendChild(createIndexButton(entry, true)));
@@ -4345,11 +4403,11 @@ function setSearchHubView(view) {
   if (view === 'custom') window.setTimeout(() => document.getElementById('custom-name')?.focus(), 50);
 }
 
-/** 푸드피디아 내부 탭: index(Foodex) | recipe(레시피) */
+/** 식도감 내부 탭: index(Foodpedia) | recipe(레시피) */
 function setFoodexPageTab(tab = 'index') {
   const library = document.getElementById('foodex-library');
   if (!library) return;
-  const next = tab === 'recipe' ? 'recipe' : 'index';
+  const next = tab === 'recipe' || tab === 'badge' ? tab : 'index';
   library.dataset.foodexTab = next;
   document.querySelectorAll('.foodex-page-tab').forEach(button => {
     const active = button.dataset.foodexTab === next;
@@ -4362,7 +4420,7 @@ function setFoodexPageTab(tab = 'index') {
   });
   const searchToggle = document.getElementById('foodex-search-toggle');
   const searchBar = document.getElementById('foodex-search-bar');
-  if (next === 'recipe') {
+  if (next !== 'index') {
     if (searchToggle) {
       searchToggle.hidden = true;
       searchToggle.setAttribute('aria-expanded', 'false');
@@ -4461,6 +4519,7 @@ function setActiveView(view) {
   const aiDock = document.getElementById('home-ai-dock');
   if (aiDock) aiDock.hidden = view !== 'home';
   document.body.classList.toggle('has-ai-dock', view === 'home'); // 토스트를 입력창 위로
+  document.body.classList.toggle('foodex-page', view === 'foodex'); // 식도감 아래 검색창
   if (view !== 'home') {
     document.querySelectorAll('#view-home .meal-card.expanded, #view-home .snack-card.expanded').forEach(card => {
       card.classList.remove('expanded', 'auto-expanded');
@@ -5638,11 +5697,9 @@ function appendAgentMessage(text, kind = 'agent') {
   if (!log) return null;
   const message = document.createElement('div');
   message.className = `agent-message is-${kind}`;
-  if (kind === 'user') {
-    message.innerHTML = `<div class="agent-message-body"><div class="agent-bubble"><span class="agent-bubble-text"></span></div></div>`;
-  } else {
-    message.innerHTML = `<img class="agent-avatar" src="assets/icon/buttons/robot.svg" width="40" height="40" alt="" decoding="async" aria-hidden="true" /><div class="agent-message-body"><span class="agent-name">${ACTIVE_LOCALE === 'en' ? 'AI Meal Manager' : 'AI 식단관리사'}</span><div class="agent-bubble"><span class="agent-bubble-text"></span></div></div>`;
-  }
+  const now = new Date();
+  const stamp = now.toLocaleTimeString(ACTIVE_LOCALE === 'en' ? 'en-US' : 'ko-KR', { hour: 'numeric', minute: '2-digit' });
+  message.innerHTML = `<div class="agent-message-body"><div class="agent-bubble"><span class="agent-bubble-text"></span></div><time class="agent-time" datetime="${now.toISOString()}">${stamp}</time></div>`;
   setAgentMessageText(message, text);
   log.appendChild(message);
   log.scrollTop = log.scrollHeight;
@@ -5721,11 +5778,9 @@ async function handleAgentCommand() {
   await goToEntryDate(parsed);
   if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
   try {
-    for (const food of discoveries) {
-      if (FOOD_DB[food.name] || CUSTOM_FOODS[food.name]) continue;
-      await saveCustomFood(food.name, { ...food, discoveredAt: new Date().toISOString(), discoveryOrigin: 'meal', unlocked: true });
-    }
+    void discoveries;
     const indexes = await addFoods(mealId, foods);
+    await registerLoggedFoods(foods);
     const missing = foods.map((food, i) => ({ food, idx: indexes[i] })).filter(({ food }) => isNutritionMissing(food));
     const summary = foods.map(quickItemSummary).join(', ');
     const queued = queueBridgeLookup(mealId, foods);
@@ -5905,18 +5960,21 @@ function visiblePanel() {
   return [...document.querySelectorAll('.app-content.view-panel')].find(el => !el.hidden) || null;
 }
 function slideToPage(view, dir) {
+  // 탭 누름도 손가락으로 넘길 때와 같은 이동: 지금 페이지와 고른 페이지가 나란히 250ms 감속(넘침·되돌아옴·등장 효과 없음)
   if (foodDex?.classList.contains('open')) closeFoodDex();
-  if (view !== 'foodex') closeFoodexLibrary();
-  suppressPageEnter = !!dir;
-  try { setActiveView(view); } finally { suppressPageEnter = false; }
+  if (dir && typeof pageSlideTo === 'function' && pageSlideTo(view, dir)) return;
+  const before = visiblePanel();
+  commitPage(view);
   const panel = visiblePanel();
-  if (panel && dir) {
-    panel.classList.remove('page-in-left', 'page-in-right');
+  if (dir && panel && panel === before && !reduceMotion()) {
+    // 같은 판(그로서리↔식도감): 옆에서 짧게 들어옴
+    panel.style.transition = 'none';
+    panel.style.transform = `translate3d(${dir * (panel.getBoundingClientRect().width || innerWidth) * 0.3}px, 0, 0)`;
     void panel.offsetWidth;
-    panel.classList.add(dir > 0 ? 'page-in-right' : 'page-in-left');
-    setTimeout(() => panel.classList.remove('page-in-left', 'page-in-right'), 300);
+    panel.style.transition = 'transform 250ms cubic-bezier(0.25, 1, 0.5, 1)';
+    panel.style.transform = 'translate3d(0, 0, 0)';
+    setTimeout(() => { panel.style.removeProperty('transform'); panel.style.removeProperty('transition'); }, 280);
   }
-  document.querySelector('#page-tabs .page-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
 function pageSwipeBlocked(target, x) {
   if (x < 24 || x > innerWidth - 24) return true; // iOS 가장자리 제스처(뒤로가기·앱 전환)와 겹치지 않게 양쪽 24px 비움
@@ -5933,6 +5991,7 @@ function pageSwipeBlocked(target, x) {
   }
   return false;
 }
+let pageSlideTo = null; // 아래 밀기 설정에서 채움(탭 누름 이동)
 (function setupPageSwipe() {
   // X(트위터) 위쪽 탭처럼: 지금 페이지와 옆 페이지가 손가락을 1:1로 같이 따라오고, 밑줄도 진행만큼 이동.
   // 놓으면 250ms 감속(넘침·되돌아옴 없음). 너비 35% 넘기거나 빠르게(0.5px/ms) 튕기면 넘어감. 끝 페이지는 12px 까지만.
@@ -5966,13 +6025,22 @@ function pageSwipeBlocked(target, x) {
     setBar({ left: a.left + (b.left - a.left) * p, width: a.width + (b.width - a.width) * p }, 'none');
   };
   const prepareStats = () => { try { statsMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1); statsSelectedKey = dateKey(currentDate); refreshStatsView(); } catch { /* 넘어간 뒤 다시 그림 */ } };
+  const prepareSearch = view => {
+    try {
+      if (view === 'foodex') { setSearchHubMode('foodex'); setFoodexPageTab('index'); }
+      else { renderSearchHub(); setSearchHubMode('fridge'); setSearchHubView('shopping'); }
+    } catch { /* 넘어간 뒤 다시 그림 */ }
+  };
   const showPeek = dir => {
     const view = PAGE_ORDER[idx + dir];
-    if (!view) return null;
+    return view ? showPeekView(view, dir) : null;
+  };
+  const showPeekView = (view, dir) => {
     const el = panelFor(view);
     if (!el || el === panel) return { view, el: null, dir }; // 그로서리↔식도감은 같은 판: 지금 판만 움직임
     if (view === 'stats') prepareStats();
     if (view === 'profile') { try { fillProfileForm(); } catch { /* 무시 */ } }
+    if (view === 'fridge' || view === 'foodex') prepareSearch(view);
     const r = panel.getBoundingClientRect();
     el.classList.add('page-peek');
     el.style.top = `${r.top}px`; el.style.left = `${r.left}px`; el.style.width = `${r.width}px`; el.style.height = `${r.height}px`;
@@ -6028,14 +6096,17 @@ function pageSwipeBlocked(target, x) {
   const settle = (commit, fromX) => {
     const dur = reduceMotion() ? 0 : SETTLE_MS;
     const transition = dur ? `transform ${dur}ms ${EASE}` : 'none';
-    const p = panel; const pk = peek; const view = pk?.view;
+    const p = panel; const pk = peek; const view = pk?.view; const fromView = activeView;
     const target = commit ? -pk.dir * W : 0;
     settling = true;
     place(target, transition);
     if (pk) setBar(tabGeom(tabFor(commit ? view : activeView)), dur ? `transform ${dur}ms ${EASE}` : 'none');
     else setBar(tabGeom(tabFor(activeView)), transition);
     const done = () => {
-      if (commit) {
+      if (commit && activeView !== fromView) {
+        // 움직이는 중에 다른 곳에서 페이지를 바꿨으면 그쪽을 따름(되돌아가지 않게)
+        clearPanel(p); hidePeek(); clearPanel(visiblePanel());
+      } else if (commit) {
         const samePanel = !pk.el;
         commitPage(view);
         clearPanel(p);
@@ -6070,6 +6141,20 @@ function pageSwipeBlocked(target, x) {
     const commit = !!peek && (flick ? Math.sign(vx) === Math.sign(dx) : Math.abs(dx) >= W * 0.35);
     settle(commit, dx);
   };
+  // 탭 누름: 지금 페이지와 고른 페이지를 나란히 붙여 한 번에 이동(여러 칸 건너뛰어도 사이 페이지 없이, 되돌아옴 없음)
+  pageSlideTo = (view, dir) => {
+    if (settling) return true;
+    active = false;
+    const cur = visiblePanel(); const target = panelFor(view);
+    if (!cur || !target || target === cur || reduceMotion()) return false;
+    panel = cur; idx = pageIndexOf(activeView); W = cur.getBoundingClientRect().width || innerWidth;
+    hidePeek();
+    peek = showPeekView(view, dir);
+    place(0);
+    void cur.offsetWidth;
+    settle(true, 0);
+    return true;
+  };
   frame.addEventListener('touchend', finish, { passive: true });
   frame.addEventListener('touchcancel', () => { if (!active) return; active = false; settle(false, lastDx); }, { passive: true });
 })();
@@ -6097,7 +6182,7 @@ function setVoiceUi(listening) {
   agentVoiceButton?.setAttribute('aria-label', listening
     ? (ACTIVE_LOCALE === 'en' ? 'Stop voice input' : '음성 입력 멈추기')
     : (ACTIVE_LOCALE === 'en' ? 'Voice input' : '음성으로 입력'));
-  if (agentInputEl) agentInputEl.placeholder = listening ? (ACTIVE_LOCALE === 'en' ? 'Listening…' : '듣고 있어요…') : (ACTIVE_LOCALE === 'en' ? 'Banana for breakfast' : '아침 바나나');
+  if (agentInputEl) agentInputEl.placeholder = listening ? (ACTIVE_LOCALE === 'en' ? 'Listening…' : '듣고 있어요…') : (ACTIVE_LOCALE === 'en' ? 'Log today’s meals' : '오늘 식단 기록하기');
 }
 function fillFromVoice(text) {
   const value = String(text || '').trim();
@@ -6255,6 +6340,7 @@ document.getElementById('ai-photo-input')?.addEventListener('change', async even
     }
     if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
     await addFoods(mealId, foods);
+    await registerLoggedFoods(foods);
     if (typed && parsed && !parsed.items.length) { agentInputEl.value = ''; refreshAiDockSend(); }
     appendAgentMessage(en ? `Photo → ${mealLabel(mealId)}: ${foods.map(quickItemSummary).join(', ')} (AI estimate)` : `사진 → ${mealLabel(mealId)}에 기록: ${foods.map(quickItemSummary).join(', ')} (AI 추정)`);
     showToast(en ? `Logged ${foods.length} from the photo (AI estimate)` : `사진에서 ${foods.length}개 찾아 기록했어요 (AI 추정)`, 'success');

@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=111175" />
+  <link rel="stylesheet" href="style.css?v=f25" />
 </head>
 
 <body>
@@ -351,7 +351,7 @@
               </button>
             <div class="macros-panel">
               <div class="macro-row">
-                <span class="macro-label">탄수화물</span>
+                <span class="macro-label">탄</span>
                 <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
                   aria-label="탄수화물">
                   <div class="macro-bar carbs" id="bar-carbs" style="width: 0%"></div>
@@ -359,7 +359,7 @@
                 <span class="macro-val" id="val-carbs">0 / 130g</span>
               </div>
               <div class="macro-row">
-                <span class="macro-label">단백질</span>
+                <span class="macro-label">단</span>
                 <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
                   aria-label="단백질">
                   <div class="macro-bar protein" id="bar-protein" style="width: 0%"></div>
@@ -367,7 +367,7 @@
                 <span class="macro-val" id="val-protein">0 / 81g</span>
               </div>
               <div class="macro-row">
-                <span class="macro-label">지방</span>
+                <span class="macro-label">지</span>
                 <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
                   aria-label="지방">
                   <div class="macro-bar fat" id="bar-fat" style="width: 0%"></div>
@@ -593,7 +593,7 @@
             data-search-view="shopping" role="tab" aria-selected="false">장보기</button>
           <button type="button" class="search-hub-tab fridge-mode-tab" id="search-hub-tab-stock"
             data-search-view="stock" role="tab" aria-selected="false">창고</button>
-          <button type="button" class="search-hub-tab fridge-mode-tab" id="search-hub-tab-store"
+          <button type="button" class="search-hub-tab fridge-mode-tab" id="search-hub-tab-store" hidden
             data-search-view="store" role="tab" aria-selected="false">스토어</button>
         </div>
       </div>
@@ -649,32 +649,25 @@
             <button type="button" class="foodex-library-close" id="foodex-library-close" aria-label="닫기" style="display: none;">×</button>
           </div>
         </header>
-        <div class="foodex-page-tabs rb-seg" role="tablist" aria-label="푸드피디아 메뉴">
+        <div class="foodex-page-tabs rb-seg" role="tablist" aria-label="식도감 메뉴">
           <button type="button" class="foodex-page-tab active" id="foodex-tab-index" data-foodex-tab="index" role="tab"
-            aria-selected="true">Foodex</button>
+            aria-selected="true">식도감</button>
           <button type="button" class="foodex-page-tab" id="foodex-tab-recipe" data-foodex-tab="recipe" role="tab"
             aria-selected="false">레시피</button>
+          <button type="button" class="foodex-page-tab" id="foodex-tab-badge" data-foodex-tab="badge" role="tab"
+            aria-selected="false">뱃지</button>
         </div>
         <div class="foodex-library-scroll" data-foodex-panel="index">
           <div class="search-index-intro">
-            <h2>Foodex</h2>
+            <h2>식도감</h2>
             <p>내가 먹고 모은 음식 기록이에요.</p>
-          </div>
-          <div class="foodex-search-bar" id="foodex-search-bar">
-            <label class="search-hub-input-wrap" for="foodex-search-input">
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.8" />
-                <path d="M12.5 12.5L17.5 17.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-              </svg>
-              <input id="foodex-search-input" type="search" placeholder="Foodex에서 음식 검색" autocomplete="off" />
-            </label>
           </div>
           <div class="foodex-filter-chips rb-seg" id="foodex-filter-chips" role="group" aria-label="식도감 필터">
             <button type="button" class="foodex-chip active" data-foodex-filter="all" aria-pressed="true">전체</button>
             <button type="button" class="foodex-chip" data-foodex-filter="recent" aria-pressed="false">최근 먹은</button>
             <button type="button" class="foodex-chip" data-foodex-filter="frequent" aria-pressed="false">자주 먹은</button>
           </div>
-          <div class="search-index-viewbar" role="group" aria-label="Foodex 정렬과 보기 방식">
+          <div class="search-index-viewbar" role="group" aria-label="식도감 정렬과 보기 방식">
             <label class="search-index-sort" for="search-index-sort">
               <span class="sr-only">정렬</span>
               <select id="search-index-sort" aria-label="음식 정렬">
@@ -692,6 +685,25 @@
           </div>
           <div class="search-index-categories" id="search-index-categories" aria-label="음식 카테고리"></div>
           <div class="search-index-grid" id="search-index-grid"></div>
+        </div>
+        <div class="foodex-library-scroll" data-foodex-panel="badge" hidden>
+          <div class="badge-section">
+            <header class="badge-head">
+              <h2 id="badge-title">뱃지</h2>
+              <p id="badge-sub">기록을 이어가면 뱃지가 하나씩 열려요. 곧 만나요.</p>
+            </header>
+            <div class="badge-grid" id="badge-grid" role="list" aria-label="뱃지 목록">
+              <div class="badge-slot"><span class="badge-medal" aria-hidden="true"></span><span class="badge-name">준비 중</span></div>
+              <div class="badge-slot"><span class="badge-medal" aria-hidden="true"></span><span class="badge-name">준비 중</span></div>
+              <div class="badge-slot"><span class="badge-medal" aria-hidden="true"></span><span class="badge-name">준비 중</span></div>
+              <div class="badge-slot"><span class="badge-medal" aria-hidden="true"></span><span class="badge-name">준비 중</span></div>
+              <div class="badge-slot"><span class="badge-medal" aria-hidden="true"></span><span class="badge-name">준비 중</span></div>
+              <div class="badge-slot"><span class="badge-medal" aria-hidden="true"></span><span class="badge-name">준비 중</span></div>
+              <div class="badge-slot"><span class="badge-medal" aria-hidden="true"></span><span class="badge-name">준비 중</span></div>
+              <div class="badge-slot"><span class="badge-medal" aria-hidden="true"></span><span class="badge-name">준비 중</span></div>
+              <div class="badge-slot"><span class="badge-medal" aria-hidden="true"></span><span class="badge-name">준비 중</span></div>
+            </div>
+          </div>
         </div>
         <div class="foodex-library-scroll" data-foodex-panel="recipe" hidden>
           <div class="collection-section">
@@ -979,11 +991,20 @@
         <button type="button" class="ai-dock-history" id="ai-dock-history" aria-label="최근 대화 보기" aria-expanded="false" aria-controls="ai-dock-panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 4.5v3.8h3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.2l2.8 1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <label class="ai-dock-capsule" for="agent-input">
           <span class="ai-dock-lead" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.9"/><path d="M16 16L20 20" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span>
-          <input id="agent-input" class="ai-dock-input" type="text" placeholder="아침 바나나" autocomplete="off" enterkeyhint="send" aria-label="먹은 음식 입력" />
+          <input id="agent-input" class="ai-dock-input" type="text" placeholder="오늘 식단 기록하기" autocomplete="off" enterkeyhint="send" aria-label="먹은 음식 입력" />
           <button type="button" class="ai-dock-icon agent-voice" id="agent-voice" aria-label="음성으로 입력" aria-pressed="false" hidden><svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="7" y="2" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M4.5 9.5C4.5 12.5 6.8 15 10 15C13.2 15 15.5 12.5 15.5 9.5M10 15V18M7.5 18H12.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
         </label>
         <button type="submit" class="ai-dock-send is-empty" id="agent-send" aria-label="보내기"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </form>
+    </div>
+    <!-- 식도감 검색: 홈 입력창과 같은 자리·같은 알약 모양(화면 아래 고정, 목록 밖) -->
+    <div class="home-ai-dock foodex-search-dock" id="foodex-search-bar" hidden>
+      <div class="ai-dock-bar foodex-dock-bar">
+        <label class="ai-dock-capsule foodex-search-capsule" for="foodex-search-input">
+          <span class="ai-dock-lead" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.9"/><path d="M16 16L20 20" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span>
+          <input id="foodex-search-input" class="ai-dock-input" type="search" placeholder="식도감에서 음식 검색" autocomplete="off" enterkeyhint="search" aria-label="식도감에서 음식 검색" />
+        </label>
+      </div>
     </div>
 
   </div>
@@ -1167,7 +1188,7 @@
       <div class="food-dex-hero-wrap">
         <div class="food-dex-hero" id="food-dex-icon" aria-hidden="true"></div>
         <button type="button" class="food-dex-index-link" id="food-dex-index-link" hidden
-          aria-label="Foodex에서 기준 영양성분 보기">
+          aria-label="식도감에서 기준 영양성분 보기">
           <img src="assets/icon/buttons/note.svg" width="20" height="20" alt="" aria-hidden="true" />
         </button>
       </div>
@@ -1184,6 +1205,16 @@
       </section>
       <section class="food-dex-history" id="food-dex-history" hidden></section>
       <button type="button" class="food-dex-edit-record" id="food-dex-edit-record" hidden>기록 수정</button>
+      <div class="food-dex-delete" id="food-dex-delete" hidden>
+        <button type="button" class="food-dex-delete-btn" id="food-dex-delete-btn">식도감에서 지우기</button>
+        <div class="food-dex-delete-confirm" id="food-dex-delete-confirm" role="alertdialog" aria-labelledby="food-dex-delete-msg" hidden>
+          <p id="food-dex-delete-msg">이 음식을 식도감에서 지울까요? 이미 적은 식단 기록은 그대로 남아요.</p>
+          <div class="food-dex-delete-actions">
+            <button type="button" id="food-dex-delete-cancel">취소</button>
+            <button type="button" class="is-danger" id="food-dex-delete-yes">삭제</button>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -1271,7 +1302,7 @@
         </div>
         <div>
           <dt>새 음식 등록</dt>
-          <dd>Foodex에 없는 음식은 직접 등록을 눌러 영양정보를 확인한 뒤 저장해요.</dd>
+          <dd>식도감에 없는 음식은 직접 등록을 눌러 영양정보를 확인한 뒤 저장해요.</dd>
         </div>
         <div>
           <dt>AI 메시지 앱으로 기록</dt>
@@ -1296,7 +1327,7 @@
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=3"></script>
-  <script src="app.js?v=119"></script>
+  <script src="app.js?v=f25"></script>
 </body>
 
 </html>
