@@ -2320,11 +2320,10 @@ function renderSnackSlot(slot) {
   slotEl.querySelector('.card-clear-record')?.toggleAttribute('disabled', !entries.length);
   renderTimeControl('snack', slot);
 
-  // 안 먹은 간식 슬롯은 평소 타임라인에 숨기고, 드래그 중에는 드롭 자리로만 보인다.
+  // 안 먹은 간식 슬롯은 평소 타임라인에 숨기고, 음식 드래그 중에는 드롭 자리로만 보인다.
+  // 숨긴 슬롯은 elementsFromPoint에 잡히지 않으므로, 드래그가 시작되면 빈 슬롯을 모두 드롭 자리로 펼친다.
   if (!entries.length) {
-    const isFoodDragActive = document.body.classList.contains('food-drag-active');
-    const placeholderSlot = Number.parseInt(document.body.dataset.snackDropSlot ?? '', 10);
-    const showPlaceholder = isFoodDragActive && placeholderSlot === slot;
+    const showPlaceholder = document.body.classList.contains('food-drag-active');
     slotEl.hidden = !showPlaceholder;
     slotEl.classList.toggle('drop-placeholder', showPlaceholder);
     slotEl.classList.remove('expanded', 'has-items');
