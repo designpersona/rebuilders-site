@@ -1005,6 +1005,8 @@ function applyExtendedStaticCopy() {
   set('#badge-sub', '기록을 이어가면 뱃지가 하나씩 열려요. 곧 만나요.', 'Badges unlock as you keep logging. Coming soon.');
   document.querySelectorAll('#badge-grid .badge-name').forEach(el => { el.textContent = ACTIVE_LOCALE === 'en' ? 'Coming soon' : '준비 중'; });
   { const fx = document.getElementById('foodex-search-input'); if (fx) { fx.placeholder = ACTIVE_LOCALE === 'en' ? 'Search Foodpedia' : '식도감에서 음식 검색'; fx.setAttribute('aria-label', fx.placeholder); } }
+  label('#foodex-search-lead', '식도감 검색', 'Search Foodpedia');
+  label('#foodex-search-send', '검색', 'Search');
   set('#food-dex-delete-btn', '식도감에서 지우기', 'Remove from Foodpedia');
   set('#food-dex-delete-msg', '이 음식을 식도감에서 지울까요? 이미 적은 식단 기록은 그대로 남아요.', 'Remove this food from Foodpedia? Meals you already logged stay as they are.');
   set('#food-dex-delete-cancel', '취소', 'Cancel');
@@ -5843,6 +5845,14 @@ function refreshAiDockSend() {
 }
 ['input', 'compositionupdate', 'compositionend', 'keyup', 'change', 'focus', 'blur'].forEach(type => agentInputEl?.addEventListener(type, refreshAiDockSend));
 // return 키·보내기 버튼 = form 제출(한글 조합 중 return 도 iOS가 조합을 끝낸 뒤 제출)
+// 식도감 아래 검색줄: 왼쪽 돋보기 = 입력칸으로, 오른쪽 검정 버튼·return = 검색하고 키보드 닫기
+document.getElementById('foodex-search-lead')?.addEventListener('click', () => document.getElementById('foodex-search-input')?.focus());
+document.getElementById('foodex-search-form')?.addEventListener('submit', event => {
+  event.preventDefault();
+  const input = document.getElementById('foodex-search-input');
+  input?.dispatchEvent(new Event('input', { bubbles: true }));
+  input?.blur();
+});
 document.getElementById('ai-dock-form')?.addEventListener('submit', event => {
   event.preventDefault();
   handleAgentCommand();

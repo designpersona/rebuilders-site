@@ -12886,8 +12886,6 @@ html, body { overscroll-behavior: none; }
 /* 식도감 검색: 홈 입력창과 같은 자리·같은 알약(화면 아래 고정, 목록 밖) */
 #foodex-search-bar.foodex-search-dock { display: block !important; flex: 0 0 auto; margin: 0 !important; }
 #foodex-search-bar.foodex-search-dock[hidden], body:not(.foodex-page) #foodex-search-bar.foodex-search-dock { display: none !important; }
-#foodex-search-bar .foodex-dock-bar { display: flex !important; align-items: center; gap: 8px; padding: 0 !important; margin: 0 !important; }
-#foodex-search-bar .foodex-search-capsule { flex: 1 1 auto !important; min-width: 0; width: auto !important; }
 #foodex-search-bar .ai-dock-input { flex: 1 1 auto; min-width: 0; -webkit-appearance: none; appearance: none; }
 #foodex-search-bar .ai-dock-input::-webkit-search-cancel-button { -webkit-appearance: none; }
 
@@ -13019,3 +13017,5 @@ body.foodex-page.keyboard-open .toast-host { bottom: 70px; }
 #modal-sheet .quick-foods .swipe-delete-btn:active { background: #E6E8EC !important; }
 #modal-sheet .quick-foods.is-editing .swipe-row .swipe-content { margin-right: 52px !important; }
 .sr-only:not(.search-index-sort > .sr-only) { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; white-space: nowrap !important; border: 0 !important; }
+/* 식도감 아래 검색줄: 식단 입력줄과 똑같이 [왼쪽 동그라미(돋보기)] [알약 입력] [오른쪽 검정 동그라미] */
+#foodex-search-bar .foodex-search-send { background: var(--rb-pill-dark, #1F2329); color: #fff; }

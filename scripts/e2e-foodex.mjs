@@ -105,6 +105,20 @@ try {
     return { fd, fc, homeDock, homeCap, rad: [cs.borderRadius, hcs.borderRadius], bgc: [cs.backgroundColor, hcs.backgroundColor], inScroll, listBottom: Math.round(listBottom), badge, recipeDock, onHome, ph: document.getElementById('foodex-search-input').placeholder };`);
   check('식도감 검색창: 홈 입력창과 같은 아래 자리·같은 높이·같은 알약 모양, 목록 밖(목록은 그 위에서 끝남)', dock.fd[1] === dock.homeDock[1] && dock.fd[4] === dock.homeDock[4] && dock.fc[3] === dock.homeCap[3] && dock.fc[1] === dock.homeCap[1] && dock.rad[0] === dock.rad[1] && dock.bgc[0] === dock.bgc[1] && !dock.inScroll && dock.listBottom <= dock.fd[1] + 1 && dock.ph === '식도감에서 음식 검색', JSON.stringify(dock));
   check('뱃지 탭: 빈 자리 격자(아직 내용 없음), 검색창은 식도감 탭에서만 · 다른 페이지에선 숨김', dock.badge.visible && dock.badge.slots >= 6 && dock.badge.dock === 'none' && dock.recipeDock === 'none' && dock.onHome === 'none', JSON.stringify(dock.badge));
+  // 4-1. 식단 입력줄과 같은 모양: [왼쪽 동그라미 돋보기] [알약 입력] [오른쪽 검정 동그라미], 크기·간격·안내 글자 같음
+  const bar = await evaluate(`const r = e => { const b = e.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; };
+    const look = e => { const s = getComputedStyle(e); return [s.backgroundColor, s.borderRadius, s.color].join('|'); };
+    setActiveView('home'); ${W8(300)} const hi = document.getElementById('agent-input'); const home = { lead: r(document.getElementById('ai-dock-history')), cap: r(document.querySelector('#ai-dock-form .ai-dock-capsule')), send: r(document.getElementById('agent-send')), leadLook: look(document.getElementById('ai-dock-history')), ph: getComputedStyle(hi, '::placeholder').color + getComputedStyle(hi, '::placeholder').fontWeight + getComputedStyle(hi).fontSize };
+    document.querySelector('#page-tabs .page-tab[data-view="foodex"]').click(); ${W8(500)}
+    const fi = document.getElementById('foodex-search-input'); const lead = document.getElementById('foodex-search-lead'); const send = document.getElementById('foodex-search-send');
+    const fx = { lead: r(lead), cap: r(document.querySelector('#foodex-search-bar .ai-dock-capsule')), send: r(send), leadLook: look(lead), ph: getComputedStyle(fi, '::placeholder').color + getComputedStyle(fi, '::placeholder').fontWeight + getComputedStyle(fi).fontSize };
+    const sendBg = getComputedStyle(send).backgroundColor.match(/\\d+/g).map(Number); const sendFg = getComputedStyle(send).color;
+    const mag = !!lead.querySelector('svg circle'); const leadColor = getComputedStyle(lead).color;
+    lead.click(); ${W8(100)} const focused = document.activeElement === fi;
+    fi.value = '바나나'; send.click(); ${W8(300)} const searched = document.getElementById('search-index-grid').innerText.includes('바나나') && document.activeElement !== fi; fi.value = ''; fi.dispatchEvent(new Event('input', { bubbles: true })); ${W8(200)}
+    return { home, fx, dark: sendBg.slice(0, 3).every(v => v < 60), sendFg, mag, leadColor, focused, searched };`);
+  const same = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 1);
+  check('식도감 검색줄 = 식단 입력줄 모양: 왼쪽 동그라미 돋보기(최근 대화 버튼과 같은 모양)·알약·오른쪽 검정 동그라미 버튼, 같은 크기·자리·안내 글자, 돋보기=입력, 버튼=검색', same(bar.fx.lead, bar.home.lead) && same(bar.fx.cap, bar.home.cap) && same(bar.fx.send, bar.home.send) && bar.fx.leadLook === bar.home.leadLook && bar.fx.ph === bar.home.ph && bar.dark && bar.sendFg === 'rgb(255, 255, 255)' && bar.mag && bar.focused && bar.searched, JSON.stringify(bar));
   // 5. 그로서리: 장보기·창고만(스토어 코드는 남겨 둠)
   const gro = await evaluate(`document.querySelector('#page-tabs .page-tab[data-view="fridge"]').click(); ${W8(500)}
     return { tabs: [...document.querySelectorAll('#view-search .search-hub-main-tabs button')].filter(b => getComputedStyle(b).display !== 'none' && b.offsetWidth > 0).map(b => b.textContent.trim()), store: !!document.querySelector('[data-search-panel="store"]') };`);
