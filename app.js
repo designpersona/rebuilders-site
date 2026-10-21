@@ -3360,7 +3360,7 @@ function renderGroupedQuickFoods(container, q) {
   for (const section of result.sections) {
     if (!section.items.length) continue;
     const limit = sheetSearchMore.more[section.key] || FOOD_SEARCH_PAGE;
-    renderFoodSection(container, `${foodSearchSectionLabel(section.key)} · ${section.items.length}`, section.items.slice(0, limit).map(item => [item.name, item.data]), true);
+    renderFoodSection(container, `${foodSearchSectionLabel(section.key)} · ${section.items.length}`, section.items.slice(0, limit).map(item => [item.name, item.data]), false); // 식도감 결과처럼 줄만(수정·삭제는 '내 제품' 탭에서)
     container.lastElementChild?.classList.add('fs-sheet-last');
     const rest = section.items.length - limit;
     if (rest > 0) {

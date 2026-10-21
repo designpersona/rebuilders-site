@@ -13153,3 +13153,10 @@ body.foodex-page.keyboard-open .toast-host { bottom: 70px; }
 
 /* 굵은 글자 기본값: 브라우저 기본(bolder → 900) 대신 공용 단계 700 */
 strong, b { font-weight: 700; }
+
+/* 음식 추가 시트 검색 결과: 줄이 검색칸과 같은 폭(좌우 끝 맞춤), 묶음 안 줄 간격 8px · 묶음 사이 16px (식도감 결과와 같은 줄 모양) */
+#modal-sheet #quick-foods { gap: 8px !important; }
+#modal-sheet #quick-foods .quick-food-row { padding: 0 !important; margin: 0 !important; width: 100%; }
+#modal-sheet #quick-foods .quick-food-row .quick-food-chip { width: 100%; margin: 0 !important; }
+#modal-sheet #quick-foods .food-section-label { margin: 8px 0 0 !important; }
+#modal-sheet #quick-foods .fs-more { margin: 0 0 0 4px; }

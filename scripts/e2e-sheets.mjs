@@ -1,4 +1,4 @@
-// 시트·창: 음식 추가 시트(쉴 때 빨간 삭제 안 보임·밀기·편집 모양·세그먼트·검색칸)와 모든 시트의 진한 선 검사.
+// 시트·창: 음식 추가 시트(검색 결과 줄 폭·간격, 쉴 때 빨간 삭제 안 보임·밀기·편집 모양·세그먼트·검색칸)와 모든 시트의 진한 선 검사.
 // Headless Chrome(CDP), Node 22. 사용법: (저장소 루트) 정적 서버 8765 → node scripts/e2e-sheets.mjs
 import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
@@ -92,6 +92,18 @@ try {
     openFoodDex({ name: '바나나', ...FOOD_DB['바나나'] }, { mode: 'index' }); ${W8(400)} o.foodDex = __heavy(document.getElementById('food-dex')); closeFoodDex(); ${W8(300)}
     return o;`);
   check('음식 추가(세 탭)·음식 수정·링크 기록·시간 수정·도움말·음식 상세: 진한 선 없음', Object.values(heavy).every(a => a.length === 0), JSON.stringify(heavy));
+  // 6. 검색 결과 줄: 검색칸과 같은 폭(좌우 끝 ±1px), 줄 간격 촘촘(8px), 묶음 머리, 식도감 결과와 같은 줄 내용
+  const sr = await evaluate(`for (const [n, c] of [['닭강정 시트', 280], ['닭죽 시트', 180], ['닭갈비 시트', 330]]) await saveCustomFood(n, { cal: c, carbs: 20, protein: 15, fat: 14, serving: '100g' });
+    await addFood('lunch', { name: '닭가슴살', ...FOOD_DB['닭가슴살'] }); await FoodSearch.build();
+    openModal('lunch'); ${W8(500)} const f = document.getElementById('food-search'); f.value = '닭'; f.dispatchEvent(new Event('input', { bubbles: true })); ${W8(600)}
+    const fb = f.getBoundingClientRect(); const rows = [...document.querySelectorAll('#quick-foods .quick-food-row')];
+    const edges = rows.map(r => { const c = r.querySelector('.quick-food-chip').getBoundingClientRect(); return [Math.round(c.left - fb.left), Math.round(fb.right - c.right)]; });
+    const gaps = []; for (let i = 1; i < rows.length; i++) { const a = rows[i - 1].getBoundingClientRect(), b = rows[i].getBoundingClientRect(); if (rows[i].previousElementSibling === rows[i - 1]) gaps.push(Math.round(b.top - a.bottom)); }
+    const heads = [...document.querySelectorAll('#quick-foods .food-section-label')].map(h => h.textContent.split(' · ')[0]);
+    const chip = rows[0]?.querySelector('.quick-food-chip'); const parts = !!(chip?.querySelector('.chip-name') && chip.querySelector('.chip-serving') && chip.querySelector('.chip-source') && /탄[\\d.]+g · 단[\\d.]+g · 지[\\d.]+g/.test(chip.querySelector('.chip-macros')?.textContent || ''));
+    const sideButtons = document.querySelectorAll('#quick-foods .quick-food-row button:not(.quick-food-chip):not(.swipe-delete-btn)').length;
+    closeModal(); ${W8(300)} return { n: rows.length, edges, gaps: [...new Set(gaps)], heads, parts, sideButtons };`);
+  check('음식 추가 시트 검색 결과: 모든 줄이 검색칸 좌우 끝과 맞음(±1px), 줄 간격 8px, 최근 먹은 → 내 식도감 → 영양 DB, 이름·양·출처·kcal·탄단지', sr.n >= 4 && sr.edges.every(([l, r]) => Math.abs(l) <= 1 && Math.abs(r) <= 1) && sr.gaps.every(g => g === 8) && JSON.stringify(sr.heads) === JSON.stringify(['최근 먹은', '내 식도감', '영양 DB']) && sr.parts && sr.sideButtons === 0, JSON.stringify(sr));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));
