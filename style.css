@@ -12869,3 +12869,10 @@ body.no-character #view-home .dash-card .dash-vitals > :is(div, p), body.no-char
 }
 /* 건강 줄 값: 보통 굵기 */
 body.no-character #view-home .dash-card .dash-vitals strong { font-weight: 500 !important; }
+
+/* 페이지 밀기: 옆 페이지를 지금 페이지 옆에 붙여서 같이 움직임. 가로 제스처는 앱이 처리(iOS 가로 끌림·튕김 막음) */
+html, body { overscroll-behavior: none; }
+.app-content.view-panel { touch-action: pan-y; overscroll-behavior-x: none; }
+.app-content.view-panel.page-peek { position: fixed !important; z-index: 2; pointer-events: none; margin: 0 !important; will-change: transform; }
+.app-content.view-panel.page-in-right { animation-duration: 0.25s !important; }
+.app-content.view-panel.page-in-left { animation-duration: 0.25s !important; }

@@ -5934,28 +5934,74 @@ function pageSwipeBlocked(target, x) {
   return false;
 }
 (function setupPageSwipe() {
+  // X(트위터) 위쪽 탭처럼: 지금 페이지와 옆 페이지가 손가락을 1:1로 같이 따라오고, 밑줄도 진행만큼 이동.
+  // 놓으면 250ms 감속(넘침·되돌아옴 없음). 너비 35% 넘기거나 빠르게(0.5px/ms) 튕기면 넘어감. 끝 페이지는 12px 까지만.
   const frame = document.querySelector('.phone-frame');
   if (!frame) return;
-  // 손가락의 0.6배만 따라오고, 너비 35% 넘기거나 빠르게(0.5px/ms) 튕겨야 넘어감, 300ms 감속(튕김 없음)
-  const SNAP = 'transform 0.3s cubic-bezier(0.22, 1, 0.36, 1)';
-  const DAMP = 0.6;
-  let sx = 0; let sy = 0; let st = 0; let mode = null; let active = false; let panel = null; let lastDx = 0; let samples = [];
-  const reset = animate => {
-    if (!panel) return;
-    const p = panel;
-    p.style.transition = animate && !reduceMotion() ? SNAP : '';
-    p.style.transform = '';
-    if (animate) setTimeout(() => { if (!p.style.transform) p.style.transition = ''; }, 320);
+  const SETTLE_MS = 250;
+  const EASE = 'cubic-bezier(0.25, 1, 0.5, 1)';
+  const EDGE_MAX = 12;
+  let sx = 0; let sy = 0; let mode = null; let active = false; let panel = null; let lastDx = 0; let samples = [];
+  let W = 0; let idx = -1; let settling = false; let peek = null; // { view, el, dir }
+  const edgePull = d => Math.sign(d) * EDGE_MAX * (1 - Math.exp(-Math.abs(d) / 80));
+  const panelFor = view => document.getElementById(view === 'fridge' || view === 'foodex' || view === 'shopping' ? 'view-search' : `view-${view}`);
+  const bar = () => document.querySelector('#page-tabs .page-tab-indicator');
+  const tabFor = view => document.querySelector(`#page-tabs .page-tab[data-view="${view}"]`);
+  // 밑줄 위치: 켜진 탭은 [아이콘+글자], 꺼진 탭은 켜졌을 때 모양(아이콘 자리만큼 넓어지고 가운데 유지)으로 예상
+  const tabGeom = tab => {
+    if (!tab) return null;
+    if (tab.classList.contains('active')) return { left: tab.offsetLeft, width: tab.offsetWidth };
+    const cur = document.querySelector('#page-tabs .page-tab.active .page-tab-icon');
+    const extra = cur && cur.offsetWidth ? cur.offsetWidth + 4 : 19;
+    return { left: tab.offsetLeft - extra / 2, width: tab.offsetWidth + extra };
   };
-  // 끝 페이지: 당길수록 덜 따라오고 40px 를 넘지 않음
-  const rubber = d => Math.sign(d) * 40 * (1 - Math.exp(-Math.abs(d) / 110));
-  const isEdge = d => { const idx = pageIndexOf(activeView); return (d > 0 && idx <= 0) || (d < 0 && idx >= PAGE_ORDER.length - 1); };
+  const setBar = (g, transition) => {
+    const b = bar(); if (!b || !g) return;
+    b.style.transition = transition;
+    b.style.transform = `translateX(${g.left}px) scaleX(${g.width / 100})`;
+  };
+  const trackBar = (fromView, toView, p) => {
+    const a = tabGeom(tabFor(fromView)); const b = tabGeom(tabFor(toView));
+    if (!a || !b) return;
+    setBar({ left: a.left + (b.left - a.left) * p, width: a.width + (b.width - a.width) * p }, 'none');
+  };
+  const prepareStats = () => { try { statsMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1); statsSelectedKey = dateKey(currentDate); refreshStatsView(); } catch { /* 넘어간 뒤 다시 그림 */ } };
+  const showPeek = dir => {
+    const view = PAGE_ORDER[idx + dir];
+    if (!view) return null;
+    const el = panelFor(view);
+    if (!el || el === panel) return { view, el: null, dir }; // 그로서리↔식도감은 같은 판: 지금 판만 움직임
+    if (view === 'stats') prepareStats();
+    if (view === 'profile') { try { fillProfileForm(); } catch { /* 무시 */ } }
+    const r = panel.getBoundingClientRect();
+    el.classList.add('page-peek');
+    el.style.top = `${r.top}px`; el.style.left = `${r.left}px`; el.style.width = `${r.width}px`; el.style.height = `${r.height}px`;
+    el.hidden = false;
+    return { view, el, dir };
+  };
+  const hidePeek = () => {
+    if (!peek) return;
+    const el = peek.el;
+    if (el) {
+      el.classList.remove('page-peek');
+      ['top', 'left', 'width', 'height', 'transform', 'transition'].forEach(k => el.style.removeProperty(k));
+      el.hidden = el.id !== panelFor(activeView)?.id; // 넘어갔으면 그대로 보이고, 아니면 다시 숨김
+    }
+    peek = null;
+  };
+  const place = (x, transition = 'none') => {
+    if (panel) { panel.style.transition = transition; panel.style.transform = x ? `translate3d(${x}px, 0, 0)` : ''; }
+    if (peek?.el) { peek.el.style.transition = transition; peek.el.style.transform = `translate3d(${x + peek.dir * W}px, 0, 0)`; }
+  };
+  const clearPanel = p => { if (p) { p.style.removeProperty('transform'); p.style.removeProperty('transition'); } };
   frame.addEventListener('touchstart', event => {
-    active = false; mode = null; panel = null; lastDx = 0; samples = [];
-    if (event.touches.length !== 1) return;
+    active = false; mode = null; lastDx = 0; samples = [];
+    if (settling || event.touches.length !== 1) return;
     const t = event.touches[0];
     if (pageSwipeBlocked(event.target, t.clientX)) return;
-    active = true; sx = t.clientX; sy = t.clientY; st = Date.now(); panel = visiblePanel();
+    panel = visiblePanel(); idx = pageIndexOf(activeView);
+    if (!panel || idx < 0) return;
+    active = true; sx = t.clientX; sy = t.clientY; W = panel.getBoundingClientRect().width || innerWidth;
   }, { passive: true });
   frame.addEventListener('touchmove', event => {
     if (!active) return;
@@ -5964,39 +6010,77 @@ function pageSwipeBlocked(target, x) {
     if (!mode) {
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
       mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
-      if (mode === 'h') { sx = t.clientX; st = Date.now(); dx = 0; } // 방향이 정해진 지점부터
+      if (mode === 'h') { sx = t.clientX; dx = 0; } // 방향이 정해진 지점부터 1:1(튀지 않게)
     }
-    if (mode === 'v' || document.body.classList.contains('meal-drag-active') || document.body.classList.contains('card-drag-active')) { active = false; reset(false); return; }
-    if (event.cancelable) event.preventDefault(); // 가로로 정해지면 세로 스크롤 막음
+    if (mode === 'v' || document.body.classList.contains('meal-drag-active') || document.body.classList.contains('card-drag-active')) { active = false; hidePeek(); place(0); clearPanel(panel); movePageTabIndicator(true); return; }
+    if (event.cancelable) event.preventDefault();
     lastDx = dx;
     const now = performance.now();
     samples.push({ x: t.clientX, t: now });
     while (samples.length > 2 && now - samples[0].t > 100) samples.shift();
-    if (panel) {
-      panel.style.transition = 'none';
-      panel.style.transform = `translateX(${Math.round(isEdge(dx) ? rubber(dx) : dx * DAMP)}px)`;
-    }
+    const dir = dx < 0 ? 1 : -1;
+    if (dx !== 0 && (!peek || peek.dir !== dir)) { hidePeek(); peek = showPeek(dir); }
+    const atEdge = !peek;
+    const x = atEdge ? edgePull(dx) : Math.max(-W, Math.min(W, dx));
+    place(Math.round(x * 10) / 10);
+    if (peek) trackBar(activeView, peek.view, Math.min(1, Math.abs(x) / W));
   }, { passive: false });
-  const finish = event => {
+  const settle = (commit, fromX) => {
+    const dur = reduceMotion() ? 0 : SETTLE_MS;
+    const transition = dur ? `transform ${dur}ms ${EASE}` : 'none';
+    const p = panel; const pk = peek; const view = pk?.view;
+    const target = commit ? -pk.dir * W : 0;
+    settling = true;
+    place(target, transition);
+    if (pk) setBar(tabGeom(tabFor(commit ? view : activeView)), dur ? `transform ${dur}ms ${EASE}` : 'none');
+    else setBar(tabGeom(tabFor(activeView)), transition);
+    const done = () => {
+      if (commit) {
+        const samePanel = !pk.el;
+        commitPage(view);
+        clearPanel(p);
+        hidePeek();
+        clearPanel(visiblePanel());
+        if (samePanel && dur) {
+          // 같은 판(그로서리↔식도감): 반대쪽에서 짧게 들어옴
+          const np = visiblePanel();
+          np.style.transition = 'none'; np.style.transform = `translate3d(${pk.dir * W * 0.3}px, 0, 0)`;
+          void np.offsetWidth;
+          np.style.transition = `transform ${dur}ms ${EASE}`; np.style.transform = 'translate3d(0, 0, 0)';
+          setTimeout(() => clearPanel(np), dur + 30);
+        }
+      } else {
+        clearPanel(p);
+        hidePeek();
+      }
+      const b = bar(); if (b) b.style.removeProperty('transition');
+      movePageTabIndicator(true);
+      settling = false;
+    };
+    if (dur) setTimeout(done, dur + 20); else done();
+  };
+  const finish = () => {
     if (!active) return;
     active = false;
-    if (mode !== 'h') { reset(true); return; }
+    if (mode !== 'h') { hidePeek(); clearPanel(panel); return; }
     const dx = lastDx;
-    // 최근 100ms 속도(같은 방향일 때만)
     const a = samples[0]; const b = samples[samples.length - 1];
     const vx = a && b && b.t > a.t ? (b.x - a.x) / (b.t - a.t) : 0;
-    const v = Math.sign(vx) === Math.sign(dx) ? Math.abs(vx) : 0;
-    const idx = pageIndexOf(activeView);
-    const dir = dx < 0 ? 1 : -1;
-    const next = PAGE_ORDER[idx + dir];
-    const enough = Math.abs(dx) >= innerWidth * 0.35 || (v > 0.5 && Math.abs(dx) >= 40);
-    if (!enough || idx < 0 || !next || isEdge(dx)) { reset(true); return; }
-    if (panel) { panel.style.transition = ''; panel.style.transform = ''; }
-    slideToPage(next, dir);
+    const flick = Math.abs(vx) > 0.5 && Math.abs(dx) >= 20;
+    const commit = !!peek && (flick ? Math.sign(vx) === Math.sign(dx) : Math.abs(dx) >= W * 0.35);
+    settle(commit, dx);
   };
   frame.addEventListener('touchend', finish, { passive: true });
-  frame.addEventListener('touchcancel', () => { active = false; reset(true); }, { passive: true });
+  frame.addEventListener('touchcancel', () => { if (!active) return; active = false; settle(false, lastDx); }, { passive: true });
 })();
+// 밀어서 넘긴 뒤 마무리: 들어오기·차례로 나타나기 없이 바로 그 페이지로
+function commitPage(view) {
+  if (foodDex?.classList.contains('open')) closeFoodDex();
+  if (view !== 'foodex') closeFoodexLibrary();
+  suppressPageEnter = true;
+  try { setActiveView(view); } finally { suppressPageEnter = false; }
+  document.querySelector('#page-tabs .page-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
 document.getElementById('ai-dock-panel-close')?.addEventListener('click', () => setAiDockPanel(false));
 
 /* 음성 입력: 앱은 @capgo/capacitor-speech-recognition(iOS 음성 인식, 가능하면 기기 안 인식, ko-KR),

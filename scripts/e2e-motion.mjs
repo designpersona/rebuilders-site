@@ -29,7 +29,7 @@ async function load(url = null) {
 const results = []; let failed = 0;
 function check(name, cond, info = '') { results.push(`${cond ? 'PASS' : 'FAIL'} ${name}${info ? ' — ' + info : ''}`); if (!cond) failed++; }
 const touch = (type, x, y) => send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
-const panelX = view => evaluate(`const m = (document.getElementById('${view}').style.transform || '').match(/translateX\\((-?[\\d.]+)px\\)/); return m ? parseFloat(m[1]) : 0;`);
+const panelX = view => evaluate(`const m = (document.getElementById('${view}').style.transform || '').match(/translate(?:X|3d)\\((-?[\\d.]+)px/); return m ? parseFloat(m[1]) : 0;`);
 try {
   ws = new WebSocket(await connect());
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
@@ -40,18 +40,20 @@ try {
   await load(URL);
   await evaluate(`await saveSettings({ locale: 'ko' }); return 1;`);
   await load();
-  // 1. 리포트 → 손가락의 0.6배
+  // 1. 리포트 → 손가락 1:1, 옆(설정) 페이지도 붙어서 같이, 밑줄도 진행만큼
   await evaluate(`setActiveView('stats'); return 1;`); await sleep(500);
   // (첫 이동은 브라우저가 삼킬 수 있어 방향이 정해진 뒤 두 지점 사이 차이로 1:1 확인)
   await touch('touchStart', 300, 500);
   for (const x of [290, 282, 274, 266]) { await touch('touchMove', x, 501); await sleep(16); }
   const x1 = await panelX('view-stats');
   await touch('touchMove', 216, 502); await sleep(16);
-  const follow = (await panelX('view-stats')) - x1 - 0; // 50px 더 밀면 -30(0.6배)
+  const follow = (await panelX('view-stats')) - x1 - 0; // 50px 더 밀면 정확히 -50
+  const peekMid = await evaluate(`const s = document.getElementById('view-stats'), p = document.getElementById('view-profile'); const m = e => new DOMMatrix(getComputedStyle(e).transform === 'none' ? undefined : getComputedStyle(e).transform).m41; const bar = document.querySelector('.page-tab-indicator').getBoundingClientRect(); const a = document.getElementById('nav-stats').getBoundingClientRect(), b = document.getElementById('nav-settings').getBoundingClientRect(); return { gap: Math.round((m(p) - m(s)) * 10) / 10, w: s.getBoundingClientRect().width, visible: !p.hidden, barBetween: bar.left > a.left + 1 && bar.left < b.left - 1 };`);
   for (const x of [180, 140, 100]) { await touch('touchMove', x, 502); await sleep(8); } await touch('touchEnd');
   await sleep(60);
+  await sleep(320);
   const after = await evaluate(`return { view: activeView, stagger: document.querySelectorAll('#view-profile .stagger-in').length, slide: document.getElementById('view-profile').classList.contains('page-in-right') };`);
-  check('리포트: 손가락의 0.6배(50px → -30px) 따라옴, 빠르게 넘기면 설정, 차례로 나타나기는 겹치지 않음', Math.abs(follow + 30) <= 1.5 && after.view === 'profile' && after.stagger === 0 && after.slide, JSON.stringify({ follow, after }));
+  check('리포트: 손가락 1:1(50px → -50px), 설정 페이지가 바로 옆에 붙어 같이 오고 밑줄도 중간에, 빠르게 넘기면 설정, 들어오기·차례로 나타나기 없음', Math.abs(follow + 50) <= 1 && Math.abs(peekMid.gap - peekMid.w) <= 1 && peekMid.visible && peekMid.barBetween && after.view === 'profile' && after.stagger === 0 && !after.slide, JSON.stringify({ follow, peekMid, after }));
   await sleep(400);
   // 2. 설정(마지막) → 더 밀어도 40px 까지만, 놓으면 제자리
   await touch('touchStart', 330, 500); await touch('touchMove', 318, 500); await sleep(20);
@@ -59,7 +61,7 @@ try {
   for (let x = 300; x >= 40; x -= 40) { await touch('touchMove', x, 500); await sleep(16); maxPull = Math.max(maxPull, Math.abs(await panelX('view-profile'))); }
   await touch('touchEnd'); await sleep(350);
   const edge = await evaluate(`return { view: activeView, t: document.getElementById('view-profile').style.transform };`);
-  check('설정(끝): 끝까지 당겨도 40px 이하 고무줄, 놓으면 제자리', maxPull > 10 && maxPull <= 40 && edge.view === 'profile' && !edge.t, JSON.stringify({ maxPull, edge }));
+  check('설정(끝): 끝까지 당겨도 12px 이하, 놓으면 제자리', maxPull > 2 && maxPull <= 12 && edge.view === 'profile' && !edge.t, JSON.stringify({ maxPull, edge }));
   // 3. 세로로 스크롤하면 가로로 안 끌림
   await evaluate(`setActiveView('stats'); return 1;`); await sleep(400);
   await touch('touchStart', 200, 600); await touch('touchMove', 203, 585); await touch('touchMove', 230, 520); await touch('touchMove', 250, 450);
@@ -125,6 +127,21 @@ try {
     found.pad = [...document.querySelectorAll('.app-content.view-panel')].map(p => getComputedStyle(p).paddingLeft).filter(v => v !== '28px');
     return found;`);
   check('굵은 검정 테두리 없음(그로서리·식도감·식단(펼친 카드 포함)·리포트·설정·끼니 상세), 모든 페이지 좌우 여백 같음', Object.values(heavy).every(a => a.length === 0), JSON.stringify(heavy));
+  // 16. 놓은 뒤 궤적: 리포트→설정, 매 프레임 목표를 넘지 않고(넘침·되돌아옴 없음) 한 방향으로만, 250ms 안팎에 끝
+  await evaluate(`setActiveView('stats'); return 1;`); await sleep(400);
+  await touch('touchStart', 320, 500);
+  for (const x of [308, 290, 270, 250, 230, 210, 190, 170, 150]) { await touch('touchMove', x, 500); await sleep(30); }
+  await evaluate(`window.__traj = []; const s = document.getElementById('view-stats'), p = document.getElementById('view-profile'); const m = e => { const t = getComputedStyle(e).transform; return t === 'none' ? 0 : new DOMMatrix(t).m41; }; const t0 = performance.now(); const tick = () => { window.__traj.push([Math.round(performance.now() - t0), Math.round(m(s) * 10) / 10, Math.round(m(p) * 10) / 10, activeView]); if (performance.now() - t0 < 500) requestAnimationFrame(tick); }; requestAnimationFrame(tick); return 1;`);
+  await touch('touchEnd'); await sleep(600);
+  const traj = await evaluate(`return { t: window.__traj, w: document.getElementById('view-profile').getBoundingClientRect().width, view: activeView, peek: !!document.querySelector('.page-peek'), styles: ['view-stats', 'view-profile'].map(id => document.getElementById(id).style.transform).join(''), statsHidden: document.getElementById('view-stats').hidden };`);
+  const tr = traj.t.filter(f => f[3] === 'stats');
+  const mono = tr.every((f, i) => i === 0 || (f[1] <= tr[i - 1][1] + 0.5 && f[2] <= tr[i - 1][2] + 0.5));
+  const noOver = traj.t.every(f => f[1] >= -traj.w - 0.5 && f[2] >= -0.5);
+  const doneAt = (traj.t.find(f => f[3] === 'profile') || [999])[0];
+  check('놓은 뒤 궤적: 리포트·설정 모두 목표 쪽으로만 움직이고 목표를 안 넘음(튕김 없음), 약 250ms 에 설정으로 끝, 남은 이동값 없음', mono && noOver && doneAt <= 360 && traj.view === 'profile' && !traj.peek && !traj.styles && traj.statsHidden, JSON.stringify({ mono, noOver, doneAt, frames: traj.t.length, first: traj.t.slice(0, 3), last: traj.t.slice(-2), peek: traj.peek, styles: traj.styles }));
+  // 17. 페이지는 세로 스크롤만 브라우저가, 가로는 앱이(iOS 가로 끌림 막음)
+  const ta = await evaluate(`return [...document.querySelectorAll('.app-content.view-panel')].map(p => getComputedStyle(p).touchAction + '/' + getComputedStyle(p).overscrollBehaviorX).join(',') + '|' + getComputedStyle(document.body).overscrollBehaviorX;`);
+  check('페이지: touch-action pan-y, 가로 오버스크롤 없음', ta.split('|')[0].split(',').every(v => v === 'pan-y/none') && ta.split('|')[1] === 'none', ta);
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));
