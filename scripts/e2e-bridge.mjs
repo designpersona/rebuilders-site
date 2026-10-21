@@ -197,7 +197,7 @@ try {
     i.focus(); document.getElementById('agent-send').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); const sendKeeps = f();
     i.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); const selfKeeps = f();
     const tab = document.getElementById('nav-stats'); tab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); const tapBlurs = !f(); tab.click(); const tapActs = !document.getElementById('view-stats').hidden;
-    setActiveView('home'); i.focus(); document.getElementById('view-home').dispatchEvent(new Event('touchmove', { bubbles: true })); const scrollBlurs = !f();
+    setActiveView('home'); i.focus(); const vh = document.getElementById('view-home'); const tp = y => [new Touch({ identifier: 1, target: vh, clientX: 100, clientY: y })]; vh.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: tp(200) })); vh.dispatchEvent(new TouchEvent('touchmove', { bubbles: true, touches: tp(240) })); const scrollBlurs = !f(); vh.dispatchEvent(new TouchEvent('touchend', { bubbles: true, changedTouches: tp(240) })); // 아래로 끌면 닫힘
     return { sendKeeps, selfKeeps, tapBlurs, tapActs, scrollBlurs };`);
   check('입력창 밖 누르기·화면 밀기 → 키보드 닫힘, 누른 버튼은 그대로 동작, 입력창·보내기는 제외', blur.sendKeeps && blur.selfKeeps && blur.tapBlurs && blur.tapActs && blur.scrollBlurs, JSON.stringify(blur));
   const other = await evaluate(`setActiveView('stats'); const hidden = document.getElementById('home-ai-dock').hidden; setActiveView('ai'); await new Promise(r => setTimeout(r, 100)); return { hidden, back: activeView === 'home' };`);

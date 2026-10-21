@@ -103,7 +103,7 @@ const UI_COPY = {
     home: '식단', stats: '리포트', profile: '내정보',
     searchOnlyTitle: '음식 검색', searchOnlyKicker: '검색',
     fridgeTitle: '그로서리', fridgeKicker: '냉장고',
-    foodexNav: '식도감', foodexTab: '식도감', recipeTab: '레시피', badgeTab: '뱃지',
+    foodexNav: '식도감', foodexTab: '음식', recipeTab: '레시피', badgeTab: '뱃지',
     shopping: '장보기', stockTab: '창고', storeTab: '스토어',
     languageTitle: '언어',
     languageDescription: '처음에는 기기 언어에 맞춰 표시됩니다. 여기서 선택하면 이 기기에 저장됩니다.',
@@ -145,7 +145,7 @@ const UI_COPY = {
     home: 'Meals', stats: 'Report', profile: 'Profile',
     searchOnlyTitle: 'Food search', searchOnlyKicker: 'Search',
     fridgeTitle: 'Grocery', fridgeKicker: 'Fridge',
-    foodexNav: 'Foodpedia', foodexTab: 'Foodpedia', recipeTab: 'Recipes', badgeTab: 'Badges',
+    foodexNav: 'Foodpedia', foodexTab: 'Food', recipeTab: 'Recipes', badgeTab: 'Badges',
     shopping: 'Shopping', stockTab: 'Stock', storeTab: 'Store',
     languageTitle: 'Language',
     languageDescription: 'The first visit follows your device language. Your choice here is saved on this device.',
@@ -251,7 +251,6 @@ function applyLanguage(render = true) {
     '#search-hub-tab-stock': t('stockTab'),
     '#search-hub-tab-store': t('storeTab'),
     '#view-search .search-hub-note': t('searchLibraryNote'),
-    '#view-search .search-index-intro h2': t('foodIndex'),
     '#clear-day-btn': t('clearDay'),
     '#stats-page-title-text': t('statsTitle'),
     '#modal-snack-selector .modal-snack-label': t('snackWhen'),
@@ -589,6 +588,363 @@ function foodSourceMeta(data, name) {
   if (data?.source) return { label: escapeHtml(data.source), cls: 'source-ref' };
   return { label: ACTIVE_LOCALE === 'en' ? 'Local' : '로컬', cls: 'source-local' };
 }
+
+
+/* =====================================================================
+   통합 음식 검색(아이폰 검색처럼): 최근 먹은 → 내 식도감 → 영양 DB 순 묶음
+   - 이름 색인은 저장소(IndexedDB)에서 한 번만 만들고, 하루 기록 저장·내 음식 추가/삭제 때 그 부분만 고침
+   - 로컬 결과는 바로, 바깥 조회(있을 때만)는 2글자 이상·200ms 멈춘 뒤·이전 요청은 취소
+   ===================================================================== */
+const FoodSearch = (() => {
+  const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+  const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
+  const eaten = new Map(); // 이름 → { count, last, food }
+  const dayNames = new Map(); // 날짜 → [이름…] (고칠 때 예전 것을 빼기 위해)
+  const hayCache = new Map();
+  const stats = { readMs: 0, buildMs: 0, days: 0, entries: 0, lastSearchMs: 0, externalCalls: 0, builds: 0 };
+  let ready = false; let building = null; let attached = null;
+  const norm = s => String(s || '').toLowerCase().normalize('NFC').replace(/[\s·.,()\[\]\-_/]+/g, '');
+  function hay(name, data) {
+    const key = `${ACTIVE_LOCALE}\u0001${name}`;
+    let v = hayCache.get(key);
+    if (v === undefined) {
+      let shown = name;
+      try { shown = displayFoodName({ name, ...(data || {}) }) || name; } catch { /* 이름만 */ }
+      v = shown !== name ? `${norm(name)}\u0001${norm(shown)}` : norm(name);
+      hayCache.set(key, v);
+    }
+    return v;
+  }
+  function inc(name, key, food) {
+    let e = eaten.get(name);
+    if (!e) { e = { count: 0, last: '', food: null }; eaten.set(name, e); }
+    e.count += 1;
+    if (key >= e.last) { e.last = key; e.food = food; }
+  }
+  function dec(name) {
+    const e = eaten.get(name);
+    if (!e) return;
+    e.count -= 1;
+    if (e.count <= 0) eaten.delete(name);
+  }
+  function indexDay(key, day) {
+    const old = dayNames.get(key);
+    if (old) old.forEach(dec);
+    const names = [];
+    for (const meal of MEALS) {
+      const list = Array.isArray(day?.[meal]) ? day[meal] : [];
+      for (const food of list) {
+        if (!food?.name) continue;
+        names.push(food.name);
+        inc(food.name, key, { ...food });
+      }
+    }
+    if (names.length) dayNames.set(key, names); else dayNames.delete(key);
+    return names.length;
+  }
+  // 저장소 저장 함수에 살짝 얹어 색인을 같이 고침(저장 동작은 그대로)
+  function attach(repo) {
+    if (!repo || attached === repo || repo.__foodSearchHooked) { attached = repo; return; }
+    const wrap = (method, after) => {
+      const original = repo[method];
+      if (typeof original !== 'function') return;
+      repo[method] = async function (...args) {
+        const result = await original.apply(this, args);
+        try { after(...args); } catch { /* 색인은 다음 검색 때 다시 */ }
+        return result;
+      };
+    };
+    wrap('saveDay', (key, day) => { if (ready && DAY_KEY.test(key)) indexDay(key, day); });
+    wrap('saveDayAndRecent', (key, day) => { if (ready && DAY_KEY.test(key)) indexDay(key, day); });
+    wrap('replaceAll', () => invalidate());
+    repo.__foodSearchHooked = true;
+    attached = repo;
+  }
+  async function build() {
+    attach(storageRepository);
+    if (ready) return stats;
+    if (building) return building;
+    building = (async () => {
+      const t0 = performance.now();
+      const all = await storageRepository.getAll();
+      const t1 = performance.now();
+      eaten.clear(); dayNames.clear();
+      let entries = 0;
+      for (const key of Object.keys(all)) if (DAY_KEY.test(key)) entries += indexDay(key, all[key]);
+      stats.readMs = Math.round((t1 - t0) * 10) / 10;
+      stats.buildMs = Math.round((performance.now() - t1) * 10) / 10;
+      stats.days = dayNames.size; stats.entries = entries; stats.builds += 1;
+      ready = true;
+      return stats;
+    })();
+    try { return await building; } finally { building = null; }
+  }
+  function invalidate() { ready = false; hayCache.clear(); }
+  function forgetName(name) { for (const key of [...hayCache.keys()]) if (key.endsWith(`\u0001${name}`)) hayCache.delete(key); }
+  function count(name) { return eaten.get(name)?.count || 0; }
+  function search(query) {
+    const t0 = performance.now();
+    const nq = norm(query);
+    if (!nq) return null;
+    const rank = h => { const i = h.indexOf(nq); return i < 0 ? -1 : (i === 0 || h[i - 1] === '\u0001' ? 0 : 1); };
+    const seen = new Set();
+    const recent = [];
+    // 식도감에서 지운 음식은(기록은 남아도) 검색에 다시 안 나오게: 내 식도감·기본 목록에 있는 것만
+    const inCatalog = name => Boolean(CUSTOM_FOODS[name] || FOOD_DB[name]);
+    for (const [name, e] of eaten) {
+      if (!inCatalog(name)) continue;
+      const data = CUSTOM_FOODS[name] || FOOD_DB[name] || e.food || {};
+      const r = rank(hay(name, data));
+      if (r < 0) continue;
+      recent.push({ name, data, count: e.count, last: e.last, r, ri: 99 });
+      seen.add(name);
+    }
+    (RECENT_FOODS || []).forEach((food, i) => {
+      if (!food?.name || seen.has(food.name) || !inCatalog(food.name)) return;
+      const data = CUSTOM_FOODS[food.name] || FOOD_DB[food.name] || food;
+      const r = rank(hay(food.name, data));
+      if (r < 0) return;
+      recent.push({ name: food.name, data, count: 0, last: '', r, ri: i });
+      seen.add(food.name);
+    });
+    recent.sort((a, b) => b.count - a.count || (a.last < b.last ? 1 : a.last > b.last ? -1 : 0) || a.ri - b.ri || a.r - b.r);
+    const collect = source => {
+      const out = [];
+      for (const name in source) {
+        if (seen.has(name)) continue;
+        const r = rank(hay(name, source[name]));
+        if (r < 0) continue;
+        out.push({ name, data: source[name], r });
+      }
+      out.sort((a, b) => a.r - b.r || a.name.length - b.name.length || a.name.localeCompare(b.name, 'ko'));
+      out.forEach(item => seen.add(item.name));
+      return out;
+    };
+    const mine = collect(CUSTOM_FOODS);
+    const db = collect(FOOD_DB);
+    stats.lastSearchMs = Math.round((performance.now() - t0) * 100) / 100;
+    return { query, sections: [{ key: 'recent', items: recent }, { key: 'mine', items: mine }, { key: 'db', items: db }], ms: stats.lastSearchMs };
+  }
+  // 바깥 조회: 로컬 서버(개발용)에서만. 앱 번들은 없음 → 호출 안 함. 테스트에서 바꿔 끼울 수 있음
+  let externalProvider = (typeof LOCAL_MODE !== 'undefined' && LOCAL_MODE)
+    ? async (q, signal) => {
+      const result = await storageRepository.resolveFood({ name: q }, { register: false, signal });
+      return result?.food ? [{ ...result.food, name: result.food.name || q }] : [];
+    }
+    : null;
+  return {
+    build, search, count, invalidate, forgetName, attach, stats,
+    ready: () => ready,
+    get externalProvider() { return externalProvider; },
+    set externalProvider(fn) { externalProvider = typeof fn === 'function' ? fn : null; },
+  };
+})();
+globalThis.FoodSearch = FoodSearch;
+
+const FOOD_SEARCH_PAGE = 5;
+function foodSearchSectionLabel(key) {
+  const en = ACTIVE_LOCALE === 'en';
+  return { recent: en ? 'Recently eaten' : '최근 먹은', mine: en ? 'My Foodpedia' : '내 식도감', db: en ? 'Nutrition DB' : '영양 DB' }[key] || key;
+}
+function foodMacroLine(data) {
+  const en = ACTIVE_LOCALE === 'en';
+  const v = x => Math.round((Number(x) || 0) * 10) / 10;
+  return `${en ? 'C' : '탄'}${v(data.carbs)}g · ${en ? 'P' : '단'}${v(data.protein)}g · ${en ? 'F' : '지'}${v(data.fat)}g`;
+}
+function foodSearchRow(item, onPick) {
+  const { name } = item;
+  const data = item.data || {};
+  const food = { ...data, name };
+  const en = ACTIVE_LOCALE === 'en';
+  const src = item.external
+    ? { label: escapeHtml(data.source || (en ? 'Lookup' : '조회')) }
+    : foodSourceMeta(data, name);
+  const tag = data.aiEstimate ? (en ? 'AI estimate' : 'AI 추정') : src.label;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'fs-row';
+  button.dataset.name = name;
+  button.innerHTML = `
+    <span class="fs-main"><span class="fs-name">${escapeHtml(displayFoodName(food))}</span>
+      <span class="fs-sub">${data.serving ? `<span class="fs-amount">${escapeHtml(displayServing(food, data.serving))}</span>` : ''}<span class="fs-src">${tag}</span></span></span>
+    <span class="fs-nut">${isNutritionMissing(data)
+      ? `<span class="fs-missing">${escapeHtml(nutritionMissingLabel())}</span>`
+      : `<span class="fs-kcal">${Math.round(Number(data.cal) || 0)}kcal</span><span class="fs-macros">${foodMacroLine(data)}</span>`}</span>`;
+  button.addEventListener('click', () => onPick(food, item));
+  return button;
+}
+/* 묶음 결과 그리기(식도감·음식 추가 시트 공용). state.more = { 묶음: 보여 줄 개수 } */
+function renderFoodSearchResults(container, result, state, handlers) {
+  const en = ACTIVE_LOCALE === 'en';
+  container.replaceChildren();
+  const q = result.query;
+  const sections = result.sections.map(section => section.key === 'db' && state.external?.length
+    ? { ...section, items: [...section.items, ...state.external.filter(f => f?.name && !result.sections.some(s => s.items.some(i => i.name === f.name))).map(f => ({ name: f.name, data: f, external: true }))] }
+    : section);
+  let shown = 0;
+  for (const section of sections) {
+    if (!section.items.length) continue;
+    const limit = state.more[section.key] || FOOD_SEARCH_PAGE;
+    const wrap = document.createElement('section');
+    wrap.className = 'fs-section';
+    wrap.dataset.section = section.key;
+    wrap.innerHTML = `<h3 class="fs-head">${foodSearchSectionLabel(section.key)}<span class="fs-count">${section.items.length}</span></h3>`;
+    const list = document.createElement('div');
+    list.className = 'fs-list';
+    section.items.slice(0, limit).forEach(item => list.appendChild(foodSearchRow(item, handlers.onPick)));
+    wrap.appendChild(list);
+    const rest = section.items.length - limit;
+    if (rest > 0) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'fs-more';
+      more.textContent = en ? `Show more (${rest})` : `더 보기 (${rest}개)`;
+      more.addEventListener('click', () => { state.more[section.key] = limit + 20; handlers.onMore(); });
+      wrap.appendChild(more);
+    }
+    container.appendChild(wrap);
+    shown += 1;
+  }
+  if (!shown) {
+    const empty = document.createElement('p');
+    empty.className = 'fs-empty';
+    empty.textContent = en ? `No food matches '${q}'.` : `'${q}'와(과) 맞는 음식이 없어요.`;
+    container.appendChild(empty);
+  }
+  const actions = document.createElement('div');
+  actions.className = 'fs-actions';
+  const register = document.createElement('button');
+  register.type = 'button';
+  register.className = 'fs-register';
+  register.innerHTML = `<span class="fs-plus" aria-hidden="true">+</span><span>${en ? `Register '${escapeHtml(q)}'` : `'${escapeHtml(q)}' 직접 등록하기`}</span>`;
+  register.addEventListener('click', () => handlers.onRegister(q));
+  actions.appendChild(register);
+  if (handlers.onAi && globalThis.RebuildersBridge?.isConfigured?.()) {
+    const ai = document.createElement('button');
+    ai.type = 'button';
+    ai.className = 'fs-ai';
+    ai.innerHTML = `<span class="fs-plus" aria-hidden="true">✦</span><span>${en ? 'Find with AI' : 'AI로 찾기'}</span>`;
+    ai.addEventListener('click', () => handlers.onAi(q, ai));
+    actions.appendChild(ai);
+  }
+  container.appendChild(actions);
+}
+
+/* 식도감 검색 상태 */
+const foodexSearchState = { q: '', more: {}, external: [], token: 0, timer: null, abort: null };
+function foodexSearchQuery() { return (document.getElementById('foodex-search-input')?.value || '').trim(); }
+function setFoodexResultsMode(on) {
+  const panel = document.querySelector('[data-foodex-panel="index"]');
+  if (!panel) return;
+  panel.classList.toggle('is-searching', on);
+  const results = document.getElementById('foodex-results');
+  if (results) results.hidden = !on;
+}
+function renderFoodexResults() {
+  const container = document.getElementById('foodex-results');
+  const q = foodexSearchQuery();
+  if (!container) return;
+  if (!q) { setFoodexResultsMode(false); container.replaceChildren(); return; }
+  const result = FoodSearch.search(q);
+  setFoodexResultsMode(true);
+  renderFoodSearchResults(container, result, foodexSearchState, {
+    onPick: food => openFoodDex(food, { mode: 'index' }),
+    onMore: renderFoodexResults,
+    onRegister: name => openFoodRegistration(name),
+    onAi: (name, button) => findFoodWithAi(name, button),
+  });
+}
+function scheduleFoodexExternal(q) {
+  clearTimeout(foodexSearchState.timer);
+  foodexSearchState.abort?.abort();
+  foodexSearchState.abort = null;
+  const provider = FoodSearch.externalProvider;
+  if (!provider || q.length < 2) return;
+  foodexSearchState.timer = setTimeout(async () => {
+    const controller = new AbortController();
+    foodexSearchState.abort = controller;
+    const token = ++foodexSearchState.token;
+    FoodSearch.stats.externalCalls += 1;
+    try {
+      const list = await provider(q, controller.signal);
+      if (controller.signal.aborted || token !== foodexSearchState.token || foodexSearchQuery() !== q) return;
+      foodexSearchState.external = Array.isArray(list) ? list : [];
+      renderFoodexResults();
+    } catch { /* 바깥 조회 실패는 조용히(로컬 결과는 이미 보임) */ }
+  }, 200);
+}
+function onFoodexSearchInput() {
+  const q = foodexSearchQuery();
+  if (q !== foodexSearchState.q) { foodexSearchState.more = {}; foodexSearchState.external = []; }
+  foodexSearchState.q = q;
+  scheduleFoodexExternal(q);
+  if (!q) { setFoodexResultsMode(false); renderSearchHub(); return; }
+  if (!FoodSearch.ready()) FoodSearch.build().then(() => { if (foodexSearchQuery() === q) renderFoodexResults(); }).catch(() => {});
+  renderFoodexResults();
+}
+function openFoodRegistration(name) {
+  openProductRegistration();
+  const input = document.getElementById('custom-name');
+  if (input) input.value = name;
+  document.getElementById('modal-title').textContent = ACTIVE_LOCALE === 'en' ? 'Register a food' : '음식 직접 등록';
+}
+async function findFoodWithAi(name, button) {
+  const en = ACTIVE_LOCALE === 'en';
+  if (!globalThis.RebuildersBridge?.isConfigured?.()) return;
+  const label = button.querySelector('span:last-child');
+  const before = label.textContent;
+  button.disabled = true;
+  label.textContent = en ? 'AI is searching…' : 'AI가 찾는 중…';
+  try {
+    const result = await RebuildersBridge.lookup({ date: dateKey(currentDate), meal: 'snack', items: [{ name }] });
+    const item = result.items?.[0];
+    const fields = item ? RebuildersBridge.toFoodFields(item) : null;
+    if (!fields) { showToast(en ? 'AI could not find it. Register it yourself.' : 'AI가 찾지 못했어요. 직접 등록해 주세요.', 'info'); return; }
+    const { displayName, ...rest } = fields;
+    const foodName = displayName || name;
+    await saveCustomFood(foodName, { ...rest, discoveredAt: new Date().toISOString(), discoveryOrigin: 'ai', unlocked: true });
+    renderFoodexResults();
+    openFoodDex({ name: foodName, ...CUSTOM_FOODS[foodName] }, { mode: 'index' });
+  } catch {
+    showToast(en ? 'Could not reach the AI. Try again later.' : 'AI에 연결하지 못했어요. 잠시 뒤 다시 해 주세요.', 'info');
+  } finally {
+    button.disabled = false;
+    label.textContent = before;
+  }
+}
+
+/* 음식 상세 → 식단에 추가(끼니 고르기) */
+function syncFoodDexAdd(mode, food) {
+  const wrap = document.getElementById('food-dex-add');
+  if (!wrap) return;
+  wrap.hidden = mode !== 'index' || !food?.name;
+  wrap.__food = food;
+  document.getElementById('food-dex-add-picker').hidden = true;
+  document.getElementById('food-dex-add-btn').hidden = false;
+  const date = document.getElementById('food-dex-add-date');
+  if (date) date.textContent = `${formatDate(currentDate)} ${ACTIVE_LOCALE === 'en' ? '— pick a meal' : '· 어느 끼니에 넣을까요?'}`;
+  document.querySelectorAll('#food-dex-add [data-add-meal]').forEach(button => { button.textContent = mealLabel(button.dataset.addMeal); });
+}
+document.getElementById('food-dex-add-btn')?.addEventListener('click', () => {
+  document.getElementById('food-dex-add-btn').hidden = true;
+  document.getElementById('food-dex-add-picker').hidden = false;
+});
+document.querySelectorAll('#food-dex-add [data-add-meal]').forEach(button => button.addEventListener('click', async () => {
+  const food = document.getElementById('food-dex-add')?.__food;
+  if (!food?.name) return;
+  const mealId = button.dataset.addMeal;
+  const { id, _isNew, ...clean } = food;
+  void id; void _isNew;
+  button.disabled = true;
+  try {
+    await addFood(mealId, clean);
+    await registerLoggedFoods([clean]);
+    closeFoodDex();
+    showToast(ACTIVE_LOCALE === 'en' ? `Added to ${mealLabel(mealId)}` : `${mealLabel(mealId)}에 추가했어요`, 'success');
+  } finally {
+    button.disabled = false;
+  }
+}));
 
 function getFoodEntries() {
   return Object.entries({ ...FOOD_DB, ...CUSTOM_FOODS });
@@ -999,7 +1355,8 @@ function applyExtendedStaticCopy() {
   label('#nav-stats', '리포트', 'Report');
   label('#nav-chat', '채팅', 'Chat');
   label('#nav-shopping', '그로서리', 'Grocery');
-  label('#foodex-tab-index', '식도감', 'Foodpedia');
+  label('#foodex-tab-index', '음식', 'Food');
+  set('#food-dex-add-btn', '식단에 추가', 'Add to meals');
   label('#foodex-tab-badge', '뱃지', 'Badges');
   set('#badge-title', '뱃지', 'Badges');
   set('#badge-sub', '기록을 이어가면 뱃지가 하나씩 열려요. 곧 만나요.', 'Badges unlock as you keep logging. Coming soon.');
@@ -2994,6 +3351,30 @@ function renderFoodRows(container, entries, allowCustomActions = true) {
 }
 
 
+// 음식 추가 시트 검색도 같은 묶음(최근 먹은 → 내 식도감 → 영양 DB, 5개씩 + 더 보기). 누르면 바로 이 끼니에 추가(기존 동작)
+const sheetSearchMore = { q: '', more: {} };
+function renderGroupedQuickFoods(container, q) {
+  if (sheetSearchMore.q !== q) { sheetSearchMore.q = q; sheetSearchMore.more = {}; }
+  const result = FoodSearch.search(q);
+  if (!result) return;
+  for (const section of result.sections) {
+    if (!section.items.length) continue;
+    const limit = sheetSearchMore.more[section.key] || FOOD_SEARCH_PAGE;
+    renderFoodSection(container, `${foodSearchSectionLabel(section.key)} · ${section.items.length}`, section.items.slice(0, limit).map(item => [item.name, item.data]), true);
+    container.lastElementChild?.classList.add('fs-sheet-last');
+    const rest = section.items.length - limit;
+    if (rest > 0) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'fs-more';
+      more.dataset.section = section.key;
+      more.textContent = ACTIVE_LOCALE === 'en' ? `Show more (${rest})` : `더 보기 (${rest}개)`;
+      more.addEventListener('click', () => { sheetSearchMore.more[section.key] = limit + 20; scheduleFoodSearch(); });
+      container.appendChild(more);
+    }
+  }
+}
+
 function renderFoodSection(container, label, entries, allowCustomActions = true) {
   if (!entries.length) return;
   const title = document.createElement('div');
@@ -3037,7 +3418,7 @@ function renderQuickFoods(entries) {
   const sectionLabel = ACTIVE_LOCALE === 'en'
     ? (q ? 'My foods · Built-in (local)' : 'My foods · Built-in')
     : (q ? '내 음식 · 기본 (로컬)' : '내 음식 · 기본');
-  renderFoodSection(container, sectionLabel, entries, true);
+  if (q) renderGroupedQuickFoods(container, q); else renderFoodSection(container, sectionLabel, entries, true);
   if (quickButton && !quickFirst) container.appendChild(quickButton);
   if (askButton && !quickFirst) container.appendChild(askButton);
 
@@ -3507,6 +3888,7 @@ let foodDexCanonicalFood = null;
 let foodDexEditContext = null;
 
 function foodLogCount(foodName) {
+  if (FoodSearch.ready()) return FoodSearch.count(foodName); // 색인(한 번 만들고 저장 때 고침)
   const days = { ...(statsCache || {}), [dateKey(currentDate)]: dayDataFromMeals(meals) };
   return Object.values(days).reduce((count, day) => {
     return count + ['breakfast', 'lunch', 'dinner', 'snack']
@@ -3576,6 +3958,7 @@ function openFoodDex(food) {
   foodDexCanonicalFood = FOOD_DB[food.name] ? { name: food.name, ...FOOD_DB[food.name] } : food;
   const referenceFood = mode === 'meal' ? food : foodDexCanonicalFood;
   syncFoodDexDelete(mode, referenceFood);
+  syncFoodDexAdd(mode, referenceFood);
   const visibleName = displayFoodName(referenceFood);
   document.getElementById('food-dex-number').textContent = foodDexNumber(referenceFood);
   const category = foodCategoryMeta(referenceFood.name);
@@ -4211,6 +4594,8 @@ function renderSearchHub() {
   const input = document.getElementById('search-hub-input');
   const foodexInput = document.getElementById('foodex-search-input');
   if (!results || !indexGrid || !categories || !input) return;
+  // 식도감에서 검색 중이면 묶음 결과만(전체 목록 정렬·그리기 건너뜀)
+  if ((foodexInput?.value || '').trim() && document.getElementById('view-search')?.dataset.hubMode === 'foodex') { renderFoodexResults(); return; }
 
   document.querySelectorAll('[data-index-layout]').forEach(button => {
     const active = button.dataset.indexLayout === searchIndexLayout;
@@ -4312,15 +4697,8 @@ function renderSearchHub() {
   indexGrid.classList.toggle('is-list-layout', searchIndexLayout === 'list');
 
   // Foodpedia 검색어가 있으면 카테고리 대신 결과 목록
-  if (foodexQuery) {
-    categories.hidden = true;
-    if (!indexEntries.length) {
-      indexGrid.innerHTML = `<p class="search-hub-empty">${ACTIVE_LOCALE === 'en' ? 'No matching food in Foodpedia.' : '식도감에서 일치하는 음식이 없어요.'}</p>`;
-      return;
-    }
-    indexEntries.forEach(entry => indexGrid.appendChild(createIndexButton(entry, true)));
-    return;
-  }
+  if (foodexQuery) { renderFoodexResults(); return; }
+  setFoodexResultsMode(false);
 
   if (foodexFilter !== 'all') {
     categories.hidden = true;
@@ -5039,9 +5417,7 @@ document.getElementById('foodex-search-toggle')?.addEventListener('click', () =>
     renderSearchHub();
   }
 });
-document.getElementById('foodex-search-input')?.addEventListener('input', () => {
-  renderSearchHub();
-});
+document.getElementById('foodex-search-input')?.addEventListener('input', onFoodexSearchInput);
 document.querySelectorAll('[data-search-term]').forEach(button => {
   button.addEventListener('click', () => {
     const input = document.getElementById('search-hub-input');
@@ -5945,18 +6321,24 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape') setF
 
 /* 입력창 밖을 누르거나 화면을 밀면 키보드 닫기(누른 것은 그대로 동작: 이벤트를 막지 않음).
    입력창·보내기 버튼(#home-ai-dock 안)은 제외 */
+// 아래 입력창(식단 채팅·식도감 검색) 키보드 닫기: 바깥 누르기 + 목록을 아래로 끌기(메시지 앱처럼)
 function dismissAiDockKeyboard() {
-  const input = document.getElementById('agent-input');
-  if (!input || document.activeElement !== input) return false;
+  const input = document.activeElement;
+  if (!input || !['agent-input', 'foodex-search-input'].includes(input.id)) return false;
   input.blur();
   try { globalThis.Capacitor?.isNativePlatform?.() && globalThis.Capacitor.Plugins?.Keyboard?.hide?.()?.catch?.(() => {}); } catch { /* ignore */ }
   return true;
 }
 function outsideAiDock(target) {
-  return !(target && target.closest && target.closest('#home-ai-dock'));
+  return !(target && target.closest && target.closest('.home-ai-dock'));
 }
-document.addEventListener('pointerdown', event => { if (outsideAiDock(event.target)) dismissAiDockKeyboard(); }, { capture: true, passive: true });
-document.addEventListener('touchmove', event => { if (outsideAiDock(event.target)) dismissAiDockKeyboard(); }, { capture: true, passive: true });
+let dockDragStartY = null;
+document.addEventListener('pointerdown', event => { if (event.pointerType !== 'touch' && outsideAiDock(event.target)) dismissAiDockKeyboard(); }, { capture: true, passive: true });
+document.addEventListener('touchstart', event => { dockDragStartY = outsideAiDock(event.target) ? event.touches[0]?.clientY ?? null : null; }, { capture: true, passive: true });
+// 아래로 10px 넘게 끌면 키보드를 내림(위로 끌어 결과를 더 보는 것은 그대로)
+document.addEventListener('touchmove', event => { if (dockDragStartY == null) return; const y = event.touches[0]?.clientY ?? dockDragStartY; if (y - dockDragStartY > 10 && dismissAiDockKeyboard()) dockDragStartY = null; }, { capture: true, passive: true });
+// 바깥을 톡 누르면(끌지 않고) 키보드 내림
+document.addEventListener('touchend', event => { if (dockDragStartY == null) return; const y = event.changedTouches[0]?.clientY ?? dockDragStartY; if (Math.abs(y - dockDragStartY) < 8) dismissAiDockKeyboard(); dockDragStartY = null; }, { capture: true, passive: true });
 document.addEventListener('wheel', event => { if (outsideAiDock(event.target)) dismissAiDockKeyboard(); }, { capture: true, passive: true });
 
 /* ============================
@@ -6660,7 +7042,7 @@ function showStorageUnavailable(error) {
   if (message) message.textContent = storageErrorMessage(error);
   if (phone) phone.hidden = true;
   if (screen) screen.hidden = false;
-  document.body.classList.add('app-ready'); motionOnReady();
+  document.body.classList.add('app-ready'); motionOnReady(); setTimeout(() => FoodSearch.build().catch(() => {}), 300);
 }
 
 function showAppScreen() {
@@ -7339,7 +7721,7 @@ async function initializeApp() {
   setupDeepLinks();
   setupBridge();
   showAppScreen();
-  document.body.classList.add('app-ready'); motionOnReady();
+  document.body.classList.add('app-ready'); motionOnReady(); setTimeout(() => FoodSearch.build().catch(() => {}), 300);
   registerServiceWorker();
 }
 

@@ -21,9 +21,37 @@
     doc.documentElement.style.setProperty('--kb-h', `${h}px`);
     doc.documentElement.classList.toggle('kb-native', true);
   }
+  /* 아래 입력창(식단 채팅·식도감 검색)에 커서가 가면 iOS(WebKit)가 화면 전체를 위로 밀어 올림
+     → 화면·바깥 틀·잘림 상자의 스크롤을 늘 0으로 되돌려 위쪽(탭·내용)은 제자리, 입력창만 키보드 위로 */
+  const inDock = el => Boolean(el?.closest?.('.home-ai-dock'));
+  function resetPan() {
+    const frame = doc.querySelector('.phone-frame');
+    const list = [doc.scrollingElement, doc.documentElement, doc.body, frame];
+    const active = doc.activeElement;
+    if (inDock(active)) {
+      for (let a = active.parentElement; a && a !== doc.body; a = a.parentElement) {
+        const s = global.getComputedStyle(a);
+        if (s.overflowY === 'hidden' || s.overflowY === 'clip' || s.overflowX === 'hidden') list.push(a);
+      }
+    }
+    for (const el of list) if (el && (el.scrollTop || el.scrollLeft)) { el.scrollTop = 0; el.scrollLeft = 0; }
+    if (global.scrollY || global.scrollX) global.scrollTo(0, 0);
+  }
+  let panTimer = 0;
+  function holdPan() { // 포커스 직후 몇 프레임 동안(WebKit 이 늦게 미는 것까지) 되돌림
+    resetPan();
+    let n = 0; const step = () => { resetPan(); if (++n < 4) global.requestAnimationFrame?.(step); };
+    global.requestAnimationFrame?.(step);
+    clearTimeout(panTimer); [60, 160, 320].forEach(ms => { panTimer = setTimeout(resetPan, ms); });
+  }
+  doc.addEventListener('focusin', event => { if (inDock(event.target)) holdPan(); });
+  global.addEventListener('scroll', () => { if (inDock(doc.activeElement) || doc.body?.classList.contains(CLASS)) resetPan(); }, { passive: true });
+  global.visualViewport?.addEventListener('scroll', () => { if (inDock(doc.activeElement)) resetPan(); });
+  doc.addEventListener('scroll', event => { const t = event.target; if (t && (t === doc || t === doc.body || t.classList?.contains('phone-frame')) && (inDock(doc.activeElement) || doc.body?.classList.contains(CLASS))) resetPan(); }, { capture: true, passive: true });
+
   function revealFocused() {
     const el = doc.activeElement;
-    if (!el || el === doc.body || el.closest?.('#home-ai-dock')) return;
+    if (!el || el === doc.body || inDock(el)) { resetPan(); return; }
     try { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* ignore */ }
   }
 
@@ -38,7 +66,7 @@
     try {
       // iOS 는 웹뷰 스크롤을 직접 움직이지 않게(화면 크기를 우리가 줄이므로 이중으로 밀리지 않음)
       try { keyboard.setScroll?.({ isDisabled: true })?.catch?.(() => {}); } catch { /* ignore */ }
-      keyboard.addListener('keyboardWillShow', info => { setKeyboardHeight(info?.keyboardHeight); setOpen(true); });
+      keyboard.addListener('keyboardWillShow', info => { setKeyboardHeight(info?.keyboardHeight); setOpen(true); resetPan(); });
       keyboard.addListener('keyboardDidShow', info => { if (info?.keyboardHeight) setKeyboardHeight(info.keyboardHeight); setOpen(true); revealFocused(); });
       keyboard.addListener('keyboardWillHide', () => { setKeyboardHeight(0); setOpen(false); });
       keyboard.addListener('keyboardDidHide', () => { setKeyboardHeight(0); setOpen(false); });
@@ -74,6 +102,12 @@
     doc.addEventListener('focusin', () => setTimeout(update, 50));
     doc.addEventListener('focusout', () => setTimeout(update, 50));
   }
+
+  // 시험·진단용: 키보드 높이를 흉내 냄(헤드리스 검사에서 씀)
+  global.RebuildersKeyboard = {
+    resetPan,
+    simulate(height) { setKeyboardHeight(height); setOpen(height > 0); resetPan(); },
+  };
 
   const keyboard = plugin();
   if (!(keyboard && initNative(keyboard))) initWebFallback();
