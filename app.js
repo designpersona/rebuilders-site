@@ -2862,6 +2862,7 @@ function openModal(mealId, options = {}) {
   setFoodTab('recent');
   overlay.classList.toggle('snack-dialog', mealId === 'snack');
   overlay.classList.add('open');
+  requestAnimationFrame(() => syncSegmented(document.querySelector('#modal-sheet .food-tabs'), true));
   setTimeout(() => foodSearchInput.focus(), 250);
   renderQuickFoods(getFoodEntries());
   renderRecentFoods();
@@ -3124,6 +3125,7 @@ function enableSwipeDelete(row, onDelete) {
     content.style.transition = animate ? 'transform 0.2s ease' : 'none';
     content.style.transform = value ? `translateX(${value}px)` : '';
     row.classList.toggle('is-open', value <= -WIDTH / 2);
+    row.classList.toggle('is-revealed', value < 0); // 밀기 전엔 빨간 삭제를 아예 안 보임
     del.tabIndex = value < 0 ? 0 : -1;
   };
   const close = () => set(0, true);

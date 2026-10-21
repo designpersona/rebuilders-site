@@ -12962,3 +12962,49 @@ body.no-character #view-home .dash-card .dash-vitals strong { font-size: 13.5px 
 /* 식도감 아래 검색창이 있을 때도 알림은 그 위로 */
 body.foodex-page .toast-host { bottom: calc(150px + var(--safe-bottom)); }
 body.foodex-page.keyboard-open .toast-host { bottom: 70px; }
+
+/* =====================================================================
+   음식 추가 시트: 빨간 삭제가 쉴 때 비치던 문제 + 새 카드·세그먼트 모양
+   (원인: 줄(.quick-food-row)에 12px 14px 안쪽 여백이 남아 내용은 안쪽에, 빨간 삭제는 줄 가장자리에 붙어 여백 자리로 보였음)
+   ===================================================================== */
+#modal-sheet .food-tabs.rb-seg { margin: 0 0 14px !important; }
+#modal-sheet .food-tabs.rb-seg > .food-tab { height: 34px !important; font-size: 14px !important; }
+#modal-sheet .modal-food-search .search-input {
+  height: var(--rb-input-h) !important; padding-top: 0 !important; padding-bottom: 0 !important;
+  border: 0 !important; border-radius: 999px !important; background: var(--rb-btn-bg) !important; box-shadow: none !important; font-size: 15px !important;
+}
+#modal-sheet .modal-food-search .search-input::placeholder { color: #A3A8B3; font-weight: 400; }
+#modal-sheet .recent-edit-btn {
+  border: 0 !important; border-radius: 999px !important; padding: 6px 12px !important; background: var(--rb-btn-bg) !important;
+  color: var(--rb-ink) !important; font: 600 13px/1 var(--font) !important; box-shadow: none !important;
+}
+#modal-sheet .recent-edit-btn[aria-pressed="true"] { background: var(--rb-btn-bg) !important; color: var(--rb-ink) !important; font-weight: 700 !important; }
+#modal-sheet .recent-swipe-hint { color: var(--rb-label); font-weight: 500; }
+/* 카드: 흰 바탕·얇은 선·옅은 그림자(공용 변수) */
+#modal-sheet .quick-foods { gap: 10px !important; }
+#modal-sheet .quick-food-chip {
+  background: #fff !important; border: 1px solid var(--rb-hairline) !important; border-radius: var(--rb-inner-radius) !important;
+  box-shadow: 0 1px 2px rgba(17, 18, 22, 0.04), 0 2px 8px rgba(17, 18, 22, 0.04) !important;
+}
+/* 밀어서 삭제 줄: 바깥 여백 없음(그림자 자리만), 삭제는 카드와 같은 둥근 모서리, 쉴 땐 안 보임 */
+#modal-sheet .quick-foods .swipe-row {
+  display: flex !important; padding: 1px 1px 4px !important; margin: 0 !important; border: 0 !important; background: transparent !important;
+  box-shadow: none !important; border-radius: calc(var(--rb-inner-radius) + 1px) !important; overflow: hidden !important;
+}
+#modal-sheet .quick-foods .swipe-row .swipe-content { background: transparent !important; flex: 1 1 auto !important; min-width: 0 !important; }
+#modal-sheet .quick-foods .swipe-row .swipe-content .quick-food-chip { min-width: 0 !important; }
+#modal-sheet .quick-foods .swipe-delete-btn {
+  top: 1px !important; bottom: 4px !important; right: 1px !important; width: 76px !important; border-radius: var(--rb-inner-radius) !important;
+  background: #E5484D !important; color: #fff !important; font: 600 14px/1 var(--font) !important;
+  opacity: 0; visibility: hidden; transition: opacity 0.15s ease, visibility 0s linear 0.15s;
+}
+#modal-sheet .quick-foods .swipe-row.is-revealed .swipe-delete-btn,
+#modal-sheet .quick-foods.is-editing .swipe-delete-btn { opacity: 1; visibility: visible; transition: opacity 0.15s ease; }
+/* 편집: 카드가 옆으로 밀려 잘리지 않고 폭만 줄어듦(글자는 줄임표), 오른쪽에 둥근 빨간 삭제 */
+#modal-sheet .quick-foods.is-editing .swipe-row .swipe-content { transform: none !important; margin-right: 84px !important; }
+#modal-sheet .quick-foods .swipe-row .swipe-content { transition: transform 0.2s ease, margin-right 0.2s ease; }
+#modal-sheet .quick-foods .swipe-row .quick-food-chip :is(.quick-food-name, strong, .food-name) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: reduce) { #modal-sheet .quick-foods .swipe-row .swipe-content, #modal-sheet .quick-foods .swipe-delete-btn { transition: none !important; } }
+/* 남은 진한 선: 도움말 카드 위·음식 상세 머리 아래 → 얇은 선 */
+.agent-help-card { border: 1px solid var(--rb-hairline) !important; box-shadow: var(--rb-card-shadow) !important; }
+.food-dex-section-head { border-bottom-color: var(--rb-hairline) !important; }
