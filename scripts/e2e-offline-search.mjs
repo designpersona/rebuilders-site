@@ -73,7 +73,7 @@ try {
     const chipMid = document.getElementById('bridge-pending').textContent; await p; const ms = Math.round(performance.now() - t0);
     const chip = document.getElementById('bridge-pending'); const q = RebuildersBridge.getQueue();
     return { ms, chipMid, chip: chip.textContent, working: chip.classList.contains('is-working'), hidden: chip.hidden, queue: q.length, attempts: q[0]?.attempts, calls: window.__calls.map(u => u.replace(/^https?:\\/\\/[^/]+/, '')) };`);
-  check("브리지 꺼짐: 'AI가 찾는 중'이 3초 안팎에 끝나고 칩은 '맥 미니 연결 대기 1', 기록은 대기 유지(시도 0)", /찾는 중/.test(r5.chipMid) && r5.ms >= 2800 && r5.ms < 4500 && r5.chip === '맥 미니 연결 대기 1' && !r5.working && !r5.hidden && r5.queue === 1 && r5.attempts === 0 && JSON.stringify(r5.calls) === '["/health"]', JSON.stringify(r5));
+  check("브리지 꺼짐: 'AI가 찾는 중'이 3초 안팎에 끝나고 칩은 '맥 미니 연결 대기 1', 기록은 대기 유지(시도 0)", /채우는 중/.test(r5.chipMid) && r5.ms >= 2800 && r5.ms < 4500 && r5.chip === '맥 미니 연결 대기 1' && !r5.working && !r5.hidden && r5.queue === 1 && r5.attempts === 0 && JSON.stringify(r5.calls) === '["/health"]', JSON.stringify(r5));
   // 6. 쉬는 동안 화면 복귀·자동 재시도는 네트워크 없이 바로 끝남, AI로 찾기 버튼도 바로 원래대로
   const r6 = await evaluate(`window.__calls = []; const t0 = performance.now(); await processBridgeQueue(); const ms = Math.round(performance.now() - t0);
     const b = document.createElement('button'); b.innerHTML = '<span>✦</span><span>AI로 찾기</span>'; const t1 = performance.now(); await findFoodWithAi('오프라인떡', b); const aiMs = Math.round(performance.now() - t1);
@@ -86,7 +86,7 @@ try {
     const chip = document.getElementById('bridge-pending'); const f = meals.snack.foods.find(x => x.name === '오프라인떡');
     window.fetch = window.__realFetch; RebuildersBridge.setConfig({ url: '', token: '' });
     return { mid, hidden: chip.hidden, working: chip.classList.contains('is-working'), cal: f?.cal, queue: RebuildersBridge.getQueue().length, calls: window.__calls.map(u => u.replace(/^https?:\\/\\/[^/]+/, '')) };`);
-  check('느린 맥 미니: 칩 눌러 다시 시도하면 기다렸다가 채우고 칩이 사라짐', /찾는 중/.test(r7.mid) && r7.hidden && !r7.working && r7.cal === 200 && r7.queue === 0 && r7.calls[0] === '/health' && r7.calls.includes('/log'), JSON.stringify(r7));
+  check('느린 맥 미니: 칩 눌러 다시 시도하면 기다렸다가 채우고 칩이 사라짐', /채우는 중/.test(r7.mid) && r7.hidden && !r7.working && r7.cal === 200 && r7.queue === 0 && r7.calls[0] === '/health' && r7.calls.includes('/log'), JSON.stringify(r7));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));

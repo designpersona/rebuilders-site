@@ -13266,3 +13266,17 @@ body.timeline-editing #view-home#view-home .day-clear-row .clear-day-btn:disable
   body.no-character #view-home#view-home .dash-card .dash-top > .macros-panel { grid-template-columns: minmax(0, 1fr) !important; gap: 8px !important; margin-top: 4px !important; }
   body.no-character #view-home#view-home .dash-card .macro-row { grid-template-columns: 14px minmax(0, 1fr) auto !important; }
 }
+
+/* AI 채팅 10.23: 상태 토스트·칩은 하단 입력창 바로 위(키보드와 함께 이동), 빈 대화 예시, 도움말은 시트 위 */
+body.has-ai-dock .toast-host,
+body.has-ai-dock.keyboard-open .toast-host { bottom: calc(var(--kb-h, 0px) + var(--dock-h, 67px) + 8px) !important; }
+body.has-ai-dock.has-bridge-chip .toast-host { bottom: calc(var(--kb-h, 0px) + var(--dock-h, 67px) + 44px) !important; }
+#home-ai-dock > .bridge-pending { position: absolute; top: auto; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 5; padding: 6px 12px; background: var(--rb-pill-dark, #1C1D21); font: var(--rb-type-caption); box-shadow: none; }
+#home-ai-dock > .bridge-pending.is-offline { background: #5E6470; }
+#agent-log .agent-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 4px 0 8px; }
+#agent-log .agent-empty-lead { margin: 0 0 2px; font: var(--rb-type-body); color: var(--rb-label); }
+#agent-log .agent-example { padding: 9px 13px; border: 0; border-radius: 18px; border-bottom-left-radius: 6px; background: #ECEDF0; color: var(--rb-ink); font: var(--rb-type-body); text-align: left; cursor: pointer; }
+.agent-help-overlay { z-index: 700 !important; }
+.agent-help-card > span { font: var(--rb-type-caption) !important; color: var(--rb-label) !important; }
+.agent-help-card > p, .agent-help-card dd { font: var(--rb-type-body) !important; color: var(--rb-ink) !important; }
+.agent-help-card dt { font: 600 15px/1.45 var(--font) !important; }

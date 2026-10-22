@@ -921,7 +921,7 @@ async function findFoodWithAi(name, button) {
   const label = button.querySelector('span:last-child');
   const before = label.textContent;
   button.disabled = true;
-  label.textContent = en ? 'AI is searching…' : 'AI가 찾는 중…';
+  label.textContent = en ? 'AI is searching…' : '영양 찾는 중…';
   try {
     const result = await RebuildersBridge.lookup({ date: dateKey(currentDate), meal: 'snack', items: [{ name }] });
     const item = result.items?.[0];
@@ -3759,8 +3759,8 @@ async function submitQuickRecord(query) {
   const missing = foods.filter(isNutritionMissing).length;
   const queued = queueBridgeLookup(mealId, foods);
   showToast(ACTIVE_LOCALE === 'en'
-    ? `Saved ${foods.length} to ${mealLabel(mealId)}${missing ? (queued ? ' · AI is finding nutrition…' : ` · ${missing} missing nutrition`) : ''}`
-    : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 ${foods.length}개 저장${missing ? (queued ? ' · AI가 영양성분 찾는 중…' : ` · 영양정보 미입력 ${missing}개`) : ''}`, 'info');
+    ? `Saved ${foods.length} to ${mealLabel(mealId)}${missing ? (queued ? ' · filling nutrition' : ` · ${missing} missing nutrition`) : ''}`
+    : `${entryDateLabel(parsed)}${mealLabel(mealId)} ${foods.length}개 기록했어요${missing ? (queued ? ' · 영양 채우는 중' : ` · 영양정보 미입력 ${missing}개`) : ''}`, 'info');
   return true;
 }
 
@@ -6135,22 +6135,75 @@ function setAgentMessageText(message, text) {
   const target = message.querySelector('.agent-bubble-text');
   if (target) target.textContent = text;
   else message.textContent = text;
+  if (message.dataset.chatId) updateChatHistory(message.dataset.chatId, text);
 }
 
-function appendAgentMessage(text, kind = 'agent') {
+/* 최근 대화: 기기 안(localStorage)에만 최근 200개 저장 — 앱을 다시 열어도 남음. 서버·iCloud로 보내지 않음 */
+const CHAT_HISTORY_KEY = 'rebuilders-chat-log';
+const CHAT_HISTORY_MAX = 200;
+function readChatHistory() {
+  try { const list = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]'); return Array.isArray(list) ? list : []; } catch { return []; }
+}
+function writeChatHistory(list) {
+  try { localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(list.slice(-CHAT_HISTORY_MAX))); } catch {}
+}
+function updateChatHistory(id, text) {
+  const list = readChatHistory();
+  const item = list.find(entry => entry.id === id);
+  if (item && item.text !== text) { item.text = String(text); writeChatHistory(list); }
+}
+function renderAgentEmpty() {
+  const log = document.getElementById('agent-log');
+  if (!log) return;
+  const empty = log.querySelector('.agent-empty');
+  const hasMessages = !!log.querySelector('.agent-message');
+  if (hasMessages) { empty?.remove(); return; }
+  if (empty) return;
+  const en = ACTIVE_LOCALE === 'en';
+  const box = document.createElement('div');
+  box.className = 'agent-empty';
+  const lead = document.createElement('p');
+  lead.className = 'agent-empty-lead';
+  lead.textContent = en ? 'Type when and what you ate — it is logged right away.' : '언제·무엇을 먹었는지 짧게 적으면 바로 기록돼요.';
+  box.appendChild(lead);
+  const examples = en ? ['Lunch ham cheese toast', 'Last night ramen', 'Snack choco mochi'] : ['점심 이삭 햄치즈', '어제 저녁 라면', '간식 초코모찌'];
+  examples.forEach(text => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'agent-example';
+    button.textContent = text;
+    button.addEventListener('click', () => { setAiDockPanel(false); focusAiDock(text); });
+    box.appendChild(button);
+  });
+  log.appendChild(box);
+}
+
+function appendAgentMessage(text, kind = 'agent', restore = null) {
   const log = document.getElementById('agent-log');
   if (!log) return null;
+  log.querySelector('.agent-empty')?.remove();
   const message = document.createElement('div');
   message.className = `agent-message is-${kind}`;
-  const now = new Date();
+  const now = restore ? new Date(restore.at) : new Date();
+  if (restore) message.dataset.chatId = restore.id;
+  else {
+    message.dataset.chatId = `${now.getTime().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    writeChatHistory([...readChatHistory(), { id: message.dataset.chatId, kind, text: String(text), at: now.toISOString() }]);
+  }
   const stamp = now.toLocaleTimeString(ACTIVE_LOCALE === 'en' ? 'en-US' : 'ko-KR', { hour: 'numeric', minute: '2-digit' });
   message.innerHTML = `<div class="agent-message-body"><div class="agent-bubble"><span class="agent-bubble-text"></span></div><time class="agent-time" datetime="${now.toISOString()}">${stamp}</time></div>`;
   setAgentMessageText(message, text);
   log.appendChild(message);
   log.scrollTop = log.scrollHeight;
-  if (kind !== 'user' && document.getElementById('ai-dock-panel')?.hidden) showToast(text, 'info');
+  if (!restore && kind !== 'user' && document.getElementById('ai-dock-panel')?.hidden) showToast(text, 'info');
   refreshAiDockToggle();
   return message;
+}
+function restoreAgentLog() {
+  const log = document.getElementById('agent-log');
+  if (!log || log.querySelector('.agent-message')) return;
+  readChatHistory().forEach(entry => { if (entry && entry.id && entry.text) appendAgentMessage(entry.text, entry.kind === 'user' ? 'user' : 'agent', entry); });
+  renderAgentEmpty();
 }
 
 function appendToAgentMessage(message, node) {
@@ -6330,6 +6383,7 @@ function setAiDockPanel(open) {
     void panel.offsetHeight;
     panel.classList.add('is-open');
     backdrop.classList.add('is-open');
+    renderAgentEmpty();
     const log = document.getElementById('agent-log');
     if (log) log.scrollTop = log.scrollHeight;
   } else {
@@ -6356,7 +6410,7 @@ document.getElementById('ai-dock-toggle')?.addEventListener('click', () => setAi
 document.addEventListener('pointerdown', event => {
   const panel = document.getElementById('ai-dock-panel');
   if (!panel || panel.hidden) return;
-  if (panel.contains(event.target) || document.getElementById('ai-dock-toggle')?.contains(event.target) || document.getElementById('ai-dock-history')?.contains(event.target)) return;
+  if (panel.contains(event.target) || document.getElementById('agent-help-dialog')?.contains(event.target) || document.getElementById('ai-dock-toggle')?.contains(event.target) || document.getElementById('ai-dock-history')?.contains(event.target)) return;
   setAiDockPanel(false);
 }, true);
 
@@ -7549,9 +7603,9 @@ async function applyBridgeResult(job, result) {
 
 function bridgeStopMessage(kind) {
   const en = ACTIVE_LOCALE === 'en';
-  if (kind === 'unreachable') return en ? 'Cannot reach the Mac mini. It will fill in when you open the app on home Wi-Fi.' : '맥 미니에 연결이 안 돼 대기 중이에요. 집 와이파이에서 앱을 열면 자동으로 채워요.';
-  if (kind === 'unauthorized') return en ? 'The Mac mini token does not match. Check it in Settings.' : '맥 미니 연결 토큰이 맞지 않아요. 설정에서 확인해 주세요.';
-  return en ? 'The AI could not answer right now. It will try again later.' : 'AI가 지금 답을 못 했어요. 조금 뒤에 다시 시도할게요.';
+  if (kind === 'unreachable') return en ? 'Waiting for Mac mini · fills in on home Wi-Fi' : '맥 미니 연결 대기 · 집 와이파이에서 자동으로 채워요';
+  if (kind === 'unauthorized') return en ? 'The Mac mini token does not match. Check it in Settings.' : '맥 미니 토큰 확인 필요 · 설정 › AI 영양 찾기';
+  return en ? 'The AI could not answer right now. It will try again later.' : '영양 못 채웠어요 · 잠시 뒤 다시 시도해요';
 }
 
 /* 대기 목록을 한 번 훑어 처리. 반환: { filled, stopKind } */
@@ -7583,7 +7637,7 @@ async function runBridgeQueueOnce({ announce = false } = {}) {
     renderBridgePending();
   }
   const en = ACTIVE_LOCALE === 'en';
-  if (total) showToast(en ? `AI filled in nutrition for ${total} (AI estimate)` : `AI가 ${total}개 영양성분을 채웠어요 (AI 추정)`, 'success');
+  if (total) showToast(en ? `Nutrition filled · ${total} (AI estimate)` : `영양 채웠어요 · ${total}개 (AI 추정)`, 'success');
   if (failedNames.length && announce) {
     showToast(en ? `Could not find: ${failedNames.join(', ')}. Please enter it yourself.` : `${failedNames.join(', ')}은(는) 못 찾았어요. 직접 입력해 주세요.`, 'info');
   } else if (!total && announce && stopKind) {
@@ -7633,7 +7687,7 @@ async function askBridgeForFoods(mealId, items, { button, query, afterFill } = {
     button.dataset.bridgeBusy = 'true';
     button.disabled = true;
     button.classList.add('is-busy');
-    button.textContent = en ? 'AI is finding…' : 'AI가 찾는 중…';
+    button.textContent = en ? 'AI is finding…' : '영양 찾는 중…';
   }
   try {
     let filled = 0;
@@ -7672,9 +7726,12 @@ function renderBridgePending() {
   const offline = !bridgeProcessing && bridgeLastStop === 'unreachable';
   el.classList.toggle('is-offline', offline && !photo);
   el.textContent = photo ? (en ? 'AI is looking at the photo…' : 'AI가 사진 보는 중…')
-    : bridgeProcessing ? (en ? 'AI is finding…' : 'AI가 찾는 중…')
+    : bridgeProcessing ? (en ? 'Filling nutrition…' : '영양 채우는 중…')
       : offline ? (en ? `Waiting for Mac mini ${count}` : `맥 미니 연결 대기 ${count}`)
-        : (en ? `AI waiting ${count}` : `AI 대기 ${count}`);
+        : (en ? `Nutrition waiting ${count}` : `영양 대기 ${count}`);
+  const dock = document.getElementById('home-ai-dock');
+  if (dock && el.parentElement !== dock) dock.appendChild(el);
+  document.body.classList.toggle('has-bridge-chip', !el.hidden);
   el.setAttribute('aria-label', en
     ? `${count} foods waiting for the Mac mini AI. Tap to try again.`
     : `맥 미니 AI가 채울 음식 ${count}개 대기 중. 누르면 다시 시도해요.`);
@@ -8048,3 +8105,15 @@ document.querySelectorAll('.rb-seg').forEach(seg => {
 addEventListener('resize', () => syncAllSegmented(true));
 document.fonts?.ready?.then(() => syncAllSegmented(true)).catch?.(() => {});
 setTimeout(() => syncAllSegmented(true), 0);
+
+/* 토스트·AI 칩은 하단 입력창 바로 위에(키보드 열리면 같이 올라감): 입력창 높이를 --dock-h 로 넘김 */
+(function trackAiDockHeight() {
+  const dock = document.getElementById('home-ai-dock');
+  if (!dock) return;
+  const form = document.getElementById('ai-dock-form');
+  const update = () => document.documentElement.style.setProperty('--dock-h', `${Math.round(dock.getBoundingClientRect().height || form?.getBoundingClientRect().height || 67)}px`);
+  update();
+  if (typeof ResizeObserver === 'function') new ResizeObserver(update).observe(form || dock);
+  window.addEventListener('resize', update);
+})();
+restoreAgentLog();

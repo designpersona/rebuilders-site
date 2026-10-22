@@ -92,8 +92,8 @@ try {
   await sleep(1200);
   await evaluate(`localStorage.removeItem('rebuilders-bridge-pending'); renderBridgePending(); return true;`);
   await evaluate(setCfg(BRIDGE, ''));
-  const busy = await evaluate(`const b = [...document.querySelectorAll('#agent-log .ask-ai-btn')].pop(); const seen = []; const mo = new MutationObserver(() => seen.push(b.textContent)); mo.observe(b, { childList: true, characterData: true, subtree: true }); b.click(); seen.push(b.textContent); await new Promise(r => setTimeout(r, 1500)); mo.disconnect(); return seen.includes('AI가 찾는 중…') ? 'AI가 찾는 중…' : seen.join(' / ');`);
-  check('물어보기 누르면 "AI가 찾는 중…" 표시', busy === 'AI가 찾는 중…', busy);
+  const busy = await evaluate(`const b = [...document.querySelectorAll('#agent-log .ask-ai-btn')].pop(); const seen = []; const mo = new MutationObserver(() => seen.push(b.textContent)); mo.observe(b, { childList: true, characterData: true, subtree: true }); b.click(); seen.push(b.textContent); await new Promise(r => setTimeout(r, 1500)); mo.disconnect(); return seen.includes('영양 찾는 중…') ? '영양 찾는 중…' : seen.join(' / ');`);
+  check('물어보기 누르면 "영양 찾는 중…" 표시', busy === '영양 찾는 중…', busy);
   const askFilled = await waitFor(`const l = await (async () => { ${stored('snack')} })(); return l.some(f => f.aiEstimate && f.cal !== null)`);
   const sent = await evaluate(`return { opened: window.__opened.length, copied: window.__copied.length }`);
   check('물어보기 → 브리지로 바로 채움(텔레그램·클립보드 안 씀)', askFilled && sent.opened === 0 && sent.copied === 0, JSON.stringify(sent));
