@@ -44,7 +44,7 @@ try {
   const LATTE = `{ name: '맥심 라떼', cal: 117, carbs: 20, protein: 2, fat: 3, serving: '275ml' }`;
   const setup = (meal, snack = '') => evaluate(`setActiveView('home'); setTimelineEditing(false); for (const m of ['breakfast','lunch','dinner','snack']) meals[m].foods = [];
     meals.${meal}.foods.push(${BASE}, ${LATTE}); ${snack}
-    await persistMealsOrRestore(snapshotMeals()); renderAll(true); setTimelineEditing(true); ${W8(500)} window.scrollTo(0, 0);
+    await persistMealsOrRestore(snapshotMeals()); renderAll(true); setTimelineEditing(true); ${W8(500)} window.scrollTo(0, 0); document.getElementById('view-home').scrollTop = 0;
     if (!document.getElementById('${meal}-card').classList.contains('expanded')) document.querySelector('[data-expand-meal="${meal}"]').click(); ${W8(400)} return 1;`);
   const state = () => evaluate(`return { b: meals.breakfast.foods.map(f => f.name), d: meals.dinner.foods.map(f => f.name), s: meals.snack.foods.map(f => f.name + '@' + f.slot),
     visibleEmpty: [...document.querySelectorAll('#view-home .snack-card')].filter(c => !c.hidden && !c.classList.contains('has-items')).map(c => c.id) };`);
@@ -57,8 +57,19 @@ try {
     await sleep(150);
     const during = await evaluate(`const s = document.getElementById('snack-slot-${slot}'); const b = s.getBoundingClientRect(); const dock = document.getElementById('home-ai-dock')?.getBoundingClientRect().top ?? innerHeight;
       return { shown: !s.hidden && b.height > 0, placeholder: s.classList.contains('drop-placeholder'), y: Math.round(b.top + b.height / 2), x: Math.round(b.left + b.width / 2), aboveDock: b.bottom <= dock, empties: [...document.querySelectorAll('#view-home .snack-card.drop-placeholder')].length };`);
-    const y0 = h[1] + 20;
-    for (let k = 1; k <= 12; k++) { await touch('touchMove', h[0], Math.round(y0 + (during.y - y0) * k / 12)); await sleep(30); }
+    let y0 = h[1] + 20;
+    // 자리가 채팅 바 뒤(화면 밖)면: 손가락을 채팅 바 바로 위에 두고 목록이 굴러 올라오길 기다림
+    const slotBox = () => evaluate(`const b = document.getElementById('snack-slot-${slot}').getBoundingClientRect(); const dock = document.getElementById('home-ai-dock')?.getBoundingClientRect().top ?? innerHeight; return { y: Math.round(b.top + b.height / 2), visible: b.bottom <= dock - 8 && b.top >= 0, dock: Math.round(dock) };`);
+    let box = await slotBox(); let scrolled = 0;
+    if (!box.visible) {
+      const edgeY = box.dock - 20;
+      for (let k = 1; k <= 8; k++) { await touch('touchMove', h[0], Math.round(y0 + (edgeY - y0) * k / 8)); await sleep(30); }
+      for (let i = 0; i < 60 && !(box = await slotBox()).visible; i++) { await touch('touchMove', h[0], edgeY); await sleep(50); }
+      scrolled = 1; y0 = edgeY;
+    }
+    during.scrolled = scrolled; during.visibleAfter = box.visible; during.y = box.y;
+    for (let k = 1; k <= 12; k++) { await touch('touchMove', h[0], Math.round(y0 + (box.y - y0) * k / 12)); await sleep(30); }
+    if (scrolled) { await sleep(600); box = await slotBox(); await touch('touchMove', h[0], box.y); await sleep(60); during.y = box.y; } // 굴림이 멈춘 뒤 자리로 한 번 더
     await sleep(150);
     const hover = await evaluate(`return document.getElementById('snack-slot-${slot}').classList.contains('drop-target');`);
     await touch('touchEnd'); await sleep(800);
@@ -68,11 +79,11 @@ try {
   await setup('breakfast');
   const r1 = await dragFoodToSlot('breakfast', 0);
   check('간식 없을 때 아침 음식을 끌면 빈 간식 자리가 드롭 자리로 보이고, 맨 위 간식으로 옮겨짐', r1.during?.shown && r1.during.placeholder && r1.during.empties === 4 && r1.hover && JSON.stringify(r1.after.b) === JSON.stringify(['맥심 라떼']) && JSON.stringify(r1.after.s) === JSON.stringify(['CU 생초코모찌@0']) && r1.after.visibleEmpty.length === 0, JSON.stringify(r1));
-  // 2. 다른 날짜(어제), 간식 없음: 저녁 음식을 맨 아래(마지막) 간식 자리로 — 채팅 바 위에 있어야 함
+  // 2. 다른 날짜(어제), 간식 없음: 저녁 음식을 맨 아래(마지막) 간식 자리로 — 화면 밖이면 끝에 대고 자동으로 굴림
   await evaluate(`await changeDate(-1); ${W8(500)} return 1;`);
   await setup('dinner');
   const r2 = await dragFoodToSlot('dinner', 3);
-  check('어제 날짜, 저녁 음식을 마지막 간식 자리로: 드롭 자리가 채팅 바 위에 보이고 옮겨짐', r2.during?.shown && r2.during.aboveDock && r2.hover && JSON.stringify(r2.after.d) === JSON.stringify(['맥심 라떼']) && JSON.stringify(r2.after.s) === JSON.stringify(['CU 생초코모찌@3']), JSON.stringify(r2));
+  check('어제 날짜, 저녁 음식을 마지막 간식 자리로: 채팅 바 뒤에 있으면 끝에 대고 있으면 목록이 굴러 올라오고, 옮겨짐', r2.during?.shown && r2.during.visibleAfter && r2.hover && JSON.stringify(r2.after.d) === JSON.stringify(['맥심 라떼']) && JSON.stringify(r2.after.s) === JSON.stringify(['CU 생초코모찌@3']), JSON.stringify(r2));
   // 3. 간식에 음식이 이미 있을 때: 저녁 음식을 그 간식 카드로
   await setup('dinner', `meals.snack.foods.push({ name: '사과', cal: 52, carbs: 14, protein: 0, fat: 0, serving: '1개', slot: 3 });`);
   const r3 = await dragFoodToSlot('dinner', 3);
@@ -89,6 +100,12 @@ try {
   // 5. 드래그가 끝나면 빈 간식 자리는 다시 숨김
   const r5 = await evaluate(`return { empties: [...document.querySelectorAll('#view-home .snack-card')].filter(c => !c.hidden && !c.classList.contains('has-items')).length, ph: document.querySelectorAll('.drop-placeholder').length, cls: document.body.classList.contains('food-drag-active') };`);
   check('드래그 후 빈 간식 자리 다시 숨김', r5.empties === 0 && r5.ph === 0 && !r5.cls, JSON.stringify(r5));
+  // 6. Figma 편집 줄·손잡이: 평소 '편집'만, 편집 중 '+추가'·'편집완료'(밑줄), 펼친 카드도 손잡이가 제목 옆 같은 높이
+  await setup('dinner', `meals.snack.foods.push({ name: '사과', cal: 52, carbs: 14, protein: 0, fat: 0, serving: '1개', slot: 3 });`);
+  const r6 = await evaluate(`const vis = id => getComputedStyle(document.getElementById(id)).display !== 'none'; const edit = { add: vis('add-snack-global'), label: document.getElementById('timeline-edit-btn').textContent, underline: getComputedStyle(document.getElementById('timeline-edit-btn')).textDecorationLine };
+    const align = [...document.querySelectorAll('#view-home .meal-card, #view-home .snack-card')].filter(c => !c.hidden).map(c => { const h = c.querySelector('.drag-handle').getBoundingClientRect(); const t = c.querySelector('.meal-name, .snack-name').getBoundingClientRect(); return { id: c.id, expanded: c.classList.contains('expanded'), dy: Math.round((h.top + h.height / 2) - (t.top + t.height / 2)), gap: Math.round(t.left - h.right), shown: h.width > 0 }; });
+    setTimelineEditing(false); ${W8(300)} const normal = { add: vis('add-snack-global'), label: document.getElementById('timeline-edit-btn').textContent }; return { edit, normal, align };`);
+  check("편집 줄: 평소 '편집'만 / 편집 중 '+추가'·'편집완료'(밑줄), 모든 카드(펼친 카드 포함) 손잡이가 제목 왼쪽 같은 높이(±4px)", r6.normal.label === '편집' && !r6.normal.add && r6.edit.add && r6.edit.label === '편집완료' && r6.edit.underline === 'underline' && r6.align.length >= 4 && r6.align.some(a => a.expanded) && r6.align.every(a => a.shown && Math.abs(a.dy) <= 4 && a.gap >= 0), JSON.stringify(r6));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));

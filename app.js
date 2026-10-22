@@ -96,14 +96,14 @@ const UI_COPY = {
     breakfast: '아침', lunch: '점심', dinner: '저녁',
     noRecords: '기록 없음',
     addFood: '음식 추가',
-    addSnack: '+ 간식',
+    addSnack: '+추가',
     searchFood: '음식 이름 검색...',
     quickAdd: '빠른 추가',
-    search: '검색', recent: '최근', custom: '직접 등록', myProducts: '내 제품', library: '식도감', ai: 'AI', chat: '채팅', shoppingNav: '그로서리',
-    home: '식단', stats: '리포트', profile: '내정보',
+    search: '검색', recent: '최근', custom: '직접 등록', myProducts: '내 제품', library: '식도감', ai: 'AI', chat: '채팅', shoppingNav: '팬트리',
+    home: '식단기록', stats: '건강리포트', profile: '내정보',
     searchOnlyTitle: '음식 검색', searchOnlyKicker: '검색',
-    fridgeTitle: '그로서리', fridgeKicker: '냉장고',
-    foodexNav: '식도감', foodexTab: '음식', recipeTab: '레시피', badgeTab: '뱃지',
+    fridgeTitle: '팬트리', fridgeKicker: '냉장고',
+    foodexNav: '음식도감', foodexTab: '음식', recipeTab: '레시피', badgeTab: '뱃지',
     shopping: '장보기', stockTab: '창고', storeTab: '스토어',
     languageTitle: '언어',
     languageDescription: '처음에는 기기 언어에 맞춰 표시됩니다. 여기서 선택하면 이 기기에 저장됩니다.',
@@ -123,8 +123,8 @@ const UI_COPY = {
     mealModalTitle: '{meal}에 음식 추가',
     mealTime: '섭취 시간', totalCalories: '총 칼로리', foodCount: '음식 수', loggedFoods: '기록한 음식',
     foodDetailsHint: '음식을 누르면 영양성분을 볼 수 있어요', searchFoodAction: '음식 검색', backToMeals: '식단',
-    searchHubTitle: '식도감', foodIndex: '식도감', foodIndexAction: '식도감 열기 ↗', collection: '내 컬렉션', shopping: '장보기', searchLibraryNote: '내장 음식과 직접 등록한 음식을 검색합니다.',
-    clearDay: '전체 삭제', statsTitle: '식단 리포트', statsSub: '달력으로 기록과 추이를 살펴보세요', snackWhen: '언제 먹었나요?',
+    searchHubTitle: '음식도감', foodIndex: '식도감', foodIndexAction: '식도감 열기 ↗', collection: '내 컬렉션', shopping: '장보기', searchLibraryNote: '내장 음식과 직접 등록한 음식을 검색합니다.',
+    clearDay: '전체삭제', statsTitle: '식단 리포트', statsSub: '달력으로 기록과 추이를 살펴보세요', snackWhen: '언제 먹었나요?',
     statsSelectedDay: '선택한 날', statsCalories: '칼로리', statsCarbs: '탄수화물', statsProtein: '단백질', statsFat: '지방', statsUnder: '여유', statsOnTarget: '적정', statsOver: '초과', statsEmpty: '이 날에는 기록이 없어요.', statsWeekTitle: '최근 7일 섭취 칼로리', statsWeekHint: '진한 선 최근 7일 · 연한 선 이전 7일 · 점선 목표', statsMonthTitle: '이번 달 요약', statsLoggedDays: '기록 일수', statsAverage: '평균 kcal', statsUnderDays: '목표 이내 기록일',
     collectionRecipes: '내 레시피', collectionProducts: '내 제품', collectionFridge: '내 냉장고', collectionMacros: '탄·단·지', collectionDelete: '삭제', collectionDeleteTitle: '컬렉션 삭제', collectionExpand: '재료 펼쳐보기', collectionCollapse: '재료 접어두기', foodexClose: 'Foodpedia 닫기', foodexViewOptions: 'Foodpedia 정렬과 보기 방식', foodexSort: '정렬', foodexFoodSort: '음식 정렬',
     beforeBreakfast: '아침 전', afterBreakfast: '아침 후', afterLunch: '점심 후', afterDinner: '저녁 후',
@@ -138,13 +138,13 @@ const UI_COPY = {
     breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner',
     noRecords: 'No entries',
     addFood: 'Add food',
-    addSnack: '+ Snack',
+    addSnack: '+Add',
     searchFood: 'Search food name...',
     quickAdd: 'Quick add',
-    search: 'Search', recent: 'Recent', custom: 'Custom', myProducts: 'My products', library: 'Food guide', ai: 'AI', chat: 'Chat', shoppingNav: 'Grocery',
-    home: 'Meals', stats: 'Report', profile: 'Profile',
+    search: 'Search', recent: 'Recent', custom: 'Custom', myProducts: 'My products', library: 'Food guide', ai: 'AI', chat: 'Chat', shoppingNav: 'Pantry',
+    home: 'Meal log', stats: 'Health report', profile: 'Profile',
     searchOnlyTitle: 'Food search', searchOnlyKicker: 'Search',
-    fridgeTitle: 'Grocery', fridgeKicker: 'Fridge',
+    fridgeTitle: 'Pantry', fridgeKicker: 'Fridge',
     foodexNav: 'Foodpedia', foodexTab: 'Food', recipeTab: 'Recipes', badgeTab: 'Badges',
     shopping: 'Shopping', stockTab: 'Stock', storeTab: 'Store',
     languageTitle: 'Language',
@@ -239,7 +239,7 @@ function applyLanguage(render = true) {
     '#foodex-tab-badge': t('badgeTab'),
     '#language-settings-title': t('languageTitle'),
     '.language-settings-copy': t('languageDescription'),
-    '#timeline-edit-btn': timelineEditing ? t('done') : t('edit'),
+    '#timeline-edit-btn': timelineEditing ? (ACTIVE_LOCALE === 'en' ? 'Done' : '편집완료') : t('edit'),
     '#view-profile .stats-page-title': t('profile'),
     '#view-profile .stats-page-sub': t('profileSub'),
     '#view-profile .profile-settings-form + #settings-save': t('save'),
@@ -1379,11 +1379,11 @@ function applyExtendedStaticCopy() {
   label('#page-tabs', '페이지', 'Pages');
   label('#nav-settings', '설정', 'Settings');
   set('#nav-settings span', '설정', 'Settings');
-  label('#nav-home', '식단', 'Meals');
-  label('#nav-search', '식도감', 'Foodpedia');
-  label('#nav-stats', '리포트', 'Report');
+  label('#nav-home', '식단기록', 'Meal log');
+  label('#nav-search', '음식도감', 'Foodpedia');
+  label('#nav-stats', '건강리포트', 'Health report');
   label('#nav-chat', '채팅', 'Chat');
-  label('#nav-shopping', '그로서리', 'Grocery');
+  label('#nav-shopping', '팬트리', 'Pantry');
   label('#foodex-tab-index', '음식', 'Food');
   set('#food-dex-add-btn', '식단에 추가', 'Add to meals');
   label('#foodex-tab-badge', '뱃지', 'Badges');
@@ -1571,7 +1571,7 @@ function applyExtendedStaticCopy() {
   if (storeCopy) {
     storeCopy.textContent = en ? 'Coming soon.' : '곧 출시됩니다.';
   }
-  set('#foodex-library-title', '식도감', 'Food guide');
+  set('#foodex-library-title', '음식도감', 'Food guide');
   set('.collection-card-copy h3', '홈메이드 샐러드', 'Homemade Salad');
   set('.collection-card-copy p', '로메인 80g · 방울토마토 60g · 블루베리 30g · 삶은 달걀 1개', 'Romaine 80g · Cherry tomatoes 60g · Blueberries 30g · Boiled egg 1');
   set('#collection-add-demo', '오늘 식단에 기록', 'Log today');
@@ -1650,12 +1650,7 @@ document.getElementById('date-display')?.addEventListener('click', async () => {
   await goToToday();
   if (typeof playPageEnter === 'function' && activeView === 'home') playPageEnter(document.getElementById('view-home'));
 });
-// 전체 삭제: 편집할 때만, 시간 줄 위(왼쪽)에 작은 빨간 글자
-{
-  const clearBtn = document.getElementById('clear-day-btn');
-  const head = document.querySelector('#view-home .section-head');
-  if (clearBtn && head) head.insertBefore(clearBtn, head.firstChild);
-}
+// 전체삭제: 편집할 때만, 식단 목록 아래 오른쪽에 회색 글자(빨강은 확인 창 안에서만)
 document.getElementById('clear-day-btn')?.addEventListener('click', clearCurrentDay);
 
 function setTimelineEditing(editing) {
@@ -1663,7 +1658,7 @@ function setTimelineEditing(editing) {
   document.body.classList.toggle('timeline-editing', editing);
   const button = document.getElementById('timeline-edit-btn');
   if (button) {
-    button.textContent = editing ? t('done') : t('edit');
+    button.textContent = editing ? (ACTIVE_LOCALE === 'en' ? 'Done' : '편집완료') : t('edit');
     button.setAttribute('aria-pressed', String(editing));
   }
   renderAll(true);
@@ -1968,7 +1963,7 @@ function setMacroVisual(t) {
     }
     track?.setAttribute('aria-valuenow', String(Math.round((val / target) * 100)));
     track?.setAttribute('aria-valuetext', `${val}g / ${target}g`);
-    document.getElementById(valId).textContent = `${val} / ${target}g`;
+    document.getElementById(valId).textContent = `${val}/${target}g`;
   });
 }
 
@@ -2722,6 +2717,7 @@ function updateSnackDropPlaceholderAtPoint(x, y) {
 }
 
 function cleanupDrag(drag) {
+  stopDragEdgeScroll();
   clearCardReorder(drag);
   drag?.ghost?.remove();
   document.querySelectorAll('.food-item.is-dragging').forEach(el => el.classList.remove('is-dragging'));
@@ -2894,6 +2890,39 @@ function destinationFromDropTarget(target) {
   return null;
 }
 
+/* 음식 끌기: 손가락이 위·아래 끝(탭 줄 아래·채팅 바 위)에 가면 목록이 따라 굴러감 → 화면 밖 간식 자리에도 놓을 수 있음 */
+const dragEdge = { raf: 0, y: 0, tick: null };
+function dragScrollContainer() {
+  const panel = document.getElementById('view-home');
+  return panel && panel.scrollHeight > panel.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(panel).overflowY) ? panel : document.scrollingElement;
+}
+function dragEdgeScroll(y, tick) {
+  dragEdge.y = y;
+  dragEdge.tick = tick;
+  if (dragEdge.raf) return;
+  const step = () => {
+    dragEdge.raf = 0;
+    const top = (document.getElementById('page-tabs')?.getBoundingClientRect().bottom || 0) + 40;
+    const dock = document.getElementById('home-ai-dock');
+    const bottom = (dock && !dock.hidden ? dock.getBoundingClientRect().top : innerHeight) - 40;
+    const dy = dragEdge.y > bottom ? Math.min(16, (dragEdge.y - bottom) / 3 + 4)
+      : dragEdge.y < top ? -Math.min(16, (top - dragEdge.y) / 3 + 4) : 0;
+    if (!dy) return;
+    const sc = dragScrollContainer();
+    const before = sc.scrollTop;
+    sc.scrollTo({ top: before + dy, behavior: 'instant' }); // 부드러운 스크롤 설정이 있어도 바로 이동
+    if (sc.scrollTop === before) return;
+    dragEdge.tick?.();
+    dragEdge.raf = requestAnimationFrame(step);
+  };
+  dragEdge.raf = requestAnimationFrame(step);
+}
+function stopDragEdgeScroll() {
+  if (dragEdge.raf) cancelAnimationFrame(dragEdge.raf);
+  dragEdge.raf = 0;
+  dragEdge.tick = null;
+}
+
 function setupFoodItemDragHandle(handle, ctx) {
   if (!handle) return;
   let pending = null;
@@ -2944,18 +2973,26 @@ function setupFoodItemDragHandle(handle, ctx) {
     if (!drag) return;
     drag.ghost.style.left = `${event.clientX - drag.offsetX}px`;
     drag.ghost.style.top = `${event.clientY - drag.offsetY}px`;
-    updateSnackDropPlaceholderAtPoint(event.clientX, event.clientY);
-    document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
-    const { target, dest } = destinationAtPoint(event.clientX, event.clientY);
-    if (target && dest && !sameFoodDestination(drag, dest)) {
-      target.classList.add('drop-target');
-      target.setAttribute('data-dropzone-text', ACTIVE_LOCALE === 'en' ? 'Move food here' : '메뉴를 여기로 옮깁니다');
-    }
+    const x = event.clientX;
+    const y = event.clientY;
+    const hover = () => {
+      if (!drag) return;
+      updateSnackDropPlaceholderAtPoint(x, y);
+      document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
+      const { target, dest } = destinationAtPoint(x, y);
+      if (target && dest && !sameFoodDestination(drag, dest)) {
+        target.classList.add('drop-target');
+        target.setAttribute('data-dropzone-text', ACTIVE_LOCALE === 'en' ? 'Move food here' : '메뉴를 여기로 옮깁니다');
+      }
+    };
+    hover();
+    dragEdgeScroll(y, hover);
     event.preventDefault();
   });
 
   handle.addEventListener('pointerup', async event => {
     if (!pending || pending.pointerId !== event.pointerId) return;
+    stopDragEdgeScroll();
     if (drag) {
       const { dest } = destinationAtPoint(event.clientX, event.clientY);
       if (dest && !sameFoodDestination(drag, dest)) {
@@ -6372,10 +6409,10 @@ document.addEventListener('wheel', event => { if (outsideAiDock(event.target)) d
 /* ============================
    위쪽 글자 탭 + 좌우로 밀어 옆 페이지로
    ============================ */
-const PAGE_ORDER = ['fridge', 'foodex', 'home', 'stats', 'profile']; // 그로서리 · 식도감 · 식단 · 리포트 · 설정
+const PAGE_ORDER = ['home', 'stats', 'foodex', 'fridge', 'profile']; // 식단기록 · 건강리포트 · 음식도감 · 팬트리 · 설정
 function pageIndexOf(view) {
-  if (view === 'shopping') return 0;
-  if (view === 'search') return 2;
+  if (view === 'shopping') return PAGE_ORDER.indexOf('fridge');
+  if (view === 'search') return PAGE_ORDER.indexOf('home');
   return PAGE_ORDER.indexOf(view);
 }
 function visiblePanel() {
@@ -6433,7 +6470,7 @@ let pageSlideTo = null; // 아래 밀기 설정에서 채움(탭 누름 이동)
     if (!tab) return null;
     if (tab.classList.contains('active')) return { left: tab.offsetLeft, width: tab.offsetWidth };
     const cur = document.querySelector('#page-tabs .page-tab.active .page-tab-icon');
-    const extra = cur && cur.offsetWidth ? cur.offsetWidth + 4 : 19;
+    const extra = cur && cur.offsetWidth ? cur.offsetWidth + 4 : 0; // 글자만 있는 탭: 넓이 그대로
     return { left: tab.offsetLeft - extra / 2, width: tab.offsetWidth + extra };
   };
   const setBar = (g, transition) => {
@@ -7845,6 +7882,12 @@ function movePageTabIndicator(instant = false) {
   const left = tab.offsetLeft + iconLeft;
   const width = tab.offsetWidth - iconLeft;
   bar.style.transform = `translateX(${left}px) scaleX(${width / 100})`;
+  // 좁은 화면에서 탭 줄이 가로로 넘치면 고른 탭이 보이게 살짝 굴림
+  if (nav.scrollWidth > nav.clientWidth + 1) {
+    const pad = 16;
+    if (tab.offsetLeft - pad < nav.scrollLeft) nav.scrollTo({ left: Math.max(0, tab.offsetLeft - pad), behavior: instant ? 'auto' : 'smooth' });
+    else if (tab.offsetLeft + tab.offsetWidth + pad > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: tab.offsetLeft + tab.offsetWidth + pad - nav.clientWidth, behavior: instant ? 'auto' : 'smooth' });
+  }
   if (instant) { void bar.offsetWidth; requestAnimationFrame(() => bar.classList.remove('no-anim')); }
 }
 let motionReadyDone = false;

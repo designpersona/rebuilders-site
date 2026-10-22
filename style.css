@@ -13161,3 +13161,108 @@ strong, b { font-weight: 700; }
 #modal-sheet #quick-foods .quick-food-row .quick-food-chip { width: 100%; margin: 0 !important; }
 #modal-sheet #quick-foods .food-section-label { margin: 8px 0 0 !important; }
 #modal-sheet #quick-foods .fs-more { margin: 0 0 0 4px; }
+
+/* =====================================================================
+   Figma 10.23 식단기록 페이지
+   - 위쪽 탭: 글자만(식단기록·건강리포트·음식도감·팬트리·설정), 고른 탭 밑줄, 좁으면 가로로 굴림
+   - 날짜 줄 → 영양 카드(체중 | 게이지 | 심박·걸음, 구분선, 탄·단·지 한 줄) → 편집 → 식단 목록
+   - 시간은 왼쪽 회색 글자, 카드 = 제목 + 회색 kcal, 평소엔 연회색 동그란 +
+   - 편집: +추가·편집완료(밑줄), 손잡이 ⋮⋮·휴지통, 전체삭제는 목록 아래 오른쪽 회색 글자
+   ===================================================================== */
+#page-tabs.page-tabs {
+  display: flex !important; justify-content: space-between !important; gap: 14px !important;
+  overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: none;
+  padding-left: max(16px, var(--safe-left)) !important; padding-right: max(16px, var(--safe-right)) !important;
+}
+#page-tabs.page-tabs::-webkit-scrollbar { display: none; }
+#page-tabs .nav-item.page-tab { flex: 0 0 auto !important; justify-self: auto !important; font: 600 15px/1.2 var(--font) !important; color: var(--rb-label) !important; }
+#page-tabs .nav-item.page-tab.active { color: var(--rb-ink) !important; font-weight: 700 !important; }
+#page-tabs .page-tab-icon { display: none !important; }
+
+/* 날짜 줄: 맨 위, 작은 회색 '어제/오늘' + 굵은 날짜 */
+body #view-home#view-home .date-header.home-date-row { margin: 6px 0 0 !important; }
+body #view-home#view-home .date-header .date-display { display: inline-flex !important; align-items: baseline !important; gap: 6px !important; }
+body #view-home#view-home .date-header .date-display .date-badge { font: 500 12px/1.3 var(--font) !important; color: var(--rb-label) !important; opacity: 1 !important; background: transparent !important; padding: 0 !important; }
+body #view-home#view-home .date-header .date-display .date-text { font: 700 15px/1.2 var(--font) !important; color: var(--rb-ink) !important; }
+
+/* 영양 카드 */
+body.no-character #view-home#view-home .date-header.home-date-row + .day-summary { margin-top: 8px !important; }
+body.no-character #view-home#view-home .player-card.dash-card {
+  --gauge-w: 192px; --gauge-h: 107px;
+  display: grid !important; grid-template-columns: minmax(0, 1fr) var(--gauge-w) minmax(0, 1fr) !important;
+  grid-template-areas: "weight gauge heart" "weight gauge steps" "macros macros macros" !important;
+  grid-template-rows: auto auto auto !important; column-gap: 8px !important; row-gap: 0 !important; align-items: end !important;
+}
+body.no-character #view-home#view-home .dash-card .dash-top,
+body.no-character #view-home#view-home .dash-card .health-glance.dash-vitals { display: contents !important; }
+body.no-character #view-home#view-home .dash-card .dash-top > .kcal-gauge { grid-area: gauge !important; align-self: start !important; justify-self: center !important; margin: 0 !important; }
+body.no-character #view-home#view-home .dash-card #glance-weight { grid-area: weight !important; align-self: end !important; justify-self: start !important; }
+body.no-character #view-home#view-home .dash-card #glance-heart { grid-area: heart !important; align-self: end !important; justify-self: end !important; margin-bottom: 14px !important; }
+body.no-character #view-home#view-home .dash-card #glance-steps { grid-area: steps !important; align-self: end !important; justify-self: end !important; }
+body.no-character #view-home#view-home .dash-card #health-glance-connect[hidden] { display: none !important; }
+body.no-character #view-home#view-home .dash-card #health-glance-connect { grid-area: steps !important; align-self: end !important; justify-self: end !important; font: 500 12px/1.3 var(--font) !important; color: var(--rb-label) !important; }
+body.no-character #view-home#view-home .dash-card .dash-vitals > :is(div, p):not([hidden]) {
+  display: flex !important; flex-direction: column !important; gap: 2px !important; margin: 0 !important; padding: 0 0 4px !important;
+  text-align: inherit !important; justify-content: flex-end !important; border: 0 !important; width: auto !important; min-width: 0 !important;
+}
+body.no-character #view-home#view-home .dash-card #glance-weight { align-items: flex-start !important; text-align: left !important; }
+body.no-character #view-home#view-home .dash-card :is(#glance-heart, #glance-steps) { align-items: flex-end !important; text-align: right !important; }
+body.no-character #view-home#view-home .dash-card .dash-vitals .vital-label { font: 500 12px/1.3 var(--font) !important; color: var(--rb-label) !important; }
+body.no-character #view-home#view-home .dash-card .dash-vitals strong { font: 500 13px/1.3 var(--font) !important; color: var(--rb-ink) !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 탄·단·지: 구분선 아래 한 줄 3칸(이름 · 막대 · 값) */
+body.no-character #view-home#view-home .dash-card .dash-top > .macros-panel {
+  grid-area: macros !important; justify-self: stretch !important; align-self: start !important;
+  display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 12px !important;
+  width: auto !important; margin: 12px 0 0 !important; padding: 12px 0 0 !important; border-top: 1px solid var(--rb-hairline) !important;
+}
+body.no-character #view-home#view-home .dash-card .macro-row {
+  display: grid !important; grid-template-columns: auto minmax(16px, 1fr) auto !important; align-items: center !important; column-gap: 5px !important; row-gap: 0 !important; min-width: 0 !important;
+}
+body.no-character #view-home#view-home .dash-card .macro-row .macro-label { grid-column: 1 !important; grid-row: 1 !important; font: 600 12px/1 var(--font) !important; color: var(--rb-ink) !important; overflow: visible !important; }
+body.no-character #view-home#view-home .dash-card .macro-row .macro-bar-track { grid-column: 2 !important; grid-row: 1 !important; width: auto !important; min-width: 0 !important; height: 8px !important; margin: 0 !important; }
+body.no-character #view-home#view-home .dash-card .macro-row .macro-val { grid-column: 3 !important; grid-row: 1 !important; font: 500 11px/1 var(--font) !important; letter-spacing: -0.02em !important; color: var(--rb-label) !important; white-space: nowrap !important; justify-self: end !important; }
+
+/* 편집 줄: 목록 위 오른쪽. 평소 '편집'만, 편집 중 '+추가' · '편집완료'(밑줄) */
+body #view-home#view-home .section-head { margin-top: 18px !important; min-height: 28px; }
+body #view-home#view-home .section-head .section-title { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+body #view-home#view-home .timeline-actions { gap: 14px !important; }
+body #view-home#view-home .timeline-actions :is(.timeline-snack-add, .timeline-edit-btn) {
+  min-height: 28px; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important;
+  font: 500 13px/1.3 var(--font) !important; color: var(--rb-label) !important;
+}
+body:not(.timeline-editing) #view-home#view-home .timeline-snack-add { display: none !important; }
+body.timeline-editing #view-home#view-home .timeline-edit-btn { font-weight: 700 !important; color: var(--rb-ink) !important; text-decoration: underline !important; text-underline-offset: 3px; }
+
+/* 시간: 왼쪽 회색 글자(알약·세로줄 없음) */
+#view-home#view-home .meals-section::before { display: none !important; }
+#view-home#view-home .timeline-time-control .timeline-time-button,
+#view-home#view-home .is-current .timeline-time-control .timeline-time-button {
+  background: transparent !important; color: var(--rb-label) !important; font: 500 12px/22px var(--font) !important; text-align: left !important; width: 50px !important;
+}
+/* 간식 카드 제목도 끼니와 같은 크기 */
+#view-home#view-home .snack-card .snack-name { font: 700 17px/1.3 var(--font) !important; color: var(--rb-ink) !important; }
+#view-home#view-home .snack-card .snack-slot-kcal, #view-home#view-home .meal-card .meal-kcal { font: 500 13px/1.3 var(--font) !important; color: #A3A8B3 !important; }
+/* 편집: 펼친 카드 제목도 다른 카드처럼 손잡이 옆(같은 왼쪽 자리) */
+body.timeline-editing #view-home#view-home :is(.meal-card, .snack-card).expanded .drag-handle { display: flex !important; visibility: visible !important; opacity: 0.35 !important; pointer-events: none; }
+/* 기록이 있는 카드는 제목이 위로(아래 줄에 음식 이름) → 손잡이도 제목 줄 높이에 */
+body.timeline-editing #view-home#view-home .meal-card.has-items .drag-handle { top: 23px !important; }
+body.timeline-editing #view-home#view-home .snack-card.has-items .drag-handle { top: 20px !important; }
+
+/* 전체삭제: 편집할 때만, 목록 아래 오른쪽 회색 글자(빨강은 확인 창에서만) */
+body #view-home#view-home .day-clear-row { display: none !important; }
+body.timeline-editing #view-home#view-home .day-clear-row { display: flex !important; justify-content: flex-end !important; margin: 8px 0 0 !important; padding: 0 !important; border: 0 !important; }
+body.timeline-editing #view-home#view-home .day-clear-row .clear-day-btn {
+  display: inline-flex !important; min-height: 32px; padding: 0 2px !important; border: 0 !important; background: transparent !important; box-shadow: none !important;
+  font: 500 13px/1.3 var(--font) !important; color: var(--rb-label) !important;
+}
+body.timeline-editing #view-home#view-home .day-clear-row .clear-day-btn:disabled { opacity: 0.4 !important; }
+/* 좁은 화면(320 등): 게이지 위 한 줄, 아래 체중·심박·걸음 한 줄, 탄·단·지는 줄마다 하나씩 */
+@media (max-width: 360px) {
+  body.no-character #view-home#view-home .player-card.dash-card {
+    --gauge-w: 176px; --gauge-h: 98px; grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-template-areas: "gauge gauge gauge" "weight heart steps" "macros macros macros" !important; row-gap: 8px !important;
+  }
+  body.no-character #view-home#view-home .dash-card #glance-heart { justify-self: center !important; margin-bottom: 0 !important; align-items: center !important; text-align: center !important; }
+  body.no-character #view-home#view-home .dash-card .dash-top > .macros-panel { grid-template-columns: minmax(0, 1fr) !important; gap: 8px !important; margin-top: 4px !important; }
+  body.no-character #view-home#view-home .dash-card .macro-row { grid-template-columns: 14px minmax(0, 1fr) auto !important; }
+}
