@@ -13280,3 +13280,10 @@ body.has-ai-dock.has-bridge-chip .toast-host { bottom: calc(var(--kb-h, 0px) + v
 .agent-help-card > span { font: var(--rb-type-caption) !important; color: var(--rb-label) !important; }
 .agent-help-card > p, .agent-help-card dd { font: var(--rb-type-body) !important; color: var(--rb-ink) !important; }
 .agent-help-card dt { font: 600 15px/1.45 var(--font) !important; }
+
+/* 식단기록 날짜 밀기: 지금 날(복제)과 옆 날이 나란히 이동. 가로 넘침은 잘라냄 */
+#view-home { position: relative; }
+#view-home.day-swiping { overflow-x: hidden; }
+#view-home > .day-ghost { position: absolute !important; margin: 0 !important; box-sizing: border-box; pointer-events: none; z-index: 0; }
+#view-home.day-swiping > :is(.day-summary, .section-head, .nutrition-missing-note, .meals-section, .day-clear-row) { will-change: transform; }
+#view-home > .day-ghost, #view-home > .day-ghost *, #view-home.day-swiping > :is(.day-summary, .section-head, .nutrition-missing-note, .meals-section, .day-clear-row) { animation: none !important; }

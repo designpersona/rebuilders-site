@@ -1296,7 +1296,11 @@ function updateDateDisplay() {
   if (typeof refreshHeartRate === 'function' && globalThis.RebuildersHealth?.isSupported()) refreshHeartRate();
 }
 
-async function changeDate(delta) {
+async function changeDate(delta, { animate = false } = {}) {
+  if (animate && activeView === 'home' && typeof slideDayTo === 'function') {
+    const next = new Date(currentDate); next.setDate(next.getDate() + delta);
+    if (await slideDayTo(next, Math.sign(delta))) return;
+  }
   currentDate.setDate(currentDate.getDate() + delta);
   await loadCurrentDay();
   updateDateDisplay();
@@ -1635,14 +1639,18 @@ function applyExtendedStaticCopy() {
 }
 
 async function goToToday() {
+  if (activeView === 'home' && typeof slideDayTo === 'function') {
+    const today = new Date();
+    if (await slideDayTo(today, dateKey(today) > dateKey(currentDate) ? 1 : -1)) return;
+  }
   currentDate = new Date();
   await loadCurrentDay();
   updateDateDisplay();
   renderAll(true);
 }
 
-document.getElementById('prev-day').addEventListener('click', () => changeDate(-1));
-document.getElementById('next-day').addEventListener('click', () => changeDate(+1));
+document.getElementById('prev-day').addEventListener('click', () => changeDate(-1, { animate: true }));
+document.getElementById('next-day').addEventListener('click', () => changeDate(+1, { animate: true }));
 document.getElementById('go-today')?.addEventListener('click', goToToday);
 // 날짜를 누르면 언제나 오늘로 (이미 오늘이면 그대로)
 document.getElementById('date-display')?.addEventListener('click', async () => {
@@ -6505,6 +6513,7 @@ function pageSwipeBlocked(target, x) {
   return false;
 }
 let pageSlideTo = null; // 아래 밀기 설정에서 채움(탭 누름 이동)
+const PAGE_SWIPE_DISABLED = true;
 (function setupPageSwipe() {
   // X(트위터) 위쪽 탭처럼: 지금 페이지와 옆 페이지가 손가락을 1:1로 같이 따라오고, 밑줄도 진행만큼 이동.
   // 놓으면 250ms 감속(넘침·되돌아옴 없음). 너비 35% 넘기거나 빠르게(0.5px/ms) 튕기면 넘어감. 끝 페이지는 12px 까지만.
@@ -6577,6 +6586,7 @@ let pageSlideTo = null; // 아래 밀기 설정에서 채움(탭 누름 이동)
   const clearPanel = p => { if (p) { p.style.removeProperty('transform'); p.style.removeProperty('transition'); } };
   frame.addEventListener('touchstart', event => {
     active = false; mode = null; lastDx = 0; samples = [];
+    if (PAGE_SWIPE_DISABLED) return; // 10.23: 가로 밀기로는 페이지를 바꾸지 않음(탭 누름만). 식단기록은 날짜 밀기(setupDateSwipe)
     if (settling || event.touches.length !== 1) return;
     const t = event.touches[0];
     if (pageSwipeBlocked(event.target, t.clientX)) return;
@@ -6670,6 +6680,146 @@ let pageSlideTo = null; // 아래 밀기 설정에서 채움(탭 누름 이동)
   };
   frame.addEventListener('touchend', finish, { passive: true });
   frame.addEventListener('touchcancel', () => { if (!active) return; active = false; settle(false, lastDx); }, { passive: true });
+})();
+/* 식단기록: 가로로 밀어 날짜 이동(오른쪽으로 밀면 전날, 왼쪽은 다음 날·미래도 가능).
+   지금 날 내용(사진처럼 복제)과 옆 날 내용(진짜로 그림)이 손가락을 1:1로 나란히 따라옴.
+   너비 25% 넘기거나 빠르게 튕기면 250ms 감속으로 넘어가고(넘침·되돌아옴 없음), 아니면 제자리.
+   < > 버튼·날짜 누름(오늘로)도 같은 이동. 끌기(간식 옮기기·편집)·시트·키보드 중에는 동작 안 함 */
+let slideDayTo = null;
+(function setupDateSwipe() {
+  const home = document.getElementById('view-home');
+  if (!home) return;
+  const SETTLE_MS = 250;
+  const EASE = 'cubic-bezier(0.25, 1, 0.5, 1)';
+  const parts = () => [...home.querySelectorAll(':scope > .day-summary, :scope > .section-head, :scope > .nutrition-missing-note, :scope > .meals-section, :scope > .day-clear-row')].filter(el => !el.hidden && el.offsetHeight);
+  let st = null; // { base, parts, ghosts, W, dir, token, dx }
+  let busy = false;
+  let loadToken = 0;
+  const snapshot = () => {
+    const list = parts();
+    const ghosts = list.map(el => {
+      const g = el.cloneNode(true);
+      g.classList.add('day-ghost');
+      g.setAttribute('aria-hidden', 'true');
+      g.style.top = `${el.offsetTop}px`; g.style.left = `${el.offsetLeft}px`; g.style.width = `${el.offsetWidth}px`; g.style.height = `${el.offsetHeight}px`;
+      el.after(g); // 같은 id 는 원본이 앞에 있어 getElementById 는 원본을 찾음
+      return g;
+    });
+    home.classList.add('day-swiping');
+    return { parts: list, ghosts };
+  };
+  const place = (x, transition = 'none') => {
+    if (!st) return;
+    st.ghosts.forEach(g => { g.style.transition = transition; g.style.transform = `translate3d(${x}px, 0, 0)`; });
+    const off = st.dir ? x + st.dir * st.W : st.W * 2;
+    st.parts.forEach(el => { el.style.transition = transition; el.style.transform = `translate3d(${off}px, 0, 0)`; });
+  };
+  const cleanup = () => {
+    if (!st) return;
+    st.ghosts.forEach(g => g.remove());
+    st.parts.forEach(el => { el.style.removeProperty('transform'); el.style.removeProperty('transition'); });
+    home.classList.remove('day-swiping');
+    st = null;
+  };
+  const renderDay = async date => {
+    const token = ++loadToken;
+    currentDate = new Date(date);
+    const data = await loadDayFoods(dateKey(currentDate));
+    if (token !== loadToken) return false;
+    applyCurrentDayData(data);
+    renderAll(true);
+    return true;
+  };
+  const showDir = dir => {
+    if (!st || st.dir === dir) return;
+    st.dir = dir;
+    const d = new Date(st.base); d.setDate(d.getDate() + dir);
+    renderDay(d);
+  };
+  const settle = commit => new Promise(resolve => {
+    const dur = reduceMotion() ? 0 : SETTLE_MS;
+    busy = true;
+    place(commit ? -st.dir * st.W : 0, dur ? `transform ${dur}ms ${EASE}` : 'none');
+    const done = async () => {
+      if (commit) {
+        updateDateDisplay();
+        cleanup();
+        if (activeView === 'search') renderSearchHub();
+      } else {
+        const base = st.base;
+        cleanup();
+        await renderDay(base);
+        updateDateDisplay();
+      }
+      busy = false;
+      resolve();
+    };
+    if (dur) setTimeout(done, dur + 20); else done();
+  });
+  const blocked = (target, x) => {
+    if (busy || activeView !== 'home') return true;
+    const b = document.body.classList;
+    if (b.contains('timeline-editing') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('keyboard-open')) return true;
+    const ae = document.activeElement;
+    if (ae && ae !== document.body && ae.matches?.('input, textarea, select, [contenteditable="true"]')) return true;
+    return pageSwipeBlocked(target, x);
+  };
+  let sx = 0; let sy = 0; let mode = null; let tracking = false; let samples = []; let lastDx = 0;
+  home.addEventListener('touchstart', event => {
+    tracking = false; mode = null; samples = []; lastDx = 0;
+    if (event.touches.length !== 1 || st) return;
+    const t = event.touches[0];
+    if (blocked(event.target, t.clientX)) return;
+    tracking = true; sx = t.clientX; sy = t.clientY;
+  }, { passive: true });
+  home.addEventListener('touchmove', event => {
+    if (!tracking) return;
+    const t = event.touches[0];
+    let dx = t.clientX - sx; const dy = t.clientY - sy;
+    if (!mode) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+      if (mode === 'v') { tracking = false; return; }
+      sx = t.clientX; dx = 0; // 방향이 정해진 지점부터 1:1
+      st = { base: new Date(currentDate), W: home.getBoundingClientRect().width || innerWidth, dir: 0, ...snapshot() };
+    }
+    const b = document.body.classList;
+    if (b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing')) { tracking = false; if (st) settle(false); return; }
+    if (event.cancelable) event.preventDefault();
+    const x = Math.max(-st.W, Math.min(st.W, dx));
+    lastDx = x;
+    const now = performance.now();
+    samples.push({ x: t.clientX, t: now });
+    while (samples.length > 2 && now - samples[0].t > 100) samples.shift();
+    if (x !== 0) showDir(x < 0 ? 1 : -1); // 왼쪽으로 밀면 다음 날이 오른쪽에서
+    place(Math.round(x * 10) / 10);
+  }, { passive: false });
+  const finish = () => {
+    if (!tracking) return;
+    tracking = false;
+    if (!st) return;
+    const a = samples[0]; const z = samples[samples.length - 1];
+    const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
+    const flick = Math.abs(vx) > 0.5 && Math.abs(lastDx) >= 20;
+    const commit = !!st.dir && (flick ? Math.sign(vx) === Math.sign(lastDx) : Math.abs(lastDx) >= st.W * 0.25);
+    settle(commit);
+  };
+  home.addEventListener('touchend', finish, { passive: true });
+  home.addEventListener('touchcancel', () => { if (!tracking) return; tracking = false; if (st) settle(false); }, { passive: true });
+  // 버튼·날짜 누름: 지금 날은 빠지고 새 날이 같은 쪽에서 들어옴
+  slideDayTo = async (date, dir) => {
+    if (busy || st || reduceMotion() || activeView !== 'home' || !dir) return false;
+    busy = true;
+    st = { base: new Date(currentDate), W: home.getBoundingClientRect().width || innerWidth, dir: 0, ...snapshot() };
+    st.dir = dir;
+    place(0);
+    await renderDay(date);
+    if (!st) { busy = false; return true; }
+    updateDateDisplay();
+    st.parts.forEach(el => void el.offsetWidth);
+    await settle(true);
+    return true;
+  };
 })();
 // 밀어서 넘긴 뒤 마무리: 들어오기·차례로 나타나기 없이 바로 그 페이지로
 function commitPage(view) {

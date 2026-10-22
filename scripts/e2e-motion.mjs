@@ -1,4 +1,4 @@
-// 움직임: 페이지 밀기(1:1·끝 고무줄 40px·세로 스크롤 잠금·차례로 나타나기 안 겹침), 음식 옮길 때 FLIP, 최근 대화 시트, 동작 줄이기.
+// 움직임: 식단기록 가로 밀기 = 날짜 이동(1:1·25%·튕기기·버튼도 같은 이동), 다른 탭은 가로 밀기 없음(탭 누름만), 세로 스크롤 잠금, 음식 옮길 때 FLIP, 최근 대화 시트, 동작 줄이기.
 // Headless Chrome(CDP), Node 22. 사용법: (저장소 루트) 정적 서버 8765 → node scripts/e2e-motion.mjs
 import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
@@ -40,29 +40,30 @@ try {
   await load(URL);
   await evaluate(`await saveSettings({ locale: 'ko' }); return 1;`);
   await load();
-  // 1. 리포트 → 손가락 1:1, 옆(설정) 페이지도 붙어서 같이, 밑줄도 진행만큼
-  await evaluate(`setActiveView('home'); return 1;`); await sleep(500);
-  // (첫 이동은 브라우저가 삼킬 수 있어 방향이 정해진 뒤 두 지점 사이 차이로 1:1 확인)
+  const dk = () => evaluate('return dateKey(currentDate)'); const shift = (k, n) => { const [y, m, d] = k.split('-').map(Number); const t = new Date(y, m - 1, d + n); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
+  // 1. 식단기록 가로 밀기 = 날짜 이동: 지금 날(복제)과 다음 날이 손가락 1:1로 나란히, 페이지는 그대로
+  await evaluate(`setActiveView('home'); await goToToday(); return 1;`); await sleep(500);
+  const d1 = await dk();
+  const dayX = () => evaluate(`const m = e => e ? new DOMMatrix(getComputedStyle(e).transform === 'none' ? undefined : getComputedStyle(e).transform).m41 : null; return { ghost: m(document.querySelector('#view-home > .meals-section.day-ghost')), live: m(document.querySelector('#view-home > .meals-section:not(.day-ghost)')), key: dateKey(currentDate), w: document.getElementById('view-home').getBoundingClientRect().width, stats: !document.getElementById('view-stats').hidden, home: m(document.getElementById('view-home')) };`);
   await touch('touchStart', 300, 500);
   for (const x of [290, 282, 274, 266]) { await touch('touchMove', x, 501); await sleep(16); }
-  const x1 = await panelX('view-home');
-  await touch('touchMove', 216, 502); await sleep(16);
-  const follow = (await panelX('view-home')) - x1 - 0; // 50px 더 밀면 정확히 -50
-  const peekMid = await evaluate(`const s = document.getElementById('view-home'), p = document.getElementById('view-stats'); const m = e => new DOMMatrix(getComputedStyle(e).transform === 'none' ? undefined : getComputedStyle(e).transform).m41; const bar = document.querySelector('.page-tab-indicator').getBoundingClientRect(); const a = document.getElementById('nav-home').getBoundingClientRect(), b = document.getElementById('nav-stats').getBoundingClientRect(); return { gap: Math.round((m(p) - m(s)) * 10) / 10, w: s.getBoundingClientRect().width, visible: !p.hidden, barBetween: bar.left > a.left + 1 && bar.left < b.left - 1 };`);
+  const a1 = await dayX();
+  await touch('touchMove', 216, 502); await sleep(60);
+  const b1 = await dayX();
   for (const x of [180, 140, 100]) { await touch('touchMove', x, 502); await sleep(8); } await touch('touchEnd');
-  await sleep(60);
-  await sleep(320);
-  const after = await evaluate(`return { view: activeView, stagger: document.querySelectorAll('#view-stats .stagger-in').length, slide: document.getElementById('view-stats').classList.contains('page-in-right') };`);
-  check('식단기록: 손가락 1:1(50px → -50px), 건강리포트 페이지가 바로 옆에 붙어 같이 오고 밑줄도 중간에, 빠르게 넘기면 건강리포트, 들어오기·차례로 나타나기 없음', Math.abs(follow + 50) <= 1 && Math.abs(peekMid.gap - peekMid.w) <= 1 && peekMid.visible && peekMid.barBetween && after.view === 'stats' && after.stagger === 0 && !after.slide, JSON.stringify({ follow, peekMid, after }));
   await sleep(400);
-  // 2. 설정(마지막) → 더 밀어도 40px 까지만, 놓으면 제자리
-  await evaluate(`setActiveView('profile'); return 1;`); await sleep(500);
-  await touch('touchStart', 330, 500); await touch('touchMove', 318, 500); await sleep(20);
-  let maxPull = 0;
-  for (let x = 300; x >= 40; x -= 40) { await touch('touchMove', x, 500); await sleep(16); maxPull = Math.max(maxPull, Math.abs(await panelX('view-profile'))); }
-  await touch('touchEnd'); await sleep(350);
-  const edge = await evaluate(`return { view: activeView, t: document.getElementById('view-profile').style.transform };`);
-  check('설정(끝): 끝까지 당겨도 12px 이하, 놓으면 제자리', maxPull > 2 && maxPull <= 12 && edge.view === 'profile' && !edge.t, JSON.stringify({ maxPull, edge }));
+  const after = await evaluate(`return { view: activeView, key: dateKey(currentDate), label: document.getElementById('current-date').textContent, ghosts: document.querySelectorAll('.day-ghost').length };`);
+  check('식단기록: 가로로 밀면 날짜 — 지금 날 1:1(50px → -50px), 다음 날 내용이 바로 옆(너비만큼)에서 같이 오고, 빠르게 넘기면 다음 날(페이지·탭 그대로)', Math.abs(b1.ghost - a1.ghost + 50) <= 1 && Math.abs(b1.live - b1.ghost - b1.w) <= 1 && b1.key === shift(d1, 1) && !b1.stats && !b1.home && after.view === 'home' && after.key === shift(d1, 1) && !after.ghosts, JSON.stringify({ a1, b1, after }));
+  await sleep(200);
+  // 2. 다른 탭: 가로로 밀어도 아무 일 없음(페이지 안 바뀌고, 끌림·고무줄 없음)
+  const noSwipe = [];
+  for (const v of ['stats', 'foodex', 'fridge', 'profile']) {
+    await evaluate(`setActiveView('${v}'); return 1;`); await sleep(450);
+    let maxPull = 0; const id = await evaluate(`return document.querySelector('.app-content.view-panel:not([hidden])').id`);
+    for (const [x0, x1] of [[330, 60], [60, 330]]) { await touch('touchStart', x0, 500); for (let k = 1; k <= 8; k++) { await touch('touchMove', x0 + (x1 - x0) * k / 8, 500); await sleep(16); maxPull = Math.max(maxPull, Math.abs(await panelX(id))); } await touch('touchEnd'); await sleep(350); }
+    noSwipe.push({ v, maxPull, view: await evaluate('return activeView'), peek: await evaluate(`return !!document.querySelector('.page-peek')`) });
+  }
+  check('리포트·도감·팬트리·설정: 가로 밀기로 페이지 안 바뀌고 끌림·고무줄 없음', noSwipe.every(r => r.maxPull === 0 && r.view === r.v && !r.peek), JSON.stringify(noSwipe));
   // 3. 세로로 스크롤하면 가로로 안 끌림
   await evaluate(`setActiveView('stats'); return 1;`); await sleep(400);
   await touch('touchStart', 200, 600); await touch('touchMove', 203, 585); await touch('touchMove', 230, 520); await touch('touchMove', 250, 450);
@@ -88,7 +89,7 @@ try {
   const plus = await evaluate(`const b = document.getElementById('add-lunch'); const cs = getComputedStyle(b); return { w: Math.round(b.getBoundingClientRect().width), border: cs.borderTopWidth, bg: cs.backgroundColor, stroke: getComputedStyle(b.querySelector('path')).strokeWidth };`);
   check('+ 버튼: 테두리 없음·#F4F5F7·36px·선 1.75', plus.w === 36 && plus.border === '0px' && plus.bg === 'rgb(244, 245, 247)' && plus.stroke === '1.75px', JSON.stringify(plus));
   // 8. 날짜 줄·전체 삭제
-  const dateRow = await evaluate(`setActiveView('home'); setTimelineEditing(false); await new Promise(r => setTimeout(r, 300)); const prev = document.getElementById('prev-day').getBoundingClientRect(); const next = document.getElementById('next-day').getBoundingClientRect(); const d = document.getElementById('date-display').getBoundingClientRect(); const b = document.getElementById('date-badge').getBoundingClientRect(); const t = document.getElementById('current-date').getBoundingClientRect(); const mid = (prev.right + next.left) / 2; const clear = document.getElementById('clear-day-btn'); const clearRow = clear.closest('.day-clear-row'); const hiddenNormally = getComputedStyle(clearRow).display === 'none'; await changeDate(-1); const y = document.getElementById('date-badge').textContent; await changeDate(-1); const two = document.getElementById('date-badge').hidden; document.getElementById('date-display').click(); await new Promise(r => setTimeout(r, 400)); const back = isToday(currentDate) && document.getElementById('date-badge').textContent === '오늘'; setTimelineEditing(true); await new Promise(r => setTimeout(r, 300)); const cr = clear.getBoundingClientRect(); const rail = document.querySelector('#view-home .meals-section').getBoundingClientRect(); const firstCard = document.querySelector('#view-home .meal-card, #view-home .snack-card:not([hidden])').getBoundingClientRect(); const cards = [...document.querySelectorAll('#view-home .meal-card, #view-home .snack-card')].filter(c => !c.hidden).map(c => c.getBoundingClientRect()); const lastBottom = Math.max(...cards.map(c => c.bottom)); const shownEdit = getComputedStyle(clearRow).display !== 'none' && cr.width > 0 && cr.top >= lastBottom - 1 && Math.abs(cr.right - rail.right) <= 8 && getComputedStyle(clear).color === 'rgb(94, 100, 112)' && clear.textContent.trim() === '전체삭제'; setTimelineEditing(false); return { centered: Math.abs((d.left + d.right) / 2 - mid) <= 2, oneRow: Math.abs((b.top + b.bottom) / 2 - (t.top + t.bottom) / 2) <= 4, noTodayBtn: !document.getElementById('go-today'), hiddenNormally, y, two, back, shownEdit, hiddenAgain: getComputedStyle(clearRow).display === 'none' };`);
+  const dateRow = await evaluate(`setActiveView('home'); setTimelineEditing(false); await goToToday(); await new Promise(r => setTimeout(r, 300)); const prev = document.getElementById('prev-day').getBoundingClientRect(); const next = document.getElementById('next-day').getBoundingClientRect(); const d = document.getElementById('date-display').getBoundingClientRect(); const b = document.getElementById('date-badge').getBoundingClientRect(); const t = document.getElementById('current-date').getBoundingClientRect(); const mid = (prev.right + next.left) / 2; const clear = document.getElementById('clear-day-btn'); const clearRow = clear.closest('.day-clear-row'); const hiddenNormally = getComputedStyle(clearRow).display === 'none'; await changeDate(-1); const y = document.getElementById('date-badge').textContent; await changeDate(-1); const two = document.getElementById('date-badge').hidden; document.getElementById('date-display').click(); await new Promise(r => setTimeout(r, 400)); const back = isToday(currentDate) && document.getElementById('date-badge').textContent === '오늘'; setTimelineEditing(true); await new Promise(r => setTimeout(r, 300)); const cr = clear.getBoundingClientRect(); const rail = document.querySelector('#view-home .meals-section').getBoundingClientRect(); const firstCard = document.querySelector('#view-home .meal-card, #view-home .snack-card:not([hidden])').getBoundingClientRect(); const cards = [...document.querySelectorAll('#view-home .meal-card, #view-home .snack-card')].filter(c => !c.hidden).map(c => c.getBoundingClientRect()); const lastBottom = Math.max(...cards.map(c => c.bottom)); const shownEdit = getComputedStyle(clearRow).display !== 'none' && cr.width > 0 && cr.top >= lastBottom - 1 && Math.abs(cr.right - rail.right) <= 8 && getComputedStyle(clear).color === 'rgb(94, 100, 112)' && clear.textContent.trim() === '전체삭제'; setTimelineEditing(false); return { centered: Math.abs((d.left + d.right) / 2 - mid) <= 2, oneRow: Math.abs((b.top + b.bottom) / 2 - (t.top + t.bottom) / 2) <= 4, noTodayBtn: !document.getElementById('go-today'), hiddenNormally, y, two, back, shownEdit, hiddenAgain: getComputedStyle(clearRow).display === 'none' };`);
   check('날짜: 화살표 사이 가운데 한 줄, 오늘 버튼 없음, 어제·(그 밖엔 비움), 날짜 누르면 오늘; 전체삭제는 편집 중에만 목록 아래 오른쪽 회색 글자', dateRow.centered && dateRow.oneRow && dateRow.noTodayBtn && dateRow.hiddenNormally && dateRow.y === '어제' && dateRow.two && dateRow.back && dateRow.shownEdit && dateRow.hiddenAgain, JSON.stringify(dateRow));
   // 9. 공용 세그먼트: 흰 칸이 고른 버튼 아래로
   const seg = await evaluate(`setActiveView('foodex'); await new Promise(r => setTimeout(r, 400)); const chips = document.getElementById('foodex-filter-chips'); document.querySelector('[data-foodex-filter="frequent"]').click(); await new Promise(r => setTimeout(r, 400)); const th = chips.querySelector('.rb-seg-thumb').getBoundingClientRect(); const b = document.querySelector('[data-foodex-filter="frequent"]').getBoundingClientRect(); const ok1 = Math.abs(th.left - b.left) < 1.5 && Math.abs(th.width - b.width) < 1.5 && getComputedStyle(chips).backgroundColor === 'rgb(232, 233, 237)'; document.querySelector('[data-foodex-filter="all"]').click(); setActiveView('fridge'); await new Promise(r => setTimeout(r, 400)); const tabs = document.querySelector('.search-hub-main-tabs'); const act = [...tabs.querySelectorAll('button')].find(x => x.classList.contains('active') && x.offsetParent); const t2 = tabs.querySelector('.rb-seg-thumb')?.getBoundingClientRect(); const a2 = act?.getBoundingClientRect(); return { ok1, ok2: !!t2 && !!a2 && Math.abs(t2.left - a2.left) < 1.5 && Math.abs(t2.width - a2.width) < 1.5, filterWorks: document.querySelector('[data-foodex-filter="all"]').classList.contains('active') };`);
@@ -99,15 +100,33 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 393, height: 852, deviceScaleFactor: 1, mobile: true }); await sleep(200);
 
   check('위쪽 탭: 식단기록·건강리포트·음식도감·팬트리·설정 글자만, 고른 탭 굵게·밑줄은 글자 폭(±1.5px), 393·320 모두 고른 탭이 화면 안', tabC.every(t => t.names === '식단기록·건강리포트·음식도감·팬트리·설정' && t.noIcon && t.bold && Math.abs(t.indL) <= 1.5 && Math.abs(t.indR) <= 1.5 && t.inside), JSON.stringify(tabC.filter(t => !(t.noIcon && t.bold && Math.abs(t.indL) <= 1.5 && Math.abs(t.indR) <= 1.5 && t.inside)).concat(tabC.slice(0, 1))));
-  // 13. 천천히 밀기: 너비 35%(약 138px) 안 넘으면 제자리, 넘으면 다음 페이지(손가락 왼쪽 → 오른쪽 페이지)
-  const slow = async (x0, x1) => { await touch('touchStart', x0, 500); for (let x = x0; (x1 - x) * Math.sign(x1 - x0) > 0; x += Math.sign(x1 - x0) * 6) { await touch('touchMove', x, 500); await sleep(30); } await touch('touchMove', x1, 500); await sleep(30); await touch('touchEnd'); await sleep(450); return evaluate('return activeView'); };
-  await evaluate(`setActiveView('home'); return 1;`); await sleep(400);
-  const slowShort = await slow(300, 180);
-  const slowLong = await slow(320, 160);
-  const slowBack = await slow(90, 250);
-  const flick = await (async () => { setTimeout(() => {}, 0); await touch('touchStart', 300, 500); for (const x of [280, 250, 210, 170]) { await touch('touchMove', x, 500); await sleep(10); } await touch('touchEnd'); await sleep(450); return evaluate('return activeView'); })();
-  const snapCss = await evaluate(`return getComputedStyle(document.getElementById('view-stats')).overflowX + '|' + document.getElementById('view-stats').scrollWidth + '|' + document.getElementById('view-profile').scrollWidth + '|' + innerWidth;`);
-  check('천천히 120px → 제자리, 160px → 리포트, 반대로 150px → 식단, 빠르게 튕기면(60px) 리포트 (리포트·설정 가로 넘침 없음)', slowShort === 'home' && slowLong === 'stats' && slowBack === 'home' && flick === 'stats' && snapCss.split('|').slice(1, 3).every(w => +w <= +snapCss.split('|')[3]), JSON.stringify({ slowShort, slowLong, slowBack, flick, snapCss }));
+  // 13. 날짜 천천히 밀기: 너비 25%(약 98px) 안 넘으면 제자리, 넘으면 넘어감(왼쪽 → 다음 날, 오른쪽 → 전날), 빠르게 튕기면 넘어감, 미래도 가능
+  const slow = async (x0, x1) => { await touch('touchStart', x0, 500); for (let x = x0; (x1 - x) * Math.sign(x1 - x0) > 0; x += Math.sign(x1 - x0) * 6) { await touch('touchMove', x, 500); await sleep(30); } await touch('touchMove', x1, 500); await sleep(30); await touch('touchEnd'); await sleep(450); return evaluate('return dateKey(currentDate) + "|" + activeView'); };
+  await evaluate(`setActiveView('home'); await goToToday(); return 1;`); await sleep(500);
+  const d13 = await dk();
+  const slowShort = await slow(300, 220);
+  const slowLong = await slow(320, 190);
+  const slowBack = await slow(90, 240);
+  const slowBack2 = await slow(90, 240);
+  const flick = await (async () => { await touch('touchStart', 300, 500); for (const x of [280, 250, 210, 170]) { await touch('touchMove', x, 500); await sleep(10); } await touch('touchEnd'); await sleep(450); return evaluate('return dateKey(currentDate) + "|" + activeView'); })();
+  const flick2 = await (async () => { await touch('touchStart', 300, 500); for (const x of [280, 250, 210, 170]) { await touch('touchMove', x, 500); await sleep(10); } await touch('touchEnd'); await sleep(450); return evaluate('return dateKey(currentDate) + "|" + activeView'); })();
+  const snapCss = await evaluate(`return document.getElementById('view-stats').scrollWidth + '|' + document.getElementById('view-profile').scrollWidth + '|' + innerWidth;`);
+  check('날짜: 80px → 제자리, 130px → 다음 날, 오른쪽 150px → 전날(두 번 → 어제), 빠르게 튕기면 다음 날·미래(내일)도 됨, 페이지는 식단기록 그대로', slowShort === `${d13}|home` && slowLong === `${shift(d13, 1)}|home` && slowBack === `${d13}|home` && slowBack2 === `${shift(d13, -1)}|home` && flick === `${d13}|home` && flick2 === `${shift(d13, 1)}|home` && snapCss.split('|').slice(0, 2).every(w => +w <= +snapCss.split('|')[2]), JSON.stringify({ d13, slowShort, slowLong, slowBack, slowBack2, flick, flick2, snapCss }));
+  // 13b. < > 버튼·날짜 누름도 같은 이동(지금 날 복제가 빠지고 새 날이 같은 쪽에서), 편집 중·키보드 중엔 밀어도 날짜 그대로
+  const btn = await evaluate(`await goToToday(); await new Promise(r => setTimeout(r, 400)); const k0 = dateKey(currentDate); const m = e => e ? new DOMMatrix(getComputedStyle(e).transform === 'none' ? undefined : getComputedStyle(e).transform).m41 : null;
+    document.getElementById('next-day').click(); await new Promise(r => setTimeout(r, 120)); const midNext = { ghost: m(document.querySelector('#view-home > .day-summary.day-ghost')), live: m(document.querySelector('#view-home > .day-summary:not(.day-ghost)')) };
+    await new Promise(r => setTimeout(r, 400)); const k1 = dateKey(currentDate);
+    document.getElementById('prev-day').click(); await new Promise(r => setTimeout(r, 120)); const midPrev = { ghost: m(document.querySelector('#view-home > .day-summary.day-ghost')), live: m(document.querySelector('#view-home > .day-summary:not(.day-ghost)')) };
+    await new Promise(r => setTimeout(r, 400)); const k2 = dateKey(currentDate);
+    document.getElementById('prev-day').click(); await new Promise(r => setTimeout(r, 450)); document.getElementById('date-display').click(); await new Promise(r => setTimeout(r, 120)); const midToday = m(document.querySelector('#view-home > .day-summary:not(.day-ghost)'));
+    await new Promise(r => setTimeout(r, 400)); return { k0, k1, k2, k3: dateKey(currentDate), midNext, midPrev, midToday, ghosts: document.querySelectorAll('.day-ghost').length };`);
+  check('< > 버튼·날짜 누름(오늘로)도 같은 밀기 이동', btn.k1 === shift(btn.k0, 1) && btn.k2 === btn.k0 && btn.k3 === btn.k0 && btn.midNext.ghost < -2 && btn.midNext.live > 2 && btn.midPrev.ghost > 2 && btn.midPrev.live < -2 && btn.midToday > 2 && !btn.ghosts, JSON.stringify(btn));
+  await evaluate(`setTimelineEditing(true); return 1;`); await sleep(300);
+  const editKey = await slow(320, 160);
+  await evaluate(`setTimelineEditing(false); document.getElementById('agent-input').focus(); return 1;`); await sleep(200);
+  const kbKey = await slow(320, 160);
+  await evaluate(`document.getElementById('agent-input').blur(); return 1;`);
+  check('편집 중·입력칸 포커스 중엔 밀어도 날짜 그대로', editKey === `${btn.k0}|home` && kbKey === `${btn.k0}|home`, JSON.stringify({ editKey, kbKey }));
   // 14. 편집에서 끼니 카드 끌기: 들려서(1.03·그림자) 따라오고, 다른 카드가 실시간으로 비켜 자리를 만들고, 놓으면 그 자리로
   await evaluate(`setActiveView('home'); Object.keys(meals).forEach(k => { meals[k].foods = []; }); renderAll(false); await addFood('breakfast', { name: '바나나', calories: 105, carbs: 27, protein: 1, fat: 0 }); await addFood('lunch', { name: '김밥', calories: 320, carbs: 50, protein: 9, fat: 8 }); await addFood('dinner', { name: '연어', calories: 280, carbs: 0, protein: 30, fat: 17 }); setTimelineEditing(true); await new Promise(r => setTimeout(r, 300)); document.querySelectorAll('#view-home .meal-card.expanded').forEach(c => c.classList.remove('expanded')); document.querySelectorAll('#view-home .meal-card .drag-handle').forEach(h => h.classList.remove('is-disabled')); window.scrollTo(0, 0); document.getElementById('view-home').scrollTop = 0; return 1;`); await sleep(400);
   const hp = await evaluate(`const r = document.querySelector('#breakfast-card .drag-handle').getBoundingClientRect(); const d = document.getElementById('dinner-card').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, dy: d.top + d.height / 2 - (r.top + r.height / 2) + 16 };`);
@@ -130,18 +149,19 @@ try {
     found.pad = [...document.querySelectorAll('.app-content.view-panel')].map(p => getComputedStyle(p).paddingLeft).filter(v => v !== '28px');
     return found;`);
   check('굵은 검정 테두리 없음(그로서리·식도감·식단(펼친 카드 포함)·리포트·설정·끼니 상세), 모든 페이지 좌우 여백 같음', Object.values(heavy).every(a => a.length === 0), JSON.stringify(heavy));
-  // 16. 놓은 뒤 궤적: 식단기록→건강리포트, 매 프레임 목표를 넘지 않고(넘침·되돌아옴 없음) 한 방향으로만, 250ms 안팎에 끝
-  await evaluate(`setActiveView('home'); return 1;`); await sleep(400);
+  // 16. 놓은 뒤 궤적(날짜 밀기): 지금 날·다음 날 모두 목표 쪽으로만, 넘침 없음, 약 250ms 에 끝, 남은 복제·이동값 없음
+  await evaluate(`setActiveView('home'); await goToToday(); return 1;`); await sleep(500);
+  const d16 = await dk();
   await touch('touchStart', 320, 500);
   for (const x of [308, 290, 270, 250, 230, 210, 190, 170, 150]) { await touch('touchMove', x, 500); await sleep(30); }
-  await evaluate(`window.__traj = []; const s = document.getElementById('view-home'), p = document.getElementById('view-stats'); const m = e => { const t = getComputedStyle(e).transform; return t === 'none' ? 0 : new DOMMatrix(t).m41; }; const t0 = performance.now(); const tick = () => { window.__traj.push([Math.round(performance.now() - t0), Math.round(m(s) * 10) / 10, Math.round(m(p) * 10) / 10, activeView]); if (performance.now() - t0 < 500) requestAnimationFrame(tick); }; requestAnimationFrame(tick); return 1;`);
+  await evaluate(`window.__traj = []; const m = e => { if (!e) return null; const t = getComputedStyle(e).transform; return t === 'none' ? 0 : new DOMMatrix(t).m41; }; const t0 = performance.now(); const tick = () => { window.__traj.push([Math.round(performance.now() - t0), m(document.querySelector('#view-home > .day-summary.day-ghost')), m(document.querySelector('#view-home > .day-summary:not(.day-ghost)'))]); if (performance.now() - t0 < 500) requestAnimationFrame(tick); }; requestAnimationFrame(tick); return 1;`);
   await touch('touchEnd'); await sleep(600);
-  const traj = await evaluate(`return { t: window.__traj, w: document.getElementById('view-stats').getBoundingClientRect().width, view: activeView, peek: !!document.querySelector('.page-peek'), styles: ['view-home', 'view-stats'].map(id => document.getElementById(id).style.transform).join(''), statsHidden: document.getElementById('view-home').hidden };`);
-  const tr = traj.t.filter(f => f[3] === 'home');
+  const traj = await evaluate(`return { t: window.__traj, w: document.getElementById('view-home').getBoundingClientRect().width, view: activeView, key: dateKey(currentDate), ghosts: document.querySelectorAll('.day-ghost').length, styles: [...document.querySelectorAll('#view-home > *')].map(e => e.style.transform).join('') };`);
+  const tr = traj.t.filter(f => f[1] != null);
   const mono = tr.every((f, i) => i === 0 || (f[1] <= tr[i - 1][1] + 0.5 && f[2] <= tr[i - 1][2] + 0.5));
-  const noOver = traj.t.every(f => f[1] >= -traj.w - 0.5 && f[2] >= -0.5);
-  const doneAt = (traj.t.find(f => f[3] === 'stats') || [999])[0];
-  check('놓은 뒤 궤적: 식단기록·건강리포트 모두 목표 쪽으로만 움직이고 목표를 안 넘음(튕김 없음), 약 250ms 에 건강리포트로 끝, 남은 이동값 없음', mono && noOver && doneAt <= 360 && traj.view === 'stats' && !traj.peek && !traj.styles && traj.statsHidden, JSON.stringify({ mono, noOver, doneAt, frames: traj.t.length, first: traj.t.slice(0, 3), last: traj.t.slice(-2), peek: traj.peek, styles: traj.styles }));
+  const noOver = tr.every(f => f[1] >= -traj.w - 0.5 && f[2] >= -0.5);
+  const doneAt = (traj.t.find(f => f[1] == null) || [999])[0];
+  check('날짜 밀기 놓은 뒤 궤적: 지금 날·다음 날 모두 목표 쪽으로만(튕김 없음), 약 250ms 에 다음 날로 끝, 복제·이동값 정리', tr.length > 3 && mono && noOver && doneAt <= 360 && traj.view === 'home' && traj.key === shift(d16, 1) && !traj.ghosts && !traj.styles, JSON.stringify({ mono, noOver, doneAt, frames: traj.t.length, first: traj.t.slice(0, 3), last: tr.slice(-2), key: traj.key, ghosts: traj.ghosts, styles: traj.styles }));
   // 17. 페이지는 세로 스크롤만 브라우저가, 가로는 앱이(iOS 가로 끌림 막음)
   const ta = await evaluate(`return [...document.querySelectorAll('.app-content.view-panel')].map(p => getComputedStyle(p).touchAction + '/' + getComputedStyle(p).overscrollBehaviorX).join(',') + '|' + getComputedStyle(document.body).overscrollBehaviorX;`);
   check('페이지: touch-action pan-y, 가로 오버스크롤 없음', ta.split('|')[0].split(',').every(v => v === 'pan-y/none') && ta.split('|')[1] === 'none', ta);

@@ -185,12 +185,13 @@ try {
   const swipeTo = async (x0, x1, y) => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y }] }); for (let k = 1; k <= 6; k++) { await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + (x1 - x0) * k / 6, y }] }); await sleep(16); } await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(400); return evaluate('return activeView'); };
   await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await evaluate(`setActiveView('fridge'); return 1`); await sleep(300);
+  // 10.23: 가로 밀기로는 페이지가 바뀌지 않음(탭 누름만)
   const toStats = await (async () => { const a = await swipeTo(100, 260, 600); const b = await swipeTo(100, 260, 600); return [a, b]; })();
-  const back = await swipeTo(330, 140, 600); // 넘김 기준(너비 35%)보다 확실히 길게
+  const back = await swipeTo(330, 140, 600);
   const edge = await swipeTo(8, 200, 600);
   const small = await swipeTo(300, 270, 600);
   const vertical = await (async () => { await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 200 }] }); for (let k = 1; k <= 6; k++) { await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 200 - k * 12, y: 200 + k * 40 }] }); await sleep(16); } await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(300); return evaluate('return activeView'); })();
-  check('좌우로 밀면 옆 페이지(팬트리→음식도감→건강리포트, 왼쪽으로 밀면 되돌아감), 가장자리·짧게·세로는 무시', toStats[0] === 'foodex' && toStats[1] === 'stats' && back === 'foodex' && edge === 'foodex' && small === 'foodex' && vertical === 'foodex', JSON.stringify({ toStats, back, edge, small, vertical }));
+  check('좌우로 밀어도 페이지 그대로(팬트리), 가장자리·짧게·세로도', toStats[0] === 'fridge' && toStats[1] === 'fridge' && back === 'fridge' && edge === 'fridge' && small === 'fridge' && vertical === 'fridge', JSON.stringify({ toStats, back, edge, small, vertical }));
   await evaluate(`setActiveView('home'); return 1`);
   // 입력창 밖 누르기·밀기 → 키보드 닫힘(누른 것은 그대로 동작), 입력창·보내기는 제외
   const blur = await evaluate(`setActiveView('home'); const i = document.getElementById('agent-input'); const f = () => document.activeElement === i;
