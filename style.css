@@ -13043,6 +13043,7 @@ body.foodex-page.keyboard-open .toast-host { bottom: 70px; }
 .fs-missing { font: var(--rb-type-caption); color: #8A6D1F; background: #FFF4D6; border-radius: 999px; padding: 3px 8px; }
 .fs-more { align-self: flex-start; margin: 0 4px; padding: 4px 0; border: 0; background: transparent; font: var(--rb-type-label); color: var(--rb-ink); cursor: pointer; }
 .fs-empty { margin: 8px 4px 0; font: var(--rb-type-body); color: var(--rb-label); }
+.fs-note { margin: 8px 4px 0; font: var(--rb-type-caption); color: var(--rb-label); }
 .fs-actions { display: flex; flex-direction: column; background: #fff; border-radius: var(--rb-card-radius); border: var(--rb-card-border); box-shadow: var(--rb-card-shadow); overflow: hidden; }
 .fs-register, .fs-ai { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--rb-row-h); padding: 0 16px; border: 0; background: transparent; text-align: left; font: var(--rb-type-body-strong); color: var(--rb-ink); cursor: pointer; }
 .fs-ai { box-shadow: inset 0 1px 0 var(--rb-hairline); }

@@ -726,6 +726,7 @@ const FoodSearch = (() => {
     return { query, sections: [{ key: 'recent', items: recent }, { key: 'mine', items: mine }, { key: 'db', items: db }], ms: stats.lastSearchMs };
   }
   // 바깥 조회: 로컬 서버(개발용)에서만. 앱 번들은 없음 → 호출 안 함. 테스트에서 바꿔 끼울 수 있음
+  let externalOfflineUntil = 0; // 바깥 조회 실패 뒤 쉬는 시각(바꿔 끼우면 초기화)
   let externalProvider = (typeof LOCAL_MODE !== 'undefined' && LOCAL_MODE)
     ? async (q, signal) => {
       const result = await storageRepository.resolveFood({ name: q }, { register: false, signal });
@@ -736,7 +737,9 @@ const FoodSearch = (() => {
     build, search, count, invalidate, forgetName, attach, stats,
     ready: () => ready,
     get externalProvider() { return externalProvider; },
-    set externalProvider(fn) { externalProvider = typeof fn === 'function' ? fn : null; },
+    set externalProvider(fn) { externalProvider = typeof fn === 'function' ? fn : null; externalOfflineUntil = 0; },
+    get externalOfflineUntil() { return externalOfflineUntil; },
+    set externalOfflineUntil(t) { externalOfflineUntil = Number(t) || 0; },
   };
 })();
 globalThis.FoodSearch = FoodSearch;
@@ -808,8 +811,15 @@ function renderFoodSearchResults(container, result, state, handlers) {
   if (!shown) {
     const empty = document.createElement('p');
     empty.className = 'fs-empty';
-    empty.textContent = en ? `No food matches '${q}'.` : `'${q}'와(과) 맞는 음식이 없어요.`;
+    empty.textContent = en ? 'No results' : '결과 없음';
     container.appendChild(empty);
+  }
+  // 바깥(영양 DB) 조회가 안 됐을 때: 작은 회색 안내만(최근·내 식도감 결과는 그대로)
+  if (state.externalError) {
+    const note = document.createElement('p');
+    note.className = 'fs-note';
+    note.textContent = en ? 'Not connected to the Mac mini, so the nutrition DB was not searched.' : '맥 미니에 연결되지 않아 영양 DB는 찾지 못했어요';
+    container.appendChild(note);
   }
   const actions = document.createElement('div');
   actions.className = 'fs-actions';
@@ -831,7 +841,10 @@ function renderFoodSearchResults(container, result, state, handlers) {
 }
 
 /* 식도감 검색 상태 */
-const foodexSearchState = { q: '', more: {}, external: [], token: 0, timer: null, abort: null };
+const foodexSearchState = { q: '', more: {}, external: [], externalError: '', token: 0, timer: null, abort: null };
+// 바깥 조회는 3초만 기다리고, 실패하면 45초 동안은 다시 부르지 않음(글자마다 기다리지 않게)
+const FOOD_EXTERNAL_TIMEOUT_MS = 3000;
+const FOOD_EXTERNAL_COOLDOWN_MS = 45000;
 function foodexSearchQuery() { return (document.getElementById('foodex-search-input')?.value || '').trim(); }
 function setFoodexResultsMode(on) {
   const panel = document.querySelector('[data-foodex-panel="index"]');
@@ -860,22 +873,36 @@ function scheduleFoodexExternal(q) {
   foodexSearchState.abort = null;
   const provider = FoodSearch.externalProvider;
   if (!provider || q.length < 2) return;
+  if (Date.now() < FoodSearch.externalOfflineUntil) { foodexSearchState.externalError = 'offline'; return; }
   foodexSearchState.timer = setTimeout(async () => {
     const controller = new AbortController();
     foodexSearchState.abort = controller;
     const token = ++foodexSearchState.token;
     FoodSearch.stats.externalCalls += 1;
+    let timer = null;
     try {
-      const list = await provider(q, controller.signal);
+      const timeout = new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); }, FOOD_EXTERNAL_TIMEOUT_MS); });
+      const list = await Promise.race([provider(q, controller.signal), timeout]);
       if (controller.signal.aborted || token !== foodexSearchState.token || foodexSearchQuery() !== q) return;
       foodexSearchState.external = Array.isArray(list) ? list : [];
+      foodexSearchState.externalError = '';
+      FoodSearch.externalOfflineUntil = 0;
       renderFoodexResults();
-    } catch { /* 바깥 조회 실패는 조용히(로컬 결과는 이미 보임) */ }
+    } catch {
+      // 새 글자로 취소된 요청은 무시, 연결 실패·시간 초과는 안내 + 잠깐 쉬기(로컬 결과는 이미 보임)
+      if (token !== foodexSearchState.token || foodexSearchQuery() !== q) return;
+      FoodSearch.externalOfflineUntil = Date.now() + FOOD_EXTERNAL_COOLDOWN_MS;
+      foodexSearchState.externalError = 'offline';
+      renderFoodexResults();
+    } finally {
+      clearTimeout(timer);
+      if (foodexSearchState.abort === controller) foodexSearchState.abort = null;
+    }
   }, 200);
 }
 function onFoodexSearchInput() {
   const q = foodexSearchQuery();
-  if (q !== foodexSearchState.q) { foodexSearchState.more = {}; foodexSearchState.external = []; }
+  if (q !== foodexSearchState.q) { foodexSearchState.more = {}; foodexSearchState.external = []; foodexSearchState.externalError = ''; }
   foodexSearchState.q = q;
   scheduleFoodexExternal(q);
   if (!q) { setFoodexResultsMode(false); renderSearchHub(); return; }
@@ -905,8 +932,10 @@ async function findFoodWithAi(name, button) {
     await saveCustomFood(foodName, { ...rest, discoveredAt: new Date().toISOString(), discoveryOrigin: 'ai', unlocked: true });
     renderFoodexResults();
     openFoodDex({ name: foodName, ...CUSTOM_FOODS[foodName] }, { mode: 'index' });
-  } catch {
-    showToast(en ? 'Could not reach the AI. Try again later.' : 'AI에 연결하지 못했어요. 잠시 뒤 다시 해 주세요.', 'info');
+  } catch (error) {
+    showToast(error?.kind === 'unreachable'
+      ? (en ? 'Not connected to the Mac mini. Try again on home Wi-Fi.' : '맥 미니에 연결되지 않았어요. 집 와이파이에서 다시 해 주세요.')
+      : (en ? 'Could not reach the AI. Try again later.' : 'AI에 연결하지 못했어요. 잠시 뒤 다시 해 주세요.'), 'info');
   } finally {
     button.disabled = false;
     label.textContent = before;
@@ -7388,6 +7417,7 @@ logLinkModal?.addEventListener('click', event => { if (event.target === logLinkM
    - 텔레그램 'AI에게 물어보기'는 그대로 대체 방법으로 남김.
    ============================ */
 let bridgeProcessing = false;
+let bridgeLastStop = ''; // 마지막 대기 목록 처리 결과('unreachable' 이면 칩이 '맥 미니 연결 대기')
 let bridgeRerun = false;
 let bridgeAnnounce = false;
 let bridgeRunPromise = null;
@@ -7512,6 +7542,7 @@ async function runBridgeQueueOnce({ announce = false } = {}) {
     }
   } finally {
     bridgeProcessing = false;
+    bridgeLastStop = stopKind;
     renderBridgePending();
   }
   const en = ACTIVE_LOCALE === 'en';
@@ -7525,8 +7556,9 @@ async function runBridgeQueueOnce({ announce = false } = {}) {
 }
 
 /* 대기 목록 처리(이미 도는 중이면 같은 작업을 기다림). 반환: 채운 개수 */
-function processBridgeQueue({ announce = false } = {}) {
+function processBridgeQueue({ announce = false, force = false } = {}) {
   if (!globalThis.RebuildersBridge) return Promise.resolve(0);
+  if (force) RebuildersBridge.resetOffline?.(); // 칩을 눌러 다시 시도: 쉬는 시간 무시하고 바로 연결 확인
   if (announce) bridgeAnnounce = true;
   if (bridgeRunPromise) { bridgeRerun = true; return bridgeRunPromise; }
   if (!RebuildersBridge.isConfigured() || !RebuildersBridge.getQueue().length) {
@@ -7600,7 +7632,12 @@ function renderBridgePending() {
   const photo = typeof bridgePhotoBusy !== 'undefined' && bridgePhotoBusy;
   el.hidden = !count && !photo;
   el.classList.toggle('is-working', bridgeProcessing || photo);
-  el.textContent = photo ? (en ? 'AI is looking at the photo…' : 'AI가 사진 보는 중…') : bridgeProcessing ? (en ? 'AI is finding…' : 'AI가 찾는 중…') : (en ? `AI waiting ${count}` : `AI 대기 ${count}`);
+  const offline = !bridgeProcessing && bridgeLastStop === 'unreachable';
+  el.classList.toggle('is-offline', offline && !photo);
+  el.textContent = photo ? (en ? 'AI is looking at the photo…' : 'AI가 사진 보는 중…')
+    : bridgeProcessing ? (en ? 'AI is finding…' : 'AI가 찾는 중…')
+      : offline ? (en ? `Waiting for Mac mini ${count}` : `맥 미니 연결 대기 ${count}`)
+        : (en ? `AI waiting ${count}` : `AI 대기 ${count}`);
   el.setAttribute('aria-label', en
     ? `${count} foods waiting for the Mac mini AI. Tap to try again.`
     : `맥 미니 AI가 채울 음식 ${count}개 대기 중. 누르면 다시 시도해요.`);
@@ -7673,9 +7710,9 @@ function setupBridge() {
     renderBridgeSettings(messages[state] || (en() ? 'Could not check the connection.' : '연결을 확인하지 못했어요.'));
     if (state === 'ok') processBridgeQueue({ announce: true });
   }));
-  document.getElementById('bridge-pending')?.addEventListener('click', () => processBridgeQueue({ announce: true }));
+  document.getElementById('bridge-pending')?.addEventListener('click', () => processBridgeQueue({ announce: true, force: true }));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) processBridgeQueue(); });
-  window.addEventListener('online', () => processBridgeQueue());
+  window.addEventListener('online', () => processBridgeQueue({ force: true }));
   setInterval(() => { if (!document.hidden && RebuildersBridge.getQueue().length) processBridgeQueue(); }, 120000);
   const cap = globalThis.Capacitor;
   const appPlugin = cap?.isNativePlatform?.() ? (cap.Plugins?.App || cap.registerPlugin?.('App')) : null;

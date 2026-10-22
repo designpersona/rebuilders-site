@@ -13,6 +13,13 @@
   const MAX_JOBS = 30;
   const MAX_ATTEMPTS = 6;
   const TIMEOUT_MS = 75000;
+  // 맥 미니가 꺼져 있으면 iOS fetch가 연결을 오래(수십 초) 붙잡음 → 긴 요청 전에 /health 를 3초만 기다려 보고,
+  // 안 되면 잠깐(45초) 바로 '연결 안 됨'으로 끝냄(키 입력·화면 복귀마다 다시 기다리지 않게)
+  const CONNECT_TIMEOUT_MS = 3000;
+  const OFFLINE_COOLDOWN_MS = 45000;
+  const ONLINE_TRUST_MS = 20000;
+  let offlineUntil = 0;
+  let onlineAt = 0;
   const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
 
   const store = () => { try { return global.localStorage; } catch { return null; } };
@@ -42,6 +49,7 @@
   }
   function setConfig({ url, token }) {
     if (url !== undefined) write(URL_KEY, normalizeUrl(url));
+    offlineUntil = 0; onlineAt = 0; // 주소·토큰이 바뀌면 연결 상태를 새로 확인
     if (token !== undefined) write(TOKEN_KEY, normalizeToken(token));
     return getConfig();
   }
@@ -101,11 +109,28 @@
     constructor(kind, message) { super(message || kind); this.kind = kind; }
   }
 
-  async function request(path, { method = 'GET', body } = {}) {
+  function markOffline() { offlineUntil = Date.now() + OFFLINE_COOLDOWN_MS; onlineAt = 0; }
+  function isOffline() { return Date.now() < offlineUntil; }
+  function resetOffline() { offlineUntil = 0; }
+
+  /** 긴 요청 전 연결 확인(최근에 됐으면 건너뜀). 쉬는 중이면 네트워크 없이 바로 'unreachable' */
+  async function ensureReachable() {
+    if (isOffline()) throw new BridgeError('unreachable');
+    if (Date.now() - onlineAt < ONLINE_TRUST_MS) return;
+    try {
+      await request('/health', { timeoutMs: CONNECT_TIMEOUT_MS, preflight: false });
+    } catch (error) {
+      if (error?.kind === 'unreachable' || error?.kind === 'timeout') { markOffline(); throw new BridgeError('unreachable'); }
+      throw error;
+    }
+  }
+
+  async function request(path, { method = 'GET', body, timeoutMs = TIMEOUT_MS, preflight = path !== '/health' } = {}) {
     const { url, token } = getConfig();
     if (!url) throw new BridgeError('not_configured');
+    if (preflight) await ensureReachable();
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), TIMEOUT_MS) : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
     let res;
     try {
       res = await global.fetch(`${url}${path}`, {
@@ -117,10 +142,14 @@
         credentials: 'omit',
       });
     } catch (error) {
-      throw new BridgeError(error?.name === 'AbortError' ? 'timeout' : 'unreachable');
+      const kind = error?.name === 'AbortError' ? 'timeout' : 'unreachable';
+      if (kind === 'unreachable') markOffline();
+      throw new BridgeError(kind);
     } finally {
       if (timer) clearTimeout(timer);
     }
+    onlineAt = Date.now();
+    offlineUntil = 0;
     let data = null;
     try { data = await res.json(); } catch { /* 빈 응답 */ }
     if (res.status === 401) throw new BridgeError('unauthorized');
@@ -129,11 +158,12 @@
     return data;
   }
 
-  async function checkHealth() { return request('/health'); }
+  async function checkHealth() { return request('/health', { timeoutMs: CONNECT_TIMEOUT_MS }); }
 
   /** 주소·토큰 확인: 'ok' | 'unauthorized' | 'unreachable' | 'timeout' | 'not_configured' | 'error'
    *  (빈 요청을 보내 토큰만 확인 — 토큰이 맞으면 브리지가 400(음식 없음)으로 답하고 AI는 부르지 않음) */
   async function checkConnection() {
+    resetOffline();
     try {
       await checkHealth();
       await request('/log', { method: 'POST', body: { items: [] } });
@@ -164,7 +194,7 @@
     return { items: Array.isArray(data.items) ? data.items : [], failed: Array.isArray(data.failed) ? data.failed : [] };
   }
 
-  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupPhoto, forget, BridgeError, MAX_ATTEMPTS };
+  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupPhoto, forget, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
   global.RebuildersBridge = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
