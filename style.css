@@ -13287,3 +13287,75 @@ body.has-ai-dock.has-bridge-chip .toast-host { bottom: calc(var(--kb-h, 0px) + v
 #view-home > .day-ghost { position: absolute !important; margin: 0 !important; box-sizing: border-box; pointer-events: none; z-index: 0; }
 #view-home.day-swiping > :is(.day-summary, .section-head, .nutrition-missing-note, .meals-section, .day-clear-row) { will-change: transform; }
 #view-home > .day-ghost, #view-home > .day-ghost *, #view-home.day-swiping > :is(.day-summary, .section-head, .nutrition-missing-note, .meals-section, .day-clear-row) { animation: none !important; }
+
+/* 건강리포트 10.23: 일·주·월을 한 페이지로. 위 달력(접힘 = 한 주, 펼침 = 한 달) + 아래 기간 리포트 카드.
+   제목 20/700 · 섹션 17/700 · 본문 15 · 라벨 13/600 · 캡션 12/500 · 좌우 28px · 카드 간격 12px · 안쪽 16px */
+#view-stats { padding-left: 28px !important; padding-right: 28px !important; }
+#view-stats > .cal-card, #view-stats > .stats-day-card, #view-stats > .stats-week-card, #view-stats .report-card { margin: 0 0 12px !important; padding: 16px !important; border: 1px solid var(--rb-hairline) !important; border-radius: 20px !important; background: #fff !important; box-shadow: none !important; }
+#view-stats > .cal-card { margin-top: 8px !important; padding-bottom: 4px !important; }
+#view-stats .cal-month-bar { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; }
+#view-stats .cal-month-label { font: 600 17px/1.3 var(--font) !important; color: var(--rb-ink); }
+#view-stats .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin: 0 0 4px; font: var(--rb-type-caption); color: var(--rb-label); text-align: center; }
+#view-stats .cal-viewport { position: relative; overflow: hidden; height: 44px; }
+#view-stats .cal-grid { display: grid !important; grid-template-columns: repeat(7, 1fr) !important; grid-auto-rows: 44px !important; row-gap: 4px !important; column-gap: 0 !important; margin: 0 !important; will-change: transform; }
+#view-stats .cal-day { position: relative; display: flex !important; flex-direction: column; align-items: center; justify-content: center; height: 44px !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 12px !important; background: none !important; box-shadow: none !important; color: var(--rb-ink); cursor: pointer; }
+#view-stats .cal-day .cal-day-num { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; font: 500 15px/1 var(--font) !important; }
+#view-stats .cal-day.is-outside { color: #B4B8C0; }
+#view-stats .cal-day.is-today .cal-day-num { color: var(--rb-ink); font-weight: 700 !important; box-shadow: inset 0 0 0 1.5px var(--rb-ink); }
+#view-stats .cal-day.is-selected .cal-day-num { background: var(--rb-pill-dark, #1C1D21); color: #fff; box-shadow: none; font-weight: 700 !important; }
+#view-stats .cal-day .cal-day-dot { position: absolute; left: 50%; bottom: 2px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #5E6470; }
+#view-stats .cal-day.is-selected .cal-day-dot { background: var(--rb-ink); }
+#view-stats .cal-day .cal-day-kcal { display: none !important; }
+#view-stats .cal-legend { display: none !important; }
+#view-stats .cal-expand-toggle { display: flex !important; flex-direction: column; align-items: center; gap: 2px; width: 100%; height: 28px; margin: 4px 0 0 !important; padding: 4px 0 0 !important; border: 0 !important; background: none !important; color: var(--rb-label); font-size: 0 !important; touch-action: none; cursor: pointer; }
+#view-stats .cal-grabber { width: 36px; height: 4px; border-radius: 2px; background: var(--rb-hairline); }
+#view-stats .cal-chevron { transition: transform 250ms cubic-bezier(0.25, 1, 0.5, 1); }
+#view-stats.cal-expanded .cal-chevron { transform: rotate(180deg); }
+#view-stats .report-period-head { display: flex; align-items: baseline; justify-content: space-between; margin: 12px 0 12px; }
+#view-stats .report-period-title { margin: 0; font: 700 20px/1.3 var(--font); color: var(--rb-ink); }
+#view-stats .report-period-range { margin: 0; font: var(--rb-type-caption); color: var(--rb-label); }
+#view-stats .stats-section-title { margin: 0 0 12px !important; font: 700 17px/1.3 var(--font) !important; color: var(--rb-ink) !important; }
+#view-stats .stats-section-title small { margin-left: 4px; font: var(--rb-type-caption); color: var(--rb-label); }
+#view-stats .report-hero { display: flex; align-items: baseline; gap: 6px; margin: 0 0 8px; }
+#view-stats .report-hero strong { font: 700 20px/1.2 var(--font); color: var(--rb-ink); }
+#view-stats .report-hero span { font: var(--rb-type-caption); color: var(--rb-label); }
+#view-stats .report-track { position: relative; display: block; flex: 1; height: 6px; border-radius: 3px; background: var(--rb-btn-bg); overflow: hidden; }
+#view-stats .report-track > i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--rb-ink); }
+#view-stats .report-track.is-over > i { background: #D9534F; }
+#view-stats .report-track > i.carbs { background: #F2B544; }
+#view-stats .report-track > i.protein { background: #4C8BF5; }
+#view-stats .report-track > i.fat { background: #E46F6F; }
+#view-stats .report-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0 0; }
+#view-stats .report-kpis div { margin: 0; }
+#view-stats .report-kpis dt { margin: 0 0 2px; font: 600 13px/1.3 var(--font); color: var(--rb-label); }
+#view-stats .report-kpis dd { margin: 0; font: 400 15px/1.45 var(--font); color: var(--rb-ink); }
+#view-stats .report-kpis dd small { font: var(--rb-type-caption); color: var(--rb-label); }
+#view-stats .report-row { display: grid; grid-template-columns: 64px 1fr auto; align-items: center; gap: 10px; min-height: 28px; }
+#view-stats .report-row + .report-row { margin-top: 8px; }
+#view-stats .report-label { font: 600 13px/1.3 var(--font); color: var(--rb-label); }
+#view-stats .report-value { font: 400 15px/1.45 var(--font); color: var(--rb-ink); text-align: right; white-space: nowrap; }
+#view-stats .report-value small { font: var(--rb-type-caption); color: var(--rb-label); }
+#view-stats .report-empty p { margin: 0; font: var(--rb-type-body); color: var(--rb-label); }
+#view-stats .stats-week-hint { font: var(--rb-type-caption) !important; color: var(--rb-label) !important; }
+#view-stats .week-line-labels { display: grid !important; }
+#view-stats .week-chart.is-month .week-line-day { min-width: 0; padding: 0; overflow: visible; }
+#view-stats .week-chart.is-month .week-line-day span { font: var(--rb-type-caption); color: var(--rb-label); }
+#view-stats .stats-day-label { font: var(--rb-type-caption) !important; color: var(--rb-label) !important; }
+#view-stats .stats-day-date { font: 700 17px/1.3 var(--font) !important; }
+#view-stats .cal-day .cal-day-dot { display: block !important; opacity: 1 !important; transform: none !important; top: auto !important; right: auto !important; }
+#view-stats .stats-day-metrics { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; margin: 12px 0 0 !important; }
+#view-stats .stats-day-metrics[hidden] { display: none !important; }
+#view-stats .stats-day-metrics .stats-metric { margin: 0 !important; padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; min-height: 0 !important; }
+#view-stats .stats-day-metrics .stats-calorie-hero { grid-column: 1 / -1; display: flex !important; align-items: baseline; gap: 8px; padding-bottom: 4px !important; }
+#view-stats .stats-metric-label { font: 600 13px/1.3 var(--font) !important; color: var(--rb-label) !important; }
+#view-stats .stats-metric-label i { display: none !important; }
+#view-stats .stats-metric-value { font: 400 15px/1.45 var(--font) !important; color: var(--rb-ink) !important; }
+#view-stats .stats-calorie-hero .stats-metric-value { font: 700 20px/1.2 var(--font) !important; }
+#view-stats .stats-day-badge { position: static !important; margin-left: auto; font: var(--rb-type-caption) !important; }
+#view-stats .stats-open-day-btn { font: 600 13px/1.3 var(--font) !important; }
+#view-stats .stats-day-meals { margin-top: 12px !important; padding-top: 12px !important; }
+#view-stats .stats-day-meal-link { font: 400 15px/1.45 var(--font) !important; }
+#view-stats .stats-day-meal-link strong { font-weight: 600 !important; font-size: 15px !important; }
+#view-stats .stats-day-meal-link small { font: var(--rb-type-caption) !important; }
+#view-stats .week-chart.is-month .week-line-day.is-selected { background: none !important; color: var(--rb-ink) !important; }
+#view-stats .week-line-dot { border: 0 !important; background: var(--rb-ink) !important; box-shadow: 0 0 0 2px #fff !important; }

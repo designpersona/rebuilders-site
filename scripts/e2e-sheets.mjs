@@ -73,14 +73,14 @@ try {
     const label = b.textContent; b.click(); ${W8(300)}
     return { before, label, rows };`);
   check("편집: 카드는 잘리지 않고 폭만 조금 줄고(글자 안 잘림) 모든 줄에 작은 휴지통 아이콘(빨강 없음), '편집'은 테두리 없는 연한 버튼", edit.label === '완료' && edit.rows.length >= 4 && edit.rows.every(r => r.inside && r.vis && r.rad && r.text) && edit.before.border.startsWith('0px') && edit.before.bg === 'rgb(241, 242, 245)', JSON.stringify(edit));
-  // 4. 최근/내 제품/직접 등록 = 리포트 일/주/월과 같은 회색 세그먼트
+  // 4. 최근/내 제품/직접 등록 = 다른 회색 세그먼트(그로서리 등)와 같은 모양
   const seg = await evaluate(`const t = document.querySelector('#modal-sheet .food-tabs'); const ts = getComputedStyle(t); const active = t.querySelector('.food-tab.active'); const as = getComputedStyle(active); const thumb = t.querySelector('.rb-seg-thumb');
-    const rr = document.getElementById('report-range'); const rs = getComputedStyle(rr);
+    const rr = [...document.querySelectorAll('.rb-seg')].find(e => !e.closest('#modal-sheet')); const rs = getComputedStyle(rr);
     const thumbOk = !!thumb && Math.abs(thumb.getBoundingClientRect().width - active.getBoundingClientRect().width) <= 1 && Math.abs(thumb.getBoundingClientRect().left - active.getBoundingClientRect().left) <= 1;
     const tabBorders = [...t.querySelectorAll('.food-tab')].map(b => getComputedStyle(b).borderTopWidth);
     setFoodTab('custom'); ${W8(350)} const moved = Math.abs(thumb.getBoundingClientRect().left - t.querySelector('.food-tab[data-tab="custom"]').getBoundingClientRect().left) <= 1; setFoodTab('recent'); ${W8(300)}
     return { rbseg: t.classList.contains('rb-seg'), bg: [ts.backgroundColor, rs.backgroundColor], rad: [ts.borderRadius, rs.borderRadius], activeBg: as.backgroundColor, activeColor: as.color, thumbOk, moved, tabBorders };`);
-  check('최근/내 제품/직접 등록: 리포트 일/주/월과 같은 회색 세그먼트(흰 선택 칸이 옮겨감, 테두리 없음)', seg.rbseg && seg.bg[0] === seg.bg[1] && seg.rad[0] === seg.rad[1] && seg.activeBg === 'rgba(0, 0, 0, 0)' && seg.activeColor === 'rgb(17, 18, 22)' && seg.thumbOk && seg.moved && seg.tabBorders.every(w => w === '0px'), JSON.stringify(seg));
+  check('최근/내 제품/직접 등록: 다른 회색 세그먼트와 같은 모양(흰 선택 칸이 옮겨감, 테두리 없음)', seg.rbseg && seg.bg[0] === seg.bg[1] && seg.rad[0] === seg.rad[1] && seg.activeBg === 'rgba(0, 0, 0, 0)' && seg.activeColor === 'rgb(17, 18, 22)' && seg.thumbOk && seg.moved && seg.tabBorders.every(w => w === '0px'), JSON.stringify(seg));
   const search = await evaluate(`const s = getComputedStyle(document.getElementById('food-search')); return { border: s.borderTopWidth, rad: s.borderRadius, bg: s.backgroundColor };`);
   check('검색칸: 테두리 없는 연회색 알약', search.border === '0px' && search.rad === '999px', JSON.stringify(search));
   // 5. 다른 시트·창에도 진한 선 없음

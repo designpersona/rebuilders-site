@@ -125,7 +125,7 @@ const UI_COPY = {
     foodDetailsHint: '음식을 누르면 영양성분을 볼 수 있어요', searchFoodAction: '음식 검색', backToMeals: '식단',
     searchHubTitle: '음식도감', foodIndex: '식도감', foodIndexAction: '식도감 열기 ↗', collection: '내 컬렉션', shopping: '장보기', searchLibraryNote: '내장 음식과 직접 등록한 음식을 검색합니다.',
     clearDay: '전체삭제', statsTitle: '식단 리포트', statsSub: '달력으로 기록과 추이를 살펴보세요', snackWhen: '언제 먹었나요?',
-    statsSelectedDay: '선택한 날', statsCalories: '칼로리', statsCarbs: '탄수화물', statsProtein: '단백질', statsFat: '지방', statsUnder: '여유', statsOnTarget: '적정', statsOver: '초과', statsEmpty: '이 날에는 기록이 없어요.', statsWeekTitle: '최근 7일 섭취 칼로리', statsWeekHint: '진한 선 최근 7일 · 연한 선 이전 7일 · 점선 목표', statsMonthTitle: '이번 달 요약', statsLoggedDays: '기록 일수', statsAverage: '평균 kcal', statsUnderDays: '목표 이내 기록일',
+    statsSelectedDay: '선택한 날', statsCalories: '칼로리', statsCarbs: '탄수화물', statsProtein: '단백질', statsFat: '지방', statsUnder: '여유', statsOnTarget: '적정', statsOver: '초과', statsEmpty: '이 날에는 기록이 없어요.', statsWeekTitle: '칼로리 추이', statsWeekHint: '진한 선 이 주 · 연한 선 지난주 · 점선 목표', statsMonthTitle: '이번 달 요약', statsLoggedDays: '기록 일수', statsAverage: '평균 kcal', statsUnderDays: '목표 이내 기록일',
     collectionRecipes: '내 레시피', collectionProducts: '내 제품', collectionFridge: '내 냉장고', collectionMacros: '탄·단·지', collectionDelete: '삭제', collectionDeleteTitle: '컬렉션 삭제', collectionExpand: '재료 펼쳐보기', collectionCollapse: '재료 접어두기', foodexClose: 'Foodpedia 닫기', foodexViewOptions: 'Foodpedia 정렬과 보기 방식', foodexSort: '정렬', foodexFoodSort: '음식 정렬',
     beforeBreakfast: '아침 전', afterBreakfast: '아침 후', afterLunch: '점심 후', afterDinner: '저녁 후',
     aiCoach: 'AI 식단 기록 도우미', aiReady: '이 기기에 저장', aiWelcome: '말로 식단 기록',
@@ -167,7 +167,7 @@ const UI_COPY = {
     foodDetailsHint: 'Tap a food to view nutrition', searchFoodAction: 'Search food', backToMeals: 'Meals',
     searchHubTitle: 'Foodpedia', foodIndex: 'Foodpedia', foodIndexAction: 'Open Foodpedia ↗', collection: 'Collection', shopping: 'Shopping', searchLibraryNote: 'Search built-in foods and foods you registered.',
     clearDay: 'Delete all', statsTitle: 'Meal report', statsSub: 'Review your records and trends on the calendar', snackWhen: 'When did you eat it?',
-    statsSelectedDay: 'Selected day', statsCalories: 'Calories', statsCarbs: 'Carbs', statsProtein: 'Protein', statsFat: 'Fat', statsUnder: 'Under', statsOnTarget: 'On target', statsOver: 'Over', statsEmpty: 'No meal log for this day.', statsWeekTitle: 'Calories eaten in the last 7 days', statsWeekHint: 'Dark: last 7 days · Light: previous 7 days · Dashed: target', statsMonthTitle: 'This month', statsLoggedDays: 'Days logged', statsAverage: 'Average kcal', statsUnderDays: 'Days at or under target',
+    statsSelectedDay: 'Selected day', statsCalories: 'Calories', statsCarbs: 'Carbs', statsProtein: 'Protein', statsFat: 'Fat', statsUnder: 'Under', statsOnTarget: 'On target', statsOver: 'Over', statsEmpty: 'No meal log for this day.', statsWeekTitle: 'Calorie trend', statsWeekHint: 'Dark: this week · light: last week · dashed: goal', statsMonthTitle: 'This month', statsLoggedDays: 'Days logged', statsAverage: 'Average kcal', statsUnderDays: 'Days at or under target',
     collectionRecipes: 'My recipes', collectionProducts: 'My products', collectionFridge: 'My fridge', collectionMacros: 'Carbs·Protein·Fat', collectionDelete: 'Delete', collectionDeleteTitle: 'Delete collection', collectionExpand: 'Expand ingredients', collectionCollapse: 'Collapse ingredients', foodexClose: 'Close Foodpedia', foodexViewOptions: 'Foodpedia sorting and view options', foodexSort: 'Sort', foodexFoodSort: 'Sort foods',
     beforeBreakfast: 'Before breakfast', afterBreakfast: 'After breakfast', afterLunch: 'After lunch', afterDinner: 'After dinner',
     aiCoach: 'AI meal logging assistant', aiReady: 'Saved on this device', aiWelcome: 'Log meals by chat',
@@ -1306,12 +1306,7 @@ async function changeDate(delta, { animate = false } = {}) {
   updateDateDisplay();
   renderAll(true);
   if (activeView === 'search') renderSearchHub();
-  if (activeView === 'stats') {
-    renderStatsCalendar();
-    renderStatsSelectedDay();
-    renderStatsWeekChart();
-    renderStatsMonthSummary();
-  }
+  if (activeView === 'stats') rerenderStats();
 }
 
 function applyExtendedStaticCopy() {
@@ -1431,7 +1426,7 @@ function applyExtendedStaticCopy() {
   set('.meal-page-list-section > header > span', '음식을 누르면 영양성분을 볼 수 있어요', 'Tap a food to view nutrition');
   set('#meal-page-add span', '음식 검색', 'Search foods');
   set('#meal-page-empty-add', '+ 음식 검색하기', '+ Search foods');
-  set('#cal-expand-toggle', document.getElementById('cal-expand-toggle')?.getAttribute('aria-expanded') === 'true' ? '접어두기' : '전체보기', document.getElementById('cal-expand-toggle')?.getAttribute('aria-expanded') === 'true' ? 'Collapse' : 'View all');
+  label('#cal-expand-toggle', statsCalendarExpanded ? '달력 접기' : '달력 펼치기', statsCalendarExpanded ? 'Collapse calendar' : 'Expand calendar');
   set('#food-dex-nutrition-title', '영양성분', 'Nutrition');
   set('#food-dex-edit-record', '기록 수정', 'Edit this log');
   label('#time-edit-hour', '시', 'Hour');
@@ -4570,7 +4565,8 @@ let activeView = 'home';
 let statsMonth = new Date(); // 연·월만 사용
 let statsSelectedKey = dateKey(new Date());
 let statsCache = {}; // loadStorage 스냅샷
-let statsCalendarExpanded = false;
+const REPORT_CAL_KEY = 'rebuilders.reportCalExpanded.v1';
+let statsCalendarExpanded = (() => { try { return localStorage.getItem(REPORT_CAL_KEY) === '1'; } catch { return false; } })();
 
 function dayFoodsFromData(dayData) {
   if (!dayData || typeof dayData !== 'object') return [];
@@ -5064,10 +5060,7 @@ function levelLabel(level) {
 
 async function refreshStatsView() {
   statsCache = await loadStorage();
-  renderStatsCalendar();
-  renderStatsSelectedDay();
-  renderStatsWeekChart();
-  renderStatsMonthSummary();
+  rerenderStats();
 }
 
 function changeStatsMonth(delta) {
@@ -5075,101 +5068,101 @@ function changeStatsMonth(delta) {
   statsMonth = new Date(statsMonth.getFullYear(), statsMonth.getMonth() + delta, 1);
   const maxDay = new Date(statsMonth.getFullYear(), statsMonth.getMonth() + 1, 0).getDate();
   statsSelectedKey = dateKey(new Date(statsMonth.getFullYear(), statsMonth.getMonth(), Math.min(currentSelected.getDate(), maxDay)));
-  renderStatsCalendar();
-  renderStatsSelectedDay();
-  renderStatsWeekChart();
-  renderStatsMonthSummary();
+  rerenderStats();
 }
 
-function renderStatsCalendar() {
+/* 리포트 기간: 달력 접힘 = 고른 날이 있는 주(일~토), 펼침 = 보고 있는 달. 고른 날은 '선택한 날' 카드로 따로 */
+function statsPeriod() {
+  const sel = parseDateKey(statsSelectedKey);
+  if (!statsCalendarExpanded) return { kind: 'week', start: new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() - sel.getDay()), length: 7 };
+  const start = new Date(statsMonth.getFullYear(), statsMonth.getMonth(), 1);
+  return { kind: 'month', start, length: new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate() };
+}
+function statsPeriodDays(period = statsPeriod()) {
+  return Array.from({ length: period.length }, (_, i) => {
+    const date = new Date(period.start.getFullYear(), period.start.getMonth(), period.start.getDate() + i);
+    const key = dateKey(date); const data = statsCache[key]; const has = hasDayLog(data);
+    return { key, date, data, has, totals: has ? dayTotalsFromData(data) : { cal: 0, carbs: 0, protein: 0, fat: 0 } };
+  });
+}
+function rerenderStats(animate = false) {
+  renderStatsCalendar(animate);
+  renderStatsSelectedDay();
+  renderStatsMonthSummary();
+  renderStatsWeekChart();
+}
+const CAL_ROW = 44; const CAL_GAP = 4; // 달력 한 줄 높이·줄 간격(펼침·접힘 높이 계산)
+function renderStatsCalendar(animate = false) {
   const grid = document.getElementById('cal-grid');
   const label = document.getElementById('cal-month-label');
   if (!grid || !label) return;
-
+  if (!statsCalendarExpanded) { const sel = parseDateKey(statsSelectedKey); statsMonth = new Date(sel.getFullYear(), sel.getMonth(), 1); }
+  const en = ACTIVE_LOCALE === 'en';
   const year = statsMonth.getFullYear();
   const month = statsMonth.getMonth();
-  label.textContent = ACTIVE_LOCALE === 'en'
-    ? new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(statsMonth)
-    : `${year}년 ${month + 1}월`;
+  label.textContent = en ? new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(statsMonth) : `${year}년 ${month + 1}월`;
   const monthPicker = document.getElementById('cal-month-picker');
   if (monthPicker) monthPicker.value = `${year}-${String(month + 1).padStart(2, '0')}`;
-
-  const first = new Date(year, month, 1);
-  const startPad = first.getDay(); // 0=일
+  const startPad = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const prevDays = new Date(year, month, 0).getDate();
-
+  const rows = Math.ceil((startPad + daysInMonth) / 7);
   const todayKey = dateKey(new Date());
-  const cells = [];
-
-  for (let i = startPad - 1; i >= 0; i--) {
-    const d = prevDays - i;
-    const dt = new Date(year, month - 1, d);
-    cells.push({ date: dt, key: dateKey(dt), outside: true });
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dt = new Date(year, month, d);
-    cells.push({ date: dt, key: dateKey(dt), outside: false });
-  }
-  while (cells.length < 42) {
-    const d = cells.length - (startPad + daysInMonth) + 1;
-    const dt = new Date(year, month + 1, d);
-    cells.push({ date: dt, key: dateKey(dt), outside: true });
-  }
-
-  const selectedIndex = cells.findIndex(cell => cell.key === statsSelectedKey);
-  const selectedWeekStart = selectedIndex >= 0 ? Math.floor(selectedIndex / 7) * 7 : 14;
-  const compactStart = Math.max(0, Math.min(28, selectedWeekStart - 7)); // 접으면 지난주 + 이번 주(고른 날의 주)
-  const visibleCells = statsCalendarExpanded ? cells : cells.slice(compactStart, compactStart + 14);
-  const expandToggle = document.getElementById('cal-expand-toggle');
-  const legend = document.getElementById('cal-legend');
-  if (legend) legend.hidden = !statsCalendarExpanded;
-  if (expandToggle) {
-    expandToggle.textContent = statsCalendarExpanded
-      ? (ACTIVE_LOCALE === 'en' ? 'Collapse' : '접어두기')
-      : (ACTIVE_LOCALE === 'en' ? 'View all' : '전체보기');
-    expandToggle.setAttribute('aria-expanded', String(statsCalendarExpanded));
-  }
-
-  grid.innerHTML = '';
-  visibleCells.forEach(cell => {
-    const dayData = statsCache[cell.key];
-    const level = dayCalLevel(dayData);
-    const calories = hasDayLog(dayData) ? Math.round(dayTotalsFromData(dayData).cal) : null;
+  const frag = document.createDocumentFragment();
+  let selectedIndex = 0;
+  for (let i = 0; i < rows * 7; i++) {
+    const date = new Date(year, month, 1 - startPad + i);
+    const key = dateKey(date);
+    const outside = date.getMonth() !== month;
+    const has = hasDayLog(statsCache[key]);
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cal-day';
-    btn.dataset.key = cell.key;
-    if (cell.outside) btn.classList.add('is-outside');
-    if (cell.key === todayKey) btn.classList.add('is-today');
-    if (cell.key === statsSelectedKey) btn.classList.add('is-selected');
-    if (level) {
-      btn.classList.add('has-log', `level-${level}`);
-      btn.title = `${levelLabel(level)} · ${calories}kcal`;
-    }
-
-    btn.innerHTML = `
-      <span class="cal-day-num">${cell.date.getDate()}</span>
-      <span class="cal-day-kcal">${calories === null ? '' : calories}</span>
-      ${cell.key === todayKey ? '<span class="cal-day-dot" aria-hidden="true"></span>' : ''}
-    `;
-    btn.addEventListener('click', () => {
-      statsSelectedKey = cell.key;
-      if (cell.outside) {
-        statsMonth = new Date(cell.date.getFullYear(), cell.date.getMonth(), 1);
-        renderStatsCalendar();
-        renderStatsMonthSummary();
-      } else {
-        grid.querySelectorAll('.cal-day').forEach(el => {
-          el.classList.toggle('is-selected', el.dataset.key === statsSelectedKey);
-        });
-      }
-      renderStatsSelectedDay();
-      renderStatsWeekChart();
-    });
-    grid.appendChild(btn);
-  });
+    btn.className = `cal-day${outside ? ' is-outside' : ''}${key === todayKey ? ' is-today' : ''}${key === statsSelectedKey ? ' is-selected' : ''}${has ? ' has-log' : ''}`;
+    btn.dataset.key = key;
+    btn.setAttribute('aria-label', `${formatDate(date)}${has ? (en ? ', logged' : ', 기록 있음') : ''}${key === todayKey ? (en ? ', today' : ', 오늘') : ''}`);
+    btn.innerHTML = `<span class="cal-day-num">${date.getDate()}</span>${has ? '<i class="cal-day-dot" aria-hidden="true"></i>' : ''}`;
+    if (key === statsSelectedKey) selectedIndex = i;
+    frag.appendChild(btn);
+  }
+  grid.replaceChildren(frag);
+  const toggle = document.getElementById('cal-expand-toggle');
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', String(statsCalendarExpanded));
+    toggle.setAttribute('aria-label', statsCalendarExpanded ? (en ? 'Collapse calendar' : '달력 접기') : (en ? 'Expand calendar' : '달력 펼치기'));
+  }
+  const prev = document.getElementById('cal-prev-month'); const next = document.getElementById('cal-next-month');
+  prev?.setAttribute('aria-label', statsCalendarExpanded ? (en ? 'Previous month' : '이전 달') : (en ? 'Previous week' : '이전 주'));
+  next?.setAttribute('aria-label', statsCalendarExpanded ? (en ? 'Next month' : '다음 달') : (en ? 'Next week' : '다음 주'));
+  document.getElementById('view-stats')?.classList.toggle('cal-expanded', statsCalendarExpanded);
+  // 높이·위치만 250ms 감속(넘침 없음): 접힘은 고른 날의 줄 하나만 보임
+  const viewport = document.getElementById('cal-viewport');
+  if (viewport) {
+    const step = CAL_ROW + CAL_GAP;
+    const transition = animate && !reduceMotion() ? 'height 250ms cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
+    viewport.style.transition = transition;
+    grid.style.transition = transition.replace('height', 'transform');
+    viewport.style.height = `${statsCalendarExpanded ? rows * step - CAL_GAP : CAL_ROW}px`;
+    grid.style.transform = `translate3d(0, ${statsCalendarExpanded ? 0 : -Math.floor(selectedIndex / 7) * step}px, 0)`;
+  }
 }
+function setStatsCalendarExpanded(expanded) {
+  if (statsCalendarExpanded === expanded) return;
+  statsCalendarExpanded = expanded;
+  try { localStorage.setItem(REPORT_CAL_KEY, expanded ? '1' : '0'); } catch {}
+  rerenderStats(true);
+}
+function stepStatsPeriod(dir) {
+  if (statsCalendarExpanded) { changeStatsMonth(dir); return; }
+  const sel = parseDateKey(statsSelectedKey);
+  statsSelectedKey = dateKey(new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() + dir * 7));
+  rerenderStats();
+}
+document.getElementById('cal-grid')?.addEventListener('click', event => {
+  const cell = event.target.closest?.('.cal-day');
+  if (!cell?.dataset.key) return;
+  statsSelectedKey = cell.dataset.key;
+  if (statsCalendarExpanded && cell.classList.contains('is-outside')) { const d = parseDateKey(cell.dataset.key); statsMonth = new Date(d.getFullYear(), d.getMonth(), 1); }
+  rerenderStats();
+});
 
 function renderStatsSelectedDay() {
   const dayData = statsCache[statsSelectedKey];
@@ -5250,12 +5243,15 @@ function renderStatsWeekChart() {
   const chart = document.getElementById('week-chart');
   if (!chart) return;
 
-  const end = parseDateKey(statsSelectedKey);
+  const period = statsPeriod();
+  const monthMode = period.kind === 'month';
+  const en = ACTIVE_LOCALE === 'en';
+  const hint = document.getElementById('stats-week-hint');
+  if (hint) hint.textContent = monthMode ? (en ? 'Line: this month · dashed: goal' : '진한 선 이 달 · 점선 목표') : (en ? 'Dark: this week · light: last week · dashed: goal' : '진한 선 이 주 · 연한 선 지난주 · 점선 목표');
   const days = [];
   const previousDays = [];
-  for (let i = 6; i >= 0; i--) {
-    const dt = new Date(end);
-    dt.setDate(end.getDate() - i);
+  for (let i = 0; i < period.length; i++) {
+    const dt = new Date(period.start.getFullYear(), period.start.getMonth(), period.start.getDate() + i);
     const key = dateKey(dt);
     const data = statsCache[key];
     const totals = dayTotalsFromData(data);
@@ -5272,7 +5268,7 @@ function renderStatsWeekChart() {
     previousDate.setDate(dt.getDate() - 7);
     const previousData = statsCache[dateKey(previousDate)];
     const previousTotals = dayTotalsFromData(previousData);
-    const previousHas = hasDayLog(previousData);
+    const previousHas = !monthMode && hasDayLog(previousData);
     previousDays.push({
       cal: previousHas ? previousTotals.cal : 0,
       has: previousHas,
@@ -5290,7 +5286,7 @@ function renderStatsWeekChart() {
   const plotTop = 8;
   const plotBottom = 106;
   const plotHeight = plotBottom - plotTop;
-  const xAt = index => 22 + index * ((viewWidth - 44) / 6);
+  const xAt = index => 22 + index * ((viewWidth - 44) / Math.max(1, days.length - 1));
   const yAt = calories => plotBottom - Math.min(calories / maxCal, 1) * plotHeight;
   const recordedSegments = items => {
     const segments = [];
@@ -5345,6 +5341,8 @@ function renderStatsWeekChart() {
   `;
 
   const labels = chart.querySelector('.week-line-labels');
+  chart.classList.toggle('is-month', monthMode);
+  labels.style.gridTemplateColumns = `repeat(${days.length}, minmax(0, 1fr))`;
   days.forEach(day => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -5352,46 +5350,84 @@ function renderStatsWeekChart() {
     const weekday = ACTIVE_LOCALE === 'en'
       ? new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(day.date).slice(0, 1)
       : DAYS[day.date.getDay()];
-    button.innerHTML = `<span>${weekday}</span><strong>${day.has ? Math.round(day.cal) : '—'}</strong>`;
+    button.innerHTML = monthMode
+      ? `<span>${(day.date.getDate() - 1) % 7 === 0 ? day.date.getDate() : ''}</span>`
+      : `<span>${weekday}</span><strong>${day.has ? Math.round(day.cal) : '—'}</strong>`;
     button.title = day.has
       ? `${formatDate(day.date)} · ${Math.round(day.cal)}kcal`
       : `${formatDate(day.date)} · ${ACTIVE_LOCALE === 'en' ? 'No meal log' : '식단 기록 없음'}`;
     button.addEventListener('click', () => {
       statsSelectedKey = day.key;
-      statsMonth = new Date(day.date.getFullYear(), day.date.getMonth(), 1);
-      renderStatsCalendar();
-      renderStatsSelectedDay();
-      renderStatsWeekChart();
-      renderStatsMonthSummary();
+      rerenderStats();
     });
     labels.appendChild(button);
   });
 }
 
+/* 기간 리포트 카드: 칼로리(평균·목표 1,300 대비·기록한 날·목표 이내), 탄·단·지 하루 평균, 끼니별 하루 평균, 몸 상태 */
 function renderStatsMonthSummary() {
-  const year = statsMonth.getFullYear();
-  const month = statsMonth.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  let loggedDays = 0;
-  let calSum = 0;
-  let underTarget = 0;
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const key = dateKey(new Date(year, month, d));
-    const data = statsCache[key];
-    if (!hasDayLog(data)) continue;
-    loggedDays += 1;
-    const t = dayTotalsFromData(data);
-    calSum += t.cal;
-    if (t.cal <= PROFILE.targetCal) underTarget += 1;
+  const host = document.getElementById('report-period');
+  if (!host) return;
+  const en = ACTIVE_LOCALE === 'en';
+  const period = statsPeriod();
+  const days = statsPeriodDays(period);
+  const logged = days.filter(d => d.has);
+  const n = logged.length;
+  const target = PROFILE.targetCal || 1300;
+  const avg = key => n ? logged.reduce((sum, d) => sum + d.totals[key], 0) / n : 0;
+  const avgCal = Math.round(avg('cal'));
+  const hit = logged.filter(d => d.totals.cal <= target).length;
+  const last = days[days.length - 1].date;
+  const md = d => `${d.getMonth() + 1}.${d.getDate()}`;
+  const todayKey = dateKey(new Date());
+  const hasToday = days.some(d => d.key === todayKey);
+  const title = period.kind === 'week'
+    ? (hasToday ? (en ? 'This week' : '이번 주') : (en ? 'Week' : '주간'))
+    : (en ? new Intl.DateTimeFormat('en', { month: 'long' }).format(period.start) : `${period.start.getMonth() + 1}월`);
+  const range = period.kind === 'week' ? `${md(period.start)} – ${md(last)}` : `${period.start.getFullYear()}.${md(period.start)} – ${md(last)}`;
+  const pct = (v, t) => Math.max(0, Math.min(100, t ? (v / t) * 100 : 0)).toFixed(1);
+  const g = v => `${Math.round(v)}g`;
+  const head = `<header class="report-period-head"><h2 class="report-period-title">${escapeHtml(title)}</h2><p class="report-period-range">${range}</p></header>`;
+  if (!n) {
+    host.innerHTML = `${head}<section class="report-card report-empty"><p>${en ? 'No meals logged in this period.' : '이 기간에는 기록이 없어요.'}</p></section>`;
+    document.querySelector('#view-stats .stats-week-card')?.toggleAttribute('hidden', true);
+    return;
   }
-
-  const daysEl = document.getElementById('stats-month-days');
-  const avgEl = document.getElementById('stats-month-avg');
-  const hitEl = document.getElementById('stats-month-hit');
-  if (daysEl) daysEl.textContent = String(loggedDays);
-  if (avgEl) avgEl.textContent = loggedDays ? String(Math.round(calSum / loggedDays)) : '0';
-  if (hitEl) hitEl.textContent = String(underTarget);
+  document.querySelector('#view-stats .stats-week-card')?.toggleAttribute('hidden', false);
+  const macroRow = (labelText, value, goal, cls) => `<div class="report-row"><span class="report-label">${labelText}</span><span class="report-track"><i class="${cls}" style="width:${pct(value, goal)}%"></i></span><span class="report-value">${g(value)} <small>/ ${g(goal)}</small></span></div>`;
+  const mealIds = [...MEAL_IDS, 'snack'];
+  const mealAvg = mealIds.map(id => ({ id, cal: logged.reduce((sum, d) => sum + (d.data?.[id] || []).reduce((a, f) => a + (f.cal || 0), 0), 0) / n }));
+  const mealTotal = mealAvg.reduce((a, m) => a + m.cal, 0) || 1;
+  const mealRows = mealAvg.map(m => `<div class="report-row"><span class="report-label">${escapeHtml(mealLabel(m.id))}</span><span class="report-track"><i style="width:${pct(m.cal, mealTotal)}%"></i></span><span class="report-value">${Math.round(m.cal)}kcal <small>${Math.round((m.cal / mealTotal) * 100)}%</small></span></div>`).join('');
+  const steps = document.getElementById('health-steps-value')?.dataset.value;
+  const heart = document.getElementById('heart-rate-latest')?.dataset.value;
+  const body = [
+    PROFILE.weight ? [en ? 'Weight' : '체중', `${PROFILE.weight}kg`] : null,
+    hasToday && steps && steps !== '--' ? [en ? 'Steps today' : '오늘 걸음', Number(steps).toLocaleString()] : null,
+    hasToday && heart && heart !== '--' ? [en ? 'Heart rate' : '최근 심박', `${heart} bpm`] : null,
+  ].filter(Boolean);
+  host.innerHTML = `${head}
+    <section class="report-card report-calories" aria-label="${en ? 'Calories' : '칼로리'}">
+      <h3 class="stats-section-title">${en ? 'Calories' : '칼로리'}</h3>
+      <p class="report-hero"><strong id="report-avg-cal">${avgCal.toLocaleString()}</strong><span>/ ${target.toLocaleString()} kcal ${en ? 'daily avg' : '하루 평균'}</span></p>
+      <span class="report-track is-wide${avgCal > target ? ' is-over' : ''}"><i style="width:${pct(avgCal, target)}%"></i></span>
+      <dl class="report-kpis">
+        <div><dt>${en ? 'Logged days' : '기록한 날'}</dt><dd id="report-logged-days">${n}<small>/${days.length}</small></dd></div>
+        <div><dt>${en ? 'Within goal' : '목표 이내'}</dt><dd id="report-hit-days">${hit}${en ? 'd' : '일'}</dd></div>
+        <div><dt>${en ? 'Total' : '합계'}</dt><dd>${Math.round(logged.reduce((a, d) => a + d.totals.cal, 0)).toLocaleString()}</dd></div>
+      </dl>
+    </section>
+    <section class="report-card report-macros" aria-label="${en ? 'Macros' : '탄단지'}">
+      <h3 class="stats-section-title">${en ? 'Carbs · Protein · Fat' : '탄·단·지'} <small>${en ? 'daily avg' : '하루 평균'}</small></h3>
+      ${macroRow(en ? 'Carbs' : '탄수화물', avg('carbs'), TARGETS.carbs, 'carbs')}
+      ${macroRow(en ? 'Protein' : '단백질', avg('protein'), TARGETS.protein, 'protein')}
+      ${macroRow(en ? 'Fat' : '지방', avg('fat'), TARGETS.fat, 'fat')}
+    </section>
+    <section class="report-card report-meals" aria-label="${en ? 'By meal' : '끼니별'}">
+      <h3 class="stats-section-title">${en ? 'By meal' : '끼니별'} <small>${en ? 'daily avg' : '하루 평균'}</small></h3>
+      ${mealRows}
+    </section>
+    ${body.length ? `<section class="report-card report-body" aria-label="${en ? 'Body' : '몸 상태'}"><h3 class="stats-section-title">${en ? 'Body' : '몸 상태'}</h3><dl class="report-kpis">${body.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></section>` : ''}`;
 }
 
 async function openStatsDayOnHome() {
@@ -5411,8 +5447,8 @@ async function openStatsMealDetail(mealId, slot = null) {
   openMealPage(mealId, slot);
 }
 
-document.getElementById('cal-prev-month')?.addEventListener('click', () => changeStatsMonth(-1));
-document.getElementById('cal-next-month')?.addEventListener('click', () => changeStatsMonth(1));
+document.getElementById('cal-prev-month')?.addEventListener('click', () => stepStatsPeriod(-1));
+document.getElementById('cal-next-month')?.addEventListener('click', () => stepStatsPeriod(1));
 function handleStatsMonthPicker(event) {
   const [year, month] = event.currentTarget.value.split('-').map(Number);
   if (!year || !month) return;
@@ -5420,10 +5456,7 @@ function handleStatsMonthPicker(event) {
   statsMonth = new Date(year, month - 1, 1);
   const maxDay = new Date(year, month, 0).getDate();
   statsSelectedKey = dateKey(new Date(year, month - 1, Math.min(currentSelected.getDate(), maxDay)));
-  renderStatsCalendar();
-  renderStatsSelectedDay();
-  renderStatsWeekChart();
-  renderStatsMonthSummary();
+  rerenderStats();
 }
 const statsMonthPicker = document.getElementById('cal-month-picker');
 statsMonthPicker?.addEventListener('input', handleStatsMonthPicker);
@@ -5443,10 +5476,21 @@ document.querySelector('.cal-month-picker-wrap')?.addEventListener('click', even
     statsMonthPicker.click();
   }
 });
-document.getElementById('cal-expand-toggle')?.addEventListener('click', () => {
-  statsCalendarExpanded = !statsCalendarExpanded;
-  renderStatsCalendar();
-});
+document.getElementById('cal-expand-toggle')?.addEventListener('click', () => setStatsCalendarExpanded(!statsCalendarExpanded));
+// 손잡이를 아래로 끌면 펼침, 위로 끌면 접힘(20px 넘게)
+(function setupCalendarHandleDrag() {
+  const handle = document.getElementById('cal-expand-toggle');
+  if (!handle) return;
+  let y0 = null;
+  handle.addEventListener('touchstart', event => { y0 = event.touches[0]?.clientY ?? null; }, { passive: true });
+  handle.addEventListener('touchmove', event => {
+    if (y0 == null) return;
+    const dy = (event.touches[0]?.clientY ?? y0) - y0;
+    if (Math.abs(dy) > 20) { setStatsCalendarExpanded(dy > 0); y0 = null; }
+    if (event.cancelable) event.preventDefault();
+  }, { passive: false });
+  handle.addEventListener('touchend', () => { y0 = null; }, { passive: true });
+})();
 document.getElementById('stats-open-day')?.addEventListener('click', openStatsDayOnHome);
 document.querySelectorAll('.search-hub-tab').forEach(button => {
   button.addEventListener('click', () => setSearchHubView(button.dataset.searchView));
@@ -8115,35 +8159,10 @@ document.querySelectorAll('[data-foodex-filter]').forEach(button => {
     renderSearchHub();
   });
 });
-/* 리포트 일/주/월: 일 = 달력+고른 날, 주 = 달력(2주)+최근 7일, 월 = 달력 전체+이번 달 요약. 고른 기간은 기기에 기억 */
-const REPORT_RANGE_KEY = 'rebuilders.reportRange.v1';
-let reportRange = (() => { try { const v = localStorage.getItem(REPORT_RANGE_KEY); return ['day', 'week', 'month'].includes(v) ? v : 'day'; } catch { return 'day'; } })();
-function applyReportRange(range = reportRange, save = false) {
-  reportRange = ['day', 'week', 'month'].includes(range) ? range : 'day';
-  if (save) { try { localStorage.setItem(REPORT_RANGE_KEY, reportRange); } catch {} }
-  const view = document.getElementById('view-stats');
-  if (view) view.dataset.reportRange = reportRange;
-  document.querySelectorAll('[data-report-range]').forEach(button => {
-    const on = button.dataset.reportRange === reportRange;
-    button.classList.toggle('active', on);
-    button.setAttribute('aria-selected', String(on));
-  });
-  statsCalendarExpanded = reportRange === 'month';
-  try { renderStatsCalendar(); } catch {}
-}
-document.querySelectorAll('[data-report-range]').forEach(button => {
-  button.addEventListener('click', () => applyReportRange(button.dataset.reportRange, true));
-});
 {
-  const labels = { day: ['일', 'Day'], week: ['주', 'Week'], month: ['월', 'Month'] };
   const chips = { all: ['전체', 'All'], recent: ['최근 먹은', 'Recent'], frequent: ['자주 먹은', 'Frequent'] };
   const en = typeof ACTIVE_LOCALE !== 'undefined' && ACTIVE_LOCALE === 'en';
-  document.querySelectorAll('[data-report-range]').forEach(b => { b.textContent = labels[b.dataset.reportRange][en ? 1 : 0]; });
   document.querySelectorAll('[data-foodex-filter]').forEach(b => { b.textContent = chips[b.dataset.foodexFilter][en ? 1 : 0]; });
-  const view = document.getElementById('view-stats');
-  if (view) view.dataset.reportRange = reportRange;
-  document.querySelectorAll('[data-report-range]').forEach(b => { const on = b.dataset.reportRange === reportRange; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
-  statsCalendarExpanded = reportRange === 'month';
 }
 
 var suppressPageEnter = false;

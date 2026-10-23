@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=f36" />
+  <link rel="stylesheet" href="style.css?v=f37" />
 </head>
 
 <body>
@@ -464,11 +464,6 @@
           </button>
         </div>
       </header>
-      <div class="report-range rb-seg" id="report-range" role="tablist" aria-label="리포트 기간">
-        <button type="button" role="tab" class="report-range-btn active" data-report-range="day" aria-selected="true">일</button>
-        <button type="button" role="tab" class="report-range-btn" data-report-range="week" aria-selected="false">주</button>
-        <button type="button" role="tab" class="report-range-btn" data-report-range="month" aria-selected="false">월</button>
-      </div>
       <section class="cal-card" aria-label="월간 달력">
         <div class="cal-month-bar">
           <button type="button" class="nav-btn" id="cal-prev-month" aria-label="이전 달">
@@ -492,14 +487,14 @@
         <div class="cal-weekdays" aria-hidden="true">
           <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
         </div>
-        <div class="cal-grid" id="cal-grid" role="grid" aria-label="날짜 선택"></div>
-
-        <div class="cal-legend" id="cal-legend" hidden>
-          <span class="cal-legend-item"><i class="swatch level-under"></i>여유</span>
-          <span class="cal-legend-item"><i class="swatch level-ok"></i>적정</span>
-          <span class="cal-legend-item"><i class="swatch level-over"></i>초과</span>
+        <div class="cal-viewport" id="cal-viewport">
+          <div class="cal-grid" id="cal-grid" role="grid" aria-label="날짜 선택"></div>
         </div>
-        <button type="button" class="cal-expand-toggle" id="cal-expand-toggle" aria-expanded="false">전체보기</button>
+        <!-- 접힘 = 한 주(리포트 기간 = 그 주), 펼침 = 한 달(기간 = 그 달). 손잡이를 끌거나 눌러서 -->
+        <button type="button" class="cal-expand-toggle" id="cal-expand-toggle" aria-expanded="false" aria-label="달력 펼치기">
+          <span class="cal-grabber" aria-hidden="true"></span>
+          <svg class="cal-chevron" width="14" height="8" viewBox="0 0 14 8" fill="none" aria-hidden="true"><path d="M1 1l6 6 6-6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </button>
       </section>
 
       <section class="stats-day-card" id="stats-day-card" aria-label="선택한 날 요약">
@@ -533,30 +528,15 @@
         <p class="stats-day-empty" id="stats-day-empty" hidden>이 날에는 기록이 없어요.</p>
       </section>
 
-      <section class="stats-week-card" aria-label="최근 7일 섭취 칼로리">
+      <!-- 기간 리포트(접힘 = 그 주, 펼침 = 그 달): 칼로리·탄단지·끼니별·몸 상태, 아래 칼로리 추이 -->
+      <div class="report-period" id="report-period"></div>
+
+      <section class="stats-week-card report-card" aria-label="칼로리 추이">
         <div class="stats-week-head">
-          <h3 class="stats-section-title">최근 7일 섭취 칼로리</h3>
+          <h3 class="stats-section-title" id="stats-trend-title">칼로리 추이</h3>
         </div>
         <div class="week-chart" id="week-chart"></div>
-        <p class="stats-week-hint">진한 선 최근 7일 · 연한 선 이전 7일 · 점선 목표</p>
-      </section>
-
-      <section class="stats-month-summary" aria-label="이번 달 요약">
-        <h3 class="stats-section-title">이번 달 요약</h3>
-        <div class="stats-month-grid">
-          <div class="stats-month-item">
-            <span class="stats-month-num" id="stats-month-days">0</span>
-            <span class="stats-month-cap">기록 일수</span>
-          </div>
-          <div class="stats-month-item">
-            <span class="stats-month-num" id="stats-month-avg">0</span>
-            <span class="stats-month-cap">평균 kcal</span>
-          </div>
-          <div class="stats-month-item">
-            <span class="stats-month-num" id="stats-month-hit">0</span>
-            <span class="stats-month-cap">목표 이내 기록일</span>
-          </div>
-        </div>
+        <p class="stats-week-hint" id="stats-week-hint">진한 선 이번 주 · 연한 선 지난주 · 점선 목표</p>
       </section>
 
       <div class="content-end-spacer"></div>
@@ -1336,7 +1316,7 @@
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=4"></script>
-  <script src="app.js?v=f36"></script>
+  <script src="app.js?v=f37"></script>
 </body>
 
 </html>
