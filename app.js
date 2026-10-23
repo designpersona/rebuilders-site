@@ -5091,7 +5091,7 @@ function rerenderStats(animate = false) {
   renderStatsMonthSummary();
   renderStatsWeekChart();
 }
-const CAL_ROW = 44; const CAL_GAP = 4; // 달력 한 줄 높이·줄 간격(펼침·접힘 높이 계산)
+const CAL_ROW = 50; const CAL_GAP = 4; // 달력 한 줄 높이·줄 간격(펼침·접힘 높이 계산)
 function renderStatsCalendar(animate = false) {
   const grid = document.getElementById('cal-grid');
   const label = document.getElementById('cal-month-label');
@@ -5113,19 +5113,23 @@ function renderStatsCalendar(animate = false) {
     const date = new Date(year, month, 1 - startPad + i);
     const key = dateKey(date);
     const outside = date.getMonth() !== month;
-    const has = hasDayLog(statsCache[key]);
+    const dayData = statsCache[key];
+    const has = hasDayLog(dayData);
+    const level = has ? dayCalLevel(dayData) : null;
+    const kcal = has ? Math.round(dayTotalsFromData(dayData).cal) : null;
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = `cal-day${outside ? ' is-outside' : ''}${key === todayKey ? ' is-today' : ''}${key === statsSelectedKey ? ' is-selected' : ''}${has ? ' has-log' : ''}`;
+    btn.className = `cal-day${outside ? ' is-outside' : ''}${key === todayKey ? ' is-today' : ''}${key === statsSelectedKey ? ' is-selected' : ''}${has ? ` has-log level-${level}` : ''}`;
     btn.dataset.key = key;
-    btn.setAttribute('aria-label', `${formatDate(date)}${has ? (en ? ', logged' : ', 기록 있음') : ''}${key === todayKey ? (en ? ', today' : ', 오늘') : ''}`);
-    btn.innerHTML = `<span class="cal-day-num">${date.getDate()}</span>${has ? '<i class="cal-day-dot" aria-hidden="true"></i>' : ''}`;
+    btn.setAttribute('aria-label', `${formatDate(date)}${has ? `, ${kcal}kcal ${levelLabel(level)}` : ''}${key === todayKey ? (en ? ', today' : ', 오늘') : ''}`);
+    btn.innerHTML = `<span class="cal-day-mark"><span class="cal-day-num">${date.getDate()}</span><span class="cal-day-kcal">${has ? kcal : ''}</span></span>`;
     if (key === statsSelectedKey) selectedIndex = i;
     frag.appendChild(btn);
   }
   grid.replaceChildren(frag);
   const toggle = document.getElementById('cal-expand-toggle');
   if (toggle) {
+    if (toggle.childElementCount !== 1 || toggle.textContent.trim()) toggle.innerHTML = '<span class="cal-grabber" aria-hidden="true"></span>'; // 회색 막대만(글자·화살표 없음)
     toggle.setAttribute('aria-expanded', String(statsCalendarExpanded));
     toggle.setAttribute('aria-label', statsCalendarExpanded ? (en ? 'Collapse calendar' : '달력 접기') : (en ? 'Expand calendar' : '달력 펼치기'));
   }

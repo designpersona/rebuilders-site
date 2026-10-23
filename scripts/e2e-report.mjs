@@ -48,17 +48,23 @@ try {
   const state = () => evaluate(`const vp = document.getElementById('cal-viewport').getBoundingClientRect(); const cells = [...document.querySelectorAll('#cal-grid .cal-day')]; const vis = cells.filter(c => { const b = c.getBoundingClientRect(); return b.top >= vp.top - 0.5 && b.bottom <= vp.bottom + 0.5; });
     return { h: Math.round(vp.height), vis: vis.map(c => c.dataset.key), sel: document.querySelector('#cal-grid .is-selected')?.dataset.key, title: document.querySelector('.report-period-title')?.textContent, range: document.querySelector('.report-period-range')?.textContent, logged: document.getElementById('report-logged-days')?.textContent, avg: document.getElementById('report-avg-cal')?.textContent, day: document.getElementById('stats-day-date')?.textContent, month: document.getElementById('cal-month-label').textContent, expanded: document.getElementById('cal-expand-toggle').getAttribute('aria-expanded'), seg: document.querySelectorAll('#report-range, [data-report-range]').length };`);
   const s1 = await state();
-  check('일/주/월 버튼 없음, 접힘: 고른 날의 한 주(일~토)만 보이고 리포트 = 그 주(10.11–10.17, 기록 5/7·평균 800)', s1.seg === 0 && s1.h === 44 && s1.vis.join() === '2026-10-11,2026-10-12,2026-10-13,2026-10-14,2026-10-15,2026-10-16,2026-10-17' && s1.sel === '2026-10-14' && s1.range === '10.11 – 10.17' && s1.logged === '5/7' && s1.avg === '800' && s1.expanded === 'false', JSON.stringify(s1));
+  check('일/주/월 버튼 없음, 접힘: 고른 날의 한 주(일~토)만 보이고 리포트 = 그 주(10.11–10.17, 기록 5/7·평균 800)', s1.seg === 0 && s1.h === 50 && s1.vis.join() === '2026-10-11,2026-10-12,2026-10-13,2026-10-14,2026-10-15,2026-10-16,2026-10-17' && s1.sel === '2026-10-14' && s1.range === '10.11 – 10.17' && s1.logged === '5/7' && s1.avg === '800' && s1.expanded === 'false', JSON.stringify(s1));
   const dots = await evaluate(`const g = k => document.querySelector('#cal-grid .cal-day[data-key="' + k + '"]'); return { logged: !!g('2026-10-13')?.querySelector('.cal-day-dot'), none: !g('2026-10-12')?.querySelector('.cal-day-dot'), today: document.querySelectorAll('#cal-grid .is-today').length };`);
   await evaluate(`statsSelectedKey = dateKey(new Date()); rerenderStats(); return 1;`);
   const today = await evaluate(`const t = document.querySelector('#cal-grid .cal-day.is-today'); return !!t && t.dataset.key === dateKey(new Date());`);
   await evaluate(`statsSelectedKey = '2026-10-14'; rerenderStats(); return 1;`);
-  check('기록한 날 점, 기록 없는 날 점 없음, 오늘 표시', dots.logged && dots.none && today, JSON.stringify({ dots, today }));
+  check('오늘 표시', dots.today === 1 && today, JSON.stringify({ dots, today }));
+  // 날짜 아래 작은 kcal(10/500, 여유·적정·초과 색), 기록 있는 날 점 없음, 고른 날은 흰 글자, 320px 에서도 칸 안에
+  const kc = await evaluate(`const g = k => document.querySelector('#cal-grid .cal-day[data-key="' + k + '"]'); const k13 = g('2026-10-13').querySelector('.cal-day-kcal'); const cs = getComputedStyle(k13); const sel = getComputedStyle(g('2026-10-14').querySelector('.cal-day-kcal'));
+    const t = document.getElementById('cal-expand-toggle'); const tb = t.getBoundingClientRect();
+    return { text: k13.textContent, font: cs.fontSize + '/' + cs.fontWeight, color: cs.color, level: g('2026-10-13').className.match(/level-\\w+/)?.[0], empty: g('2026-10-12').querySelector('.cal-day-kcal').textContent, dots: document.querySelectorAll('#cal-grid .cal-day-dot').length, selColor: sel.color, selText: g('2026-10-14').querySelector('.cal-day-kcal').textContent,
+      handle: { h: Math.round(tb.height), text: t.textContent.trim(), svg: t.querySelectorAll('svg').length, bar: !!t.querySelector('.cal-grabber') } };`);
+  check('날짜 아래 kcal 10/500·차분한 여유 색, 기록 없는 날 비움, 점 없음, 고른 날 kcal 흰색, 손잡이는 회색 막대만(글자·화살표 없음, 32px)', kc.text === '800' && kc.font === '10px/500' && kc.level === 'level-under' && kc.color === 'rgb(63, 143, 107)' && kc.empty === '' && kc.dots === 0 && kc.selText === '800' && kc.selColor === 'rgba(255, 255, 255, 0.85)' && kc.handle.h === 32 && !kc.handle.text && !kc.handle.svg && kc.handle.bar, JSON.stringify(kc));
   // 펼치기: 높이·위치가 한 방향으로만 250ms 안팎(넘침 없음) → 한 달, 리포트 = 그 달(10월 21/31)
   const traj = await evaluate(`const vp = document.getElementById('cal-viewport'); const out = []; const t0 = performance.now(); document.getElementById('cal-expand-toggle').click();
     await new Promise(res => { const tick = () => { out.push([Math.round(performance.now() - t0), Math.round(vp.getBoundingClientRect().height * 10) / 10]); if (performance.now() - t0 < 450) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); }); return out;`);
   const s2 = await state();
-  const full = 5 * 48 - 4; // 2026년 10월 = 5줄
+  const full = 5 * 54 - 4; // 2026년 10월 = 5줄
   const mono = traj.every((f, i) => i === 0 || f[1] >= traj[i - 1][1] - 0.5);
   const doneAt = (traj.find(f => Math.abs(f[1] - full) < 0.5) || [999])[0];
   check('펼치면 한 달(5줄), 높이 한 방향으로만·넘침 없음·약 250ms, 리포트 = 10월(기록 21/31)', mono && traj.every(f => f[1] <= full + 0.5) && doneAt <= 330 && traj[1][1] < full && s2.h === full && s2.vis.length === 35 && s2.title === '10월' && s2.logged === '21/31' && s2.expanded === 'true', JSON.stringify({ doneAt, n: traj.length, first: traj.slice(0, 3), s2: { ...s2, vis: s2.vis.length } }));
@@ -70,7 +76,7 @@ try {
   await evaluate(`document.getElementById('cal-prev-month').click(); ${W8(100)} document.getElementById('cal-expand-toggle').click(); ${W8(400)} return 1;`);
   const s5 = await state();
   const s6 = await evaluate(`document.getElementById('cal-next-month').click(); ${W8(100)} return 1;`).then(state);
-  check('< > : 펼침이면 다음 달(11월), 접힘이면 다음 주(고른 날 +7, 리포트 = 그 주)', s4.title === '11월' && s4.month === '2026년 11월' && s5.h === 44 && s5.range === '10.18 – 10.24' && s6.sel === '2026-10-27' && s6.range === '10.25 – 10.31' && s6.vis.length === 7, JSON.stringify({ s4: s4.title, s5: s5.range, s6: { sel: s6.sel, range: s6.range, logged: s6.logged } }));
+  check('< > : 펼침이면 다음 달(11월), 접힘이면 다음 주(고른 날 +7, 리포트 = 그 주)', s4.title === '11월' && s4.month === '2026년 11월' && s5.h === 50 && s5.range === '10.18 – 10.24' && s6.sel === '2026-10-27' && s6.range === '10.25 – 10.31' && s6.vis.length === 7, JSON.stringify({ s4: s4.title, s5: s5.range, s6: { sel: s6.sel, range: s6.range, logged: s6.logged } }));
   // 손잡이를 아래로 끌면 펼침, 위로 끌면 접힘
   const hb = await evaluate(`const b = document.getElementById('cal-expand-toggle').getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2];`);
   await touch('touchStart', hb[0], hb[1]); for (let k = 1; k <= 5; k++) { await touch('touchMove', hb[0], hb[1] + k * 10); await sleep(16); } await touch('touchEnd'); await sleep(400);
@@ -92,6 +98,11 @@ try {
   // 많은 기록에서도 빠름: 다시 그리기 평균
   const ms = await evaluate(`statsCalendarExpanded = true; const t0 = performance.now(); for (let i = 0; i < 20; i++) { statsSelectedKey = dateKey(new Date(2026, i % 12, 10)); statsMonth = new Date(2026, i % 12, 1); rerenderStats(); } return (performance.now() - t0) / 20;`);
   check('기록 약 330일에서 다시 그리기 평균 20ms 이하', ms < 20, ms.toFixed(1) + 'ms');
+  await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 700, deviceScaleFactor: 1, mobile: true }); await sleep(300);
+  const fit = await evaluate(`statsCache[dateKey(new Date(2026, 9, 14))].lunch = [{ name: 'x', cal: 1850, carbs: 0, protein: 0, fat: 0 }]; statsSelectedKey = '2026-10-14'; statsMonth = new Date(2026, 9, 1); rerenderStats(); await new Promise(r => setTimeout(r, 100));
+    return [...document.querySelectorAll('#cal-grid .cal-day')].map(c => { const a = c.getBoundingClientRect(); const k = c.querySelector('.cal-day-kcal'); const b = k.getBoundingClientRect(); return k.textContent && (b.left < a.left - 0.5 || b.right > a.right + 0.5 || k.scrollWidth > k.clientWidth + 1) ? c.dataset.key + ':' + k.textContent : null; }).filter(Boolean);`);
+  check('320px: 2150 같은 네 자리 kcal 도 칸 안에', fit.length === 0, JSON.stringify(fit));
+  await send('Emulation.setDeviceMetricsOverride', { width: 393, height: 852, deviceScaleFactor: 1, mobile: true });
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (err) { results.push('ERROR ' + (err.stack || err.message)); failed++; }
 finally {

@@ -13359,3 +13359,24 @@ body.has-ai-dock.has-bridge-chip .toast-host { bottom: calc(var(--kb-h, 0px) + v
 #view-stats .stats-day-meal-link small { font: var(--rb-type-caption) !important; }
 #view-stats .week-chart.is-month .week-line-day.is-selected { background: none !important; color: var(--rb-ink) !important; }
 #view-stats .week-line-dot { border: 0 !important; background: var(--rb-ink) !important; box-shadow: 0 0 0 2px #fff !important; }
+
+/* 리포트 달력 10.23b: 날짜 아래 작은 kcal(여유·적정·초과 색은 차분하게), 점 없음. 접기 손잡이는 회색 막대만(누르기·끌기 32px) */
+#view-stats .cal-grid { grid-auto-rows: 50px !important; }
+#view-stats .cal-viewport { height: 50px; }
+#view-stats .cal-day { height: 50px !important; }
+#view-stats .cal-day .cal-day-mark { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; width: min(36px, 100%); height: 46px; border-radius: 14px; }
+#view-stats .cal-day .cal-day-num { width: auto !important; height: auto !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; color: inherit !important; font: 500 15px/1.1 var(--font) !important; }
+#view-stats .cal-day .cal-day-kcal { display: block !important; min-height: 11px; margin: 0 !important; font: 500 10px/1.1 var(--font) !important; letter-spacing: -0.2px; color: var(--rb-label) !important; white-space: nowrap; }
+#view-stats .cal-day.level-under .cal-day-kcal { color: #3F8F6B !important; }
+#view-stats .cal-day.level-ok .cal-day-kcal { color: #A8862B !important; }
+#view-stats .cal-day.level-over .cal-day-kcal { color: #C25B5B !important; }
+#view-stats .cal-day.is-outside .cal-day-kcal { opacity: 0.6; }
+#view-stats .cal-day .cal-day-dot { display: none !important; }
+#view-stats .cal-day.is-today .cal-day-mark { box-shadow: inset 0 0 0 1.5px var(--rb-ink); }
+#view-stats .cal-day.is-today .cal-day-num { font-weight: 700 !important; }
+#view-stats .cal-day.is-selected .cal-day-mark { background: var(--rb-pill-dark, #1C1D21); box-shadow: none; color: #fff; }
+#view-stats .cal-day.is-selected .cal-day-num { font-weight: 700 !important; }
+#view-stats .cal-day.is-selected .cal-day-kcal { color: rgba(255, 255, 255, 0.85) !important; }
+#view-stats .cal-expand-toggle { justify-content: center; height: 32px !important; min-height: 32px !important; margin: 0 !important; padding: 0 !important; }
+#view-stats .cal-expand-toggle::before, #view-stats .cal-expand-toggle::after { content: none !important; }
+#view-stats .cal-chevron { display: none !important; }
