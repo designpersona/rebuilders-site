@@ -57,7 +57,7 @@
     const m = String(token).match(AMOUNT_RE);
     if (!m) return null;
     // "한", "두" 같은 수사는 단위 없이 혼자 오면 음식 이름일 수 있으니 숫자·'반'만 허용
-    if (m[3] && !m[4] && m[3] !== '반') return null;
+    if (m[3] && !m[4] && m[3] !== '반' && m[3] !== '하나' && m[3] !== '둘' && m[3] !== '셋') return null;
     return amountValue(m);
   }
 
@@ -188,8 +188,10 @@
         flushPending();
         const item = { name: matched.hit.name, baseName: matched.hit.baseName, data: matched.hit.data, known: true, amount: null };
         i += matched.len;
-        const amount = i < tokens.length ? parseAmount(tokens[i]) : null;
-        if (amount) { item.amount = amount; i += 1; }
+        // "한 알", "2 개"처럼 띄어 쓴 양은 두 토큰을 붙여서 먼저 봄
+        const joined = i + 1 < tokens.length ? parseAmount(tokens[i] + tokens[i + 1]) : null;
+        const amount = joined && joined.unit ? joined : (i < tokens.length ? parseAmount(tokens[i]) : null);
+        if (amount) { item.amount = amount; i += amount === joined ? 2 : 1; }
         items.push(item);
         continue;
       }
@@ -227,6 +229,23 @@
     return items;
   }
 
+  // 기준(basis)량 g: "100g" → 100. 없으면 serving 이 "NNg" 이면 그 값
+  function basisGrams(data) {
+    const m = String(data.basis || data.serving || '').match(/^(\d+(?:\.\d+)?)\s*(g|ml)$/i);
+    return m ? Number(m[1]) : null;
+  }
+  // 한 개(알·조각…)의 무게 g: DB 의 unitGrams(출처 있는 값) 또는 "1개 60g" 같은 기준량 문구에서만. 없으면 null(지어내지 않음)
+  function unitGramsFor(data, unit) {
+    const table = data.unitGrams && typeof data.unitGrams === 'object' ? data.unitGrams : null;
+    if (table) {
+      if (unit && Number(table[unit]) > 0) return { unit, grams: Number(table[unit]) };
+      if (!unit) { const [u, g] = Object.entries(table)[0] || []; if (Number(g) > 0) return { unit: u, grams: Number(g) }; }
+    }
+    const m = String(data.serving || '').match(new RegExp(`^1\\s*(${COUNT_UNITS.join('|')})\\s+(\\d+(?:\\.\\d+)?)\\s*g$`, 'u'));
+    if (m && (!unit || unit === m[1])) return { unit: m[1], grams: Number(m[2]) };
+    return null;
+  }
+
   function scaleFood(item) {
     const data = item.data ? { ...item.data } : null;
     if (!data) {
@@ -235,15 +254,29 @@
     const result = { name: item.name, ...data };
     delete result.description; delete result.descriptionEn;
     if (item.name !== item.baseName) { delete result.nameEn; result.baseFood = item.baseName; }
-    const amount = item.amount;
+    const basisG = basisGrams(data);
+    let amount = item.amount;
+    // 개수로 먹는 음식(한 개 무게를 아는 것)은 양을 안 쓰면 1개
+    if (!amount && basisG && data.unitGrams) {
+      const u = unitGramsFor(data, null);
+      if (u) amount = { value: 1, unit: u.unit, text: `1${u.unit}` };
+    }
     if (!amount) return result;
     const servingMatch = String(data.serving || '').match(/^(\d+(?:\.\d+)?)\s*(g|ml)$/i);
     const countMatch = String(data.serving || '').match(new RegExp(`^1\\s*(${COUNT_UNITS.join('|')})`, 'u'));
+    const isCount = !amount.unit || COUNT_UNITS.includes(amount.unit);
     let factor = null;
+    let grams = null;
     if (amount.unit && ['g', 'ml'].includes(amount.unit) && servingMatch && servingMatch[2].toLowerCase() === amount.unit) {
       factor = amount.value / Number(servingMatch[1]);
     } else if (amount.unit === 'kg' && servingMatch && servingMatch[2].toLowerCase() === 'g') {
       factor = (amount.value * 1000) / Number(servingMatch[1]);
+    } else if (isCount && basisG && unitGramsFor(data, amount.unit || null)) {
+      // 개수 × 한 개 무게(g) → 기준량(예: 100g) 대비 비율
+      const u = unitGramsFor(data, amount.unit || null);
+      grams = Math.round(amount.value * u.grams * 10) / 10;
+      factor = grams / basisG;
+      if (!amount.unit) amount = { ...amount, unit: u.unit, text: `${amount.value}${u.unit}` };
     } else if (countMatch && (amount.unit === countMatch[1] || !amount.unit)) {
       factor = amount.value;
     }
@@ -256,6 +289,11 @@
       if (typeof result[key] === 'number') result[key] = Math.round(result[key] * factor * 10) / 10;
     });
     result.serving = amount.text;
+    if (grams != null) {
+      result.servingAmount = amount.value;
+      result.servingUnit = amount.unit;
+      result.servingGrams = grams;
+    }
     return result;
   }
 

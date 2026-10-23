@@ -4267,7 +4267,59 @@ function openFoodEdit(mealId, idx) {
 
   const askHost = mealDetailEditGrid.querySelector('.meal-edit-ask-host');
   if (askHost) askHost.appendChild(buildAskAiButton(mealId, [{ name: food.name, serving: food.serving || '' }], 'ask-ai-btn', { afterFill: () => closeFoodEdit() }));
+  setupEditRescale(food);
   mealDetailModal.classList.add('open');
+}
+
+/* 섭취량을 바꾸면 영양(칼로리·탄단지·상세)이 같은 비율로 바로 바뀜.
+   기준: 열 때의 값 ÷ 열 때의 양(g 로 바꿀 수 있으면 g, 아니면 같은 단위끼리).
+   칼로리 등 영양 칸을 직접 고치면 그 값이 새 기준(직접 입력 표시) — 그 뒤 양을 바꾸면 고친 값에서 비례. */
+const EDIT_NUTRIENT_FIELDS = ['cal', 'carbs', 'protein', 'fat', 'sugar', 'fiber', 'saturatedFat', 'transFat', 'cholesterol', 'sodium', 'potassium', 'calcium', 'iron', 'magnesium', 'vitaminD', 'vitaminC'];
+let editRescale = null;
+function editUnitGrams(food, unit) {
+  if (unit === 'g' || unit === 'ml') return 1;
+  if (unit === 'kg' || unit === 'l') return 1000;
+  const table = food?.unitGrams || FOOD_DB[food?.baseFood || food?.name]?.unitGrams; // 예전 기록은 DB 의 한 개 무게로
+  if (table && Number(table[unit]) > 0) return Number(table[unit]);
+  if (food?.servingUnit === unit && Number(food.servingGrams) > 0 && Number(food.servingAmount) > 0) return Number(food.servingGrams) / Number(food.servingAmount);
+  return null;
+}
+function editQuantity(food, amount, unit) {
+  const a = Number(amount);
+  if (!(a > 0)) return null;
+  const per = editUnitGrams(food, unit);
+  if (per) return { base: unit === 'ml' || unit === 'l' ? 'ml' : 'g', value: a * per };
+  return { base: unit, value: a };
+}
+function setupEditRescale(food) {
+  const amountInput = mealDetailEditGrid.querySelector('[data-serving-amount]');
+  const unitInput = mealDetailEditGrid.querySelector('[data-serving-unit]');
+  const fieldInput = f => mealDetailEditGrid.querySelector(`[data-edit-field="${f}"]`);
+  const state = { food, density: {}, qty: null, edited: false };
+  const reanchor = (fields = EDIT_NUTRIENT_FIELDS) => {
+    state.qty = editQuantity(food, amountInput?.value, unitInput?.value);
+    fields.forEach(f => {
+      const input = fieldInput(f);
+      const v = input && input.value !== '' ? Number(input.value) : null;
+      if (state.qty && v != null && Number.isFinite(v)) state.density[f] = v / state.qty.value;
+      else delete state.density[f];
+    });
+  };
+  reanchor();
+  const rescale = () => {
+    const q = editQuantity(food, amountInput?.value, unitInput?.value);
+    if (!q) return;
+    if (!state.qty || q.base !== state.qty.base) { reanchor(); return; } // g ↔ 개처럼 바꿀 수 없는 단위면 값은 그대로, 새 기준만
+    state.qty = q;
+    Object.entries(state.density).forEach(([f, d]) => {
+      const input = fieldInput(f);
+      if (input) input.value = String(Math.round(d * q.value * 10) / 10);
+    });
+  };
+  amountInput?.addEventListener('input', rescale);
+  unitInput?.addEventListener('change', rescale);
+  EDIT_NUTRIENT_FIELDS.forEach(f => fieldInput(f)?.addEventListener('input', () => { state.edited = true; reanchor([f]); }));
+  editRescale = state;
 }
 
 mealDetailCloseBtn.addEventListener('click', closeFoodEdit);
@@ -4299,6 +4351,11 @@ mealDetailSaveBtn.addEventListener('click', async () => {
   next.source = 'user-entry';
   next.sourceTrust = 'user';
   next.servingGramsEstimated = false;
+  // 개수 단위에 한 개 무게를 알면 총 g 도 같이(표시: "2개 · 100g")
+  const perUnit = servingAmount ? editUnitGrams(food, servingUnit) : null;
+  next.servingGrams = perUnit && !['g', 'ml', 'kg', 'l'].includes(servingUnit) ? Math.round(Number(servingAmount) * perUnit * 10) / 10 : undefined;
+  if (editRescale?.edited) next.nutritionCustom = true; // 영양 칸을 직접 고침
+  delete next.quantityNote;
   next.name = next.name || food.name;
   if (food.icon) next.icon = food.icon;
 

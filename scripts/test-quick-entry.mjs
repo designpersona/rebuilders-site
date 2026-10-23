@@ -59,7 +59,16 @@ r = p('아침 바나나2개');
 check('붙여 쓴 양(바나나2개): 단위 변환 불가 → 기준량 유지 + 메모', names(r).join() === '바나나' && r.items[0].food.cal === 89 && r.items[0].food.quantityNote === '2개', r.items[0]);
 
 r = p('간식 프로틴바 2개');
-check('1개 기준 음식은 개수만큼 곱함', r.items[0].food.cal === 700 && r.items[0].food.serving === '2개', r.items[0].food);
+check('"1개 60g" 기준(영양은 100g 기준) → 2개 = 120g 만큼(350 × 1.2 = 420kcal)', r.items[0].food.cal === 420 && r.items[0].food.serving === '2개' && r.items[0].food.servingGrams === 120, r.items[0].food);
+
+// 계란: USDA 173424 의 '1 large = 50 g'(unitGrams) × 개수, 영양은 100g 기준에서 비례
+for (const [text, n] of [['아침 계란', 1], ['아침 계란 1개', 1], ['아침 계란 2개', 2], ['아침 계란 한 알', 1], ['아침 계란 하나', 1], ['아침 달걀 두 개', 2], ['아침 계란2개', 2]]) {
+  r = p(text);
+  const f = r.items[0]?.food || {};
+  check(`${text} → ${n}개 = ${n * 50}g, ${155 * n / 2}kcal·단백질 ${Math.round(12.6 * n / 2 * 10) / 10}g`, r.items.length === 1 && f.name === '삶은 달걀' && f.servingGrams === n * 50 && f.servingAmount === n && f.cal === Math.round(155 * n / 2 * 10) / 10 && f.protein === Math.round(12.6 * n / 2 * 10) / 10 && !f.quantityNote, f);
+}
+r = p('아침 계란 120g');
+check('계란 120g → g 그대로 비례(186kcal)', r.items[0].food.cal === 186 && r.items[0].food.serving === '120g', r.items[0].food);
 
 r = p('바나나를 먹었어');
 check('조사 제거(바나나를)', names(r).join() === '바나나', r);
