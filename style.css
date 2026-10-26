@@ -13380,3 +13380,70 @@ body.has-ai-dock.has-bridge-chip .toast-host { bottom: calc(var(--kb-h, 0px) + v
 #view-stats .cal-expand-toggle { justify-content: center; height: 32px !important; min-height: 32px !important; margin: 0 !important; padding: 0 !important; }
 #view-stats .cal-expand-toggle::before, #view-stats .cal-expand-toggle::after { content: none !important; }
 #view-stats .cal-chevron { display: none !important; }
+
+/* =====================================================================
+   맨 위 날짜 줄 + 맨 아래 검정 아이콘 페이지 띠 (10/26)
+   - 맨 위: 식단기록은 날짜 줄(예전 글자 탭과 같은 600/15 회색, 고른 날 700 검정 + 밑줄), 5칸, 고른 날 가운데
+   - 다른 페이지: 같은 자리에 제목 20/700
+   - 맨 아래: 채팅 입력줄 바로 밑 검정 띠, 아이콘만(이름은 화면낭독기용으로 남김)
+   ===================================================================== */
+.top-head { position: relative; flex-shrink: 0; height: 48px; background: var(--bg); overflow: hidden; }
+.date-strip { position: absolute; inset: 0; overflow: hidden; touch-action: pan-y; }
+.date-strip[hidden], .page-title[hidden] { display: none !important; }
+.date-strip-track { position: absolute; inset: 0; will-change: transform; }
+.date-chip {
+  position: absolute; top: 0; height: 100%; padding: 0; margin: 0; border: 0; background: transparent;
+  display: flex; align-items: center; justify-content: center; white-space: nowrap;
+  font: 600 15px/1.2 var(--font); color: var(--rb-label); -webkit-tap-highlight-color: transparent;
+  transition: color 0.2s ease;
+}
+.date-chip.active { color: var(--rb-ink); font-weight: 700; }
+.date-chip:active { scale: 0.97; }
+.date-strip-indicator {
+  position: absolute; bottom: 4px; height: 2.5px; border-radius: 2px; background: var(--text-primary); pointer-events: none;
+}
+@media (max-width: 360px) { .date-chip { font-size: 13px; } }
+.page-title {
+  margin: 0; height: 100%; display: flex; align-items: center;
+  padding: 0 max(28px, var(--safe-right)) 0 max(28px, var(--safe-left));
+  font: 700 20px/1.2 var(--font); color: var(--rb-ink); letter-spacing: -0.01em;
+}
+/* 제목이 맨 위로 올라갔으니 페이지 안의 같은 제목 줄은 숨김 */
+body.top-head-title #view-stats .stats-page-head,
+body.top-head-title #view-profile .profile-page-head { display: none !important; }
+
+/* 날짜 아래 줄: 화살표·긴 날짜는 줄 위 날짜 줄이 대신함 → '오늘' / '오늘로'만 */
+body #view-home#view-home .date-header.home-date-row #prev-day,
+body #view-home#view-home .date-header.home-date-row #next-day,
+body #view-home#view-home .date-header .date-display .date-text { display: none !important; }
+body #view-home#view-home .date-header.home-date-row { justify-content: flex-end !important; padding: 0 !important; min-height: 0 !important; }
+body #view-home#view-home .date-header .date-display { margin-left: auto !important; }
+body #view-home#view-home .date-header .date-display.is-today { pointer-events: none !important; }
+body #view-home#view-home .date-header .date-display .date-badge.is-go-today {
+  opacity: 1 !important; color: var(--rb-ink) !important; background: var(--rb-btn-bg) !important;
+  padding: 5px 10px !important; border-radius: 999px !important;
+}
+
+/* 아래 검정 페이지 띠 */
+#page-tabs.page-tabs.bottom-tabs {
+  order: 99; flex-shrink: 0; display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 0 !important; overflow: hidden !important; height: calc(44px + var(--safe-bottom)) !important;
+  padding: 0 max(8px, var(--safe-right)) var(--safe-bottom) max(8px, var(--safe-left)) !important;
+  background: #111216 !important; border: 0 !important; box-shadow: none !important;
+}
+#page-tabs.bottom-tabs .nav-item.page-tab {
+  width: 100% !important; height: 44px !important; padding: 0 !important; justify-self: stretch !important;
+  display: flex !important; align-items: center !important; justify-content: center !important;
+  color: rgba(255, 255, 255, 0.45) !important; background: transparent !important;
+}
+#page-tabs.bottom-tabs .nav-item.page-tab.active { color: #fff !important; }
+#page-tabs.bottom-tabs .page-tab-ico { width: 24px; height: 24px; display: block; }
+#page-tabs.bottom-tabs .page-tab-label {
+  position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important;
+  clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important;
+}
+#page-tabs.bottom-tabs .page-tab-indicator { display: none !important; }
+body.keyboard-open #page-tabs.bottom-tabs, html.kb-up #page-tabs.bottom-tabs { display: none !important; }
+/* 띠가 안전 영역을 맡으므로 입력줄·검색줄은 8px만 */
+.home-ai-dock { padding-bottom: 8px !important; }
+html, body { background: var(--bg); }

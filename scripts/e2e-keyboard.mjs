@@ -45,12 +45,12 @@ try {
   await evaluate(`for (let k = 1; k <= 30; k++) await saveCustomFood('키보드테스트 ' + String(k).padStart(2, '0'), { cal: 100 + k, carbs: 10, protein: 5, fat: 2, serving: '1개' }); return 1;`);
   const KB = 300;
   const kbState = (inputId, dockSel, listSel) => `
-    const tabs0 = document.getElementById('page-tabs').getBoundingClientRect().top; const sub0 = document.querySelector('${listSel}')?.getBoundingClientRect().top;
+    const tabs0 = document.getElementById('top-head').getBoundingClientRect().top; const sub0 = document.querySelector('${listSel}')?.getBoundingClientRect().top;
     const input = document.getElementById('${inputId}'); input.focus();
     RebuildersKeyboard.simulate(${KB}); ${W8(60)}
     const frame = document.querySelector('.phone-frame'); frame.scrollTop = 140; document.scrollingElement.scrollTop = 140; document.body.scrollTop = 140; frame.dispatchEvent(new Event('scroll')); window.dispatchEvent(new Event('scroll')); ${W8(400)}
     const dock = document.querySelector('${dockSel}').getBoundingClientRect(); const list = document.querySelector('${listSel}'); const lb = list.getBoundingClientRect();
-    const r = { tabsMoved: Math.round(document.getElementById('page-tabs').getBoundingClientRect().top - tabs0), listTopMoved: Math.round(lb.top - sub0), dockBottom: Math.round(dock.bottom), want: innerHeight - ${KB}, listBottom: Math.round(lb.bottom), dockTop: Math.round(dock.top),
+    const r = { tabsMoved: Math.round(document.getElementById('top-head').getBoundingClientRect().top - tabs0), listTopMoved: Math.round(lb.top - sub0), dockBottom: Math.round(dock.bottom), want: innerHeight - ${KB}, listBottom: Math.round(lb.bottom), dockTop: Math.round(dock.top),
       pan: [frame.scrollTop, document.scrollingElement.scrollTop, document.body.scrollTop], focused: document.activeElement === input, scrollable: list.scrollHeight > list.clientHeight + 20 };
     return r;`;
   const ok = r => r.tabsMoved === 0 && r.listTopMoved === 0 && Math.abs(r.dockBottom - r.want) <= 2 && r.listBottom <= r.dockTop + 1 && r.pan.every(v => v === 0) && r.focused;

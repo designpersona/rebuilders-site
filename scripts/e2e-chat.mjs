@@ -47,7 +47,7 @@ try {
   // 1. 토스트·AI 칩: 위 탭과 겹치지 않고 입력창 바로 위
   const r1 = await evaluate(`setActiveView('home'); ${W8(300)} showToast('영양 채웠어요 · 1개 (AI 추정)', 'success');
     RebuildersBridge.enqueue({ date: dateKey(currentDate), meal: 'snack', items: [{ name: '초코모찌' }] }); renderBridgePending(); ${W8(400)}
-    return { toast: ${box('#toast-host .toast:last-child')}, chip: ${box('#bridge-pending')}, chipText: document.getElementById('bridge-pending').textContent, tabs: ${box('#page-tabs')}, form: ${box('#ai-dock-form')} };`);
+    return { toast: ${box('#toast-host .toast:last-child')}, chip: ${box('#bridge-pending')}, chipText: document.getElementById('bridge-pending').textContent, tabs: ${box('#top-head')}, form: ${box('#ai-dock-form')} };`);
   check('토스트·칩이 위 탭을 가리지 않음', r1.toast && r1.chip && r1.toast.top > r1.tabs.bottom + 200 && r1.chip.top > r1.tabs.bottom + 200, JSON.stringify(r1));
   check('칩은 입력창 바로 위(8px), 토스트는 칩 위 — 서로 안 겹침', r1.chip.bottom <= r1.form.top && r1.form.top - r1.chip.bottom <= 20 && r1.toast.bottom <= r1.chip.top, JSON.stringify(r1));
   check('짧은 상태 문구', /^영양 (대기|채우는 중)/.test(r1.chipText) || /^맥 미니 연결 대기/.test(r1.chipText), r1.chipText);

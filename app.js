@@ -1284,12 +1284,16 @@ function updateDateDisplay() {
   const today = isToday(currentDate);
   // 오늘이 아니면 어제/내일만 작게, 그 밖의 날은 비움
   const dayDiff = Math.round((new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()) - new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())) / 86400000);
-  const relative = dayDiff === 0 ? ['오늘', 'Today'] : dayDiff === -1 ? ['어제', 'Yesterday'] : dayDiff === 1 ? ['내일', 'Tomorrow'] : null;
+  // 오늘이면 '오늘'(그냥 표시), 다른 날이면 '오늘로'(누르면 오늘로)
+  void dayDiff;
   if (badge) {
-    badge.textContent = relative ? relative[ACTIVE_LOCALE === 'en' ? 1 : 0] : '';
-    badge.hidden = !relative;
-    badge.classList.toggle('is-relative', !today && !!relative);
+    badge.textContent = today ? (ACTIVE_LOCALE === 'en' ? 'Today' : '오늘') : (ACTIVE_LOCALE === 'en' ? 'Go to today' : '오늘로');
+    badge.hidden = false;
+    badge.classList.toggle('is-relative', !today);
+    badge.classList.toggle('is-go-today', !today);
   }
+  document.getElementById('date-display')?.classList.toggle('is-today', today);
+  renderDateStrip();
   document.getElementById('date-display')?.setAttribute('aria-label', `${formatHomeDate(currentDate)}. ${ACTIVE_LOCALE === 'en' ? 'Tap to go to today' : '눌러서 오늘로'}`);
   if (goToday) goToday.hidden = today;
   // 홈 건강 카드도 선택한 날짜로(연결 안 했으면 아무 일 없음)
@@ -2905,9 +2909,9 @@ function dragEdgeScroll(y, tick) {
   if (dragEdge.raf) return;
   const step = () => {
     dragEdge.raf = 0;
-    const top = (document.getElementById('page-tabs')?.getBoundingClientRect().bottom || 0) + 40;
+    const top = (document.getElementById('top-head')?.getBoundingClientRect().bottom || 0) + 40;
     const dock = document.getElementById('home-ai-dock');
-    const bottom = (dock && !dock.hidden ? dock.getBoundingClientRect().top : innerHeight) - 40;
+    const bottom = (dock && !dock.hidden && dock.offsetHeight ? dock.getBoundingClientRect().top : (document.getElementById('page-tabs')?.getBoundingClientRect().top || innerHeight)) - 40;
     const dy = dragEdge.y > bottom ? Math.min(16, (dragEdge.y - bottom) / 3 + 4)
       : dragEdge.y < top ? -Math.min(16, (top - dragEdge.y) / 3 + 4) : 0;
     if (!dy) return;
@@ -5057,6 +5061,7 @@ function setActiveView(view) {
   if (nowPanel && nowPanel !== prevPanel && !suppressPageEnter) playPageEnter(nowPanel);
   setFabMenu(false);
 
+  updateTopHead();
   if (view === 'stats') {
     statsMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     statsSelectedKey = dateKey(currentDate);
@@ -6815,6 +6820,7 @@ let slideDayTo = null;
   };
   const place = (x, transition = 'none') => {
     if (!st) return;
+    if (!st.button) dateStripFollow(x / st.W, transition); // 날짜 줄도 손가락만큼(한 칸 = 화면 너비)
     st.ghosts.forEach(g => { g.style.transition = transition; g.style.transform = `translate3d(${x}px, 0, 0)`; });
     const off = st.dir ? x + st.dir * st.W : st.W * 2;
     st.parts.forEach(el => { el.style.transition = transition; el.style.transform = `translate3d(${off}px, 0, 0)`; });
@@ -6915,7 +6921,7 @@ let slideDayTo = null;
   slideDayTo = async (date, dir) => {
     if (busy || st || reduceMotion() || activeView !== 'home' || !dir) return false;
     busy = true;
-    st = { base: new Date(currentDate), W: home.getBoundingClientRect().width || innerWidth, dir: 0, ...snapshot() };
+    st = { base: new Date(currentDate), W: home.getBoundingClientRect().width || innerWidth, dir: 0, button: true, ...snapshot() };
     st.dir = dir;
     place(0);
     await renderDay(date);
@@ -8341,9 +8347,101 @@ setTimeout(() => syncAllSegmented(true), 0);
   const dock = document.getElementById('home-ai-dock');
   if (!dock) return;
   const form = document.getElementById('ai-dock-form');
-  const update = () => document.documentElement.style.setProperty('--dock-h', `${Math.round(dock.getBoundingClientRect().height || form?.getBoundingClientRect().height || 67)}px`);
+  const nav = document.getElementById('page-tabs');
+  // 입력줄 + 그 밑 검정 페이지 띠(키보드가 열리면 띠는 숨김 → 0)
+  const update = () => document.documentElement.style.setProperty('--dock-h', `${Math.round((dock.getBoundingClientRect().height || form?.getBoundingClientRect().height || 67) + (nav?.offsetHeight || 0))}px`);
   update();
-  if (typeof ResizeObserver === 'function') new ResizeObserver(update).observe(form || dock);
+  if (typeof ResizeObserver === 'function') { const ro = new ResizeObserver(update); ro.observe(form || dock); if (nav) ro.observe(nav); }
   window.addEventListener('resize', update);
 })();
 restoreAgentLog();
+
+/* ============================
+   맨 위 머리: 식단기록 = 날짜 줄, 다른 페이지 = 제목(20/700)
+   날짜 줄은 예전 글자 탭과 같은 모양(글자·굵기·밑줄), 고른 날이 늘 가운데, 5칸 보임.
+   날짜가 바뀌면 줄이 250ms 감속으로 밀려 새 날이 가운데로(넘침 없음). 식단 화면을 밀면 손가락만큼 같이 움직임.
+   ============================ */
+const DATE_STRIP_SPAN = 9; // 고른 날 앞뒤로 그려 두는 칸 수
+const DATE_STRIP_EASE = 'cubic-bezier(0.25, 1, 0.5, 1)';
+let dateStripKey = null;
+let dateStripOffset = 0; // 지금 줄이 밀려 있는 px
+function dateStripParts() {
+  const strip = document.getElementById('date-strip');
+  const track = document.getElementById('date-strip-track');
+  return strip && track ? { strip, track, W: strip.clientWidth || innerWidth, itemW: (strip.clientWidth || innerWidth) / 5 } : null;
+}
+function setDateStripOffset(px, transition = 'none') {
+  const p = dateStripParts(); if (!p) return;
+  dateStripOffset = px;
+  p.track.style.transition = transition === 'none' ? 'none' : `transform 250ms ${DATE_STRIP_EASE}`;
+  p.track.style.transform = `translate3d(${px}px, 0, 0)`;
+}
+function dateStripFollow(fraction, transition = 'none') {
+  const p = dateStripParts(); if (!p || activeView !== 'home') return;
+  setDateStripOffset(fraction * p.itemW, transition);
+}
+function dateStripLabel(d) {
+  if (ACTIVE_LOCALE === 'en') return `${d.getMonth() + 1}/${d.getDate()} ${new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(d)}`;
+  return `${d.getMonth() + 1}.${d.getDate()} ${DAYS[d.getDay()]}`;
+}
+function renderDateStrip(force = false) {
+  const p = dateStripParts(); if (!p) return;
+  const key = dateKey(currentDate);
+  if (!force && key === dateStripKey && p.track.childElementCount) return;
+  const prev = dateStripKey ? parseDateKey(dateStripKey) : null;
+  const sel = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+  const diff = prev ? Math.round((sel - prev) / 86400000) : 0;
+  const todayKey = dateKey(new Date());
+  const frag = document.createDocumentFragment();
+  for (let k = -DATE_STRIP_SPAN; k <= DATE_STRIP_SPAN; k++) {
+    const d = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() + k);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `date-chip${k === 0 ? ' active' : ''}${dateKey(d) === todayKey ? ' is-today' : ''}`;
+    b.dataset.offset = String(k);
+    b.dataset.key = dateKey(d);
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(k === 0));
+    b.setAttribute('aria-label', `${formatDate(d)}${dateKey(d) === todayKey ? (ACTIVE_LOCALE === 'en' ? ', today' : ', 오늘') : ''}`);
+    b.style.left = `${p.W / 2 + (k - 0.5) * p.itemW}px`;
+    b.style.width = `${p.itemW}px`;
+    b.innerHTML = `<span>${dateStripLabel(d)}</span>`;
+    frag.appendChild(b);
+  }
+  p.track.replaceChildren(frag);
+  dateStripKey = key;
+  // 이어서 움직이기: 예전 줄의 보이는 자리에서 시작해 새 날이 가운데 올 때까지
+  const start = dateStripOffset + diff * p.itemW;
+  if (diff && Math.abs(diff) <= DATE_STRIP_SPAN && !reduceMotion() && activeView === 'home' && Math.abs(start) > 0.5) {
+    setDateStripOffset(start);
+    void p.track.offsetWidth;
+    setDateStripOffset(0, 'ease');
+  } else {
+    setDateStripOffset(0);
+  }
+  const ind = document.getElementById('date-strip-indicator');
+  const label = p.track.querySelector('.date-chip.active span');
+  if (ind && label) { const w = label.offsetWidth || p.itemW * 0.6; ind.style.width = `${w}px`; ind.style.left = `${(p.W - w) / 2}px`; }
+}
+document.getElementById('date-strip-track')?.addEventListener('click', event => {
+  const chip = event.target.closest?.('.date-chip');
+  if (!chip) return;
+  const k = Number(chip.dataset.offset);
+  if (k) changeDate(k, { animate: true });
+});
+function updateTopHead() {
+  const home = activeView === 'home' || activeView === 'search';
+  const strip = document.getElementById('date-strip');
+  const title = document.getElementById('page-title');
+  if (strip) strip.hidden = !home;
+  if (title) {
+    const en = ACTIVE_LOCALE === 'en';
+    const names = { stats: ['건강리포트', 'Health report'], foodex: ['음식도감', 'Foodpedia'], fridge: ['팬트리', 'Pantry'], shopping: ['팬트리', 'Pantry'], profile: ['설정', 'Settings'] };
+    title.hidden = home;
+    title.textContent = (names[activeView] || ['', ''])[en ? 1 : 0];
+  }
+  document.body.classList.toggle('top-head-title', !home);
+  if (home) renderDateStrip(true);
+}
+window.addEventListener('resize', () => { if (activeView === 'home') renderDateStrip(true); });
+updateTopHead();

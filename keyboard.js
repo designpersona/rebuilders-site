@@ -20,6 +20,7 @@
     const h = Math.max(0, Math.round(Number(height) || 0));
     doc.documentElement.style.setProperty('--kb-h', `${h}px`);
     doc.documentElement.classList.toggle('kb-native', true);
+    doc.documentElement.classList.toggle('kb-up', h > 0); // 키보드가 올라와 있는 동안(아래 페이지 띠 숨김)
   }
   /* 아래 입력창(식단 채팅·식도감 검색)에 커서가 가면 iOS(WebKit)가 화면 전체를 위로 밀어 올림
      → 화면·바깥 틀·잘림 상자의 스크롤을 늘 0으로 되돌려 위쪽(탭·내용)은 제자리, 입력창만 키보드 위로 */

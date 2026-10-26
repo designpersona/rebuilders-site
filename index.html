@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=f39" />
+  <link rel="stylesheet" href="style.css?v=f40" />
 </head>
 
 <body>
@@ -44,14 +44,14 @@
     <!-- 기존 스크립트 호환용 요소: 실제 상태 표시줄은 기기가 제공하므로 화면에는 표시하지 않음 -->
     <div class="status-bar" aria-hidden="true"><span id="status-time"></span></div>
 
-    <!-- 홈: 식단 기록 -->
-    <nav class="page-tabs" id="page-tabs" aria-label="페이지">
-      <button type="button" class="nav-item page-tab active" id="nav-home" data-view="home" aria-label="식단기록" aria-current="page"><span>식단기록</span></button>
-      <button type="button" class="nav-item page-tab" id="nav-stats" data-view="stats" aria-label="건강리포트"><span>건강리포트</span></button>
-      <button type="button" class="nav-item page-tab" id="nav-search" data-view="foodex" aria-label="음식도감"><span>음식도감</span></button>
-      <button type="button" class="nav-item page-tab" id="nav-shopping" data-view="fridge" aria-label="팬트리"><span>팬트리</span></button>
-      <button type="button" class="nav-item page-tab" id="nav-settings" data-view="profile" aria-label="설정"><span>설정</span></button>
-    </nav>
+    <!-- 맨 위: 식단기록은 날짜 줄(고른 날 가운데, 5개 보임, 탭과 같은 글자·밑줄·250ms 이동), 다른 페이지는 제목 -->
+    <header class="top-head" id="top-head">
+      <div class="date-strip" id="date-strip" role="tablist" aria-label="날짜">
+        <div class="date-strip-track" id="date-strip-track"></div>
+        <span class="date-strip-indicator" id="date-strip-indicator" aria-hidden="true"></span>
+      </div>
+      <h1 class="page-title" id="page-title" hidden></h1>
+    </header>
     <div class="app-content view-panel" id="view-home">
 
       <header class="home-brand" aria-label="Rebuilders Food Tracker 홈. Design your body.">
@@ -983,6 +983,15 @@
       </form>
     </div>
 
+    <!-- 페이지 이동: 채팅 입력줄 바로 밑 검정 띠(아이콘만, 누르면 이동). 키보드가 열리면 숨김 -->
+    <nav class="page-tabs bottom-tabs" id="page-tabs" aria-label="페이지">
+      <button type="button" class="nav-item page-tab active" id="nav-home" data-view="home" aria-label="식단기록" aria-current="page"><svg class="page-tab-ico" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1v-8.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span class="page-tab-label">식단기록</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-stats" data-view="stats" aria-label="건강리포트"><svg class="page-tab-ico" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="page-tab-label">건강리포트</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-search" data-view="foodex" aria-label="음식도감"><svg class="page-tab-ico" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v14H6.5A1.5 1.5 0 0 0 5 19.5v-14Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H18v-3" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="page-tab-label">음식도감</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-shopping" data-view="fridge" aria-label="팬트리"><svg class="page-tab-ico" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 8h13l-1 12h-11l-1-12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="page-tab-label">팬트리</span></button>
+      <button type="button" class="nav-item page-tab" id="nav-settings" data-view="profile" aria-label="설정"><svg class="page-tab-ico" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="page-tab-label">설정</span></button>
+    </nav>
+
   </div>
 
   <!-- Add Food Modal -->
@@ -1309,13 +1318,13 @@
   <script src="storage.js?v=6"></script>
   <script src="backup.js?v=2"></script>
   <script src="notifications.js?v=1"></script>
-  <script src="keyboard.js?v=3"></script>
+  <script src="keyboard.js?v=4"></script>
   <script src="demo-seed.js?v=3"></script>
   <script src="quick-entry.js?v=3"></script>
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=4"></script>
-  <script src="app.js?v=f39"></script>
+  <script src="app.js?v=f40"></script>
 </body>
 
 </html>
