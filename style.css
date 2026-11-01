@@ -13472,9 +13472,17 @@ html, body { background: var(--bg); }
 #modal-sheet .modal-food-search input#food-search { font-size: 16px !important; }
 #modal-sheet .modal-food-search .food-search-cancel { margin-left: 4px; }
 #modal-sheet .modal-food-search:focus-within .food-search-cancel { display: inline-flex; align-items: center; }
-#modal-sheet .food-tab-panel.active { padding-bottom: var(--kb-overlay-h, 0px); }
+#modal-sheet .food-tab-panel.active { padding-bottom: calc(16px + var(--kb-overlay-h, 0px)); }
 #modal-sheet .modal-food-search:focus-within { display: flex; align-items: center; }
 #modal-sheet .modal-food-search:focus-within input#food-search { flex: 1; min-width: 0; }
 /* + 음식 추가 시트는 늘 최대 높이(max-height 까지)로 고정: 검색 결과 수·키보드에 따라 시트가 커졌다 줄었다·위로 밀리지 않고, 제목·×·검색칸은 위쪽에 그대로 */
 #modal-sheet.food-modal-sheet { height: 100dvh; display: flex; flex-direction: column; }
+/* 머리·탭·검색·닫기는 자기 높이 그대로(눌리지 않게), 목록 칸만 줄고 스크롤 */
+#modal-sheet.food-modal-sheet > * { flex-shrink: 0; }
 #modal-sheet.food-modal-sheet > .food-tab-panel.active { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#modal-sheet.food-modal-sheet > .food-tab-panel:not(.active) { display: none; }
+
+/* + 시트 '내 제품': 카드는 검색칸과 같은 폭(왼쪽 들여쓰기 없음), 수정·삭제는 카드 오른쪽 세로 한 줄 */
+#modal-sheet .quick-food-row { display: flex; align-items: stretch; gap: 8px; width: 100%; margin: 0; padding: 0 !important; min-height: 0; }
+#modal-sheet .quick-food-row > .quick-food-chip { flex: 1 1 auto; min-width: 0; margin: 0 !important; transform: none; }
+#modal-sheet .quick-food-row > .custom-food-actions { flex: none; display: flex; flex-direction: column; justify-content: center; gap: 6px; margin: 0; }

@@ -102,10 +102,11 @@ try {
     const b1 = sheet.getBoundingClientRect(); const sr = document.querySelector('.modal-food-search').getBoundingClientRect(); const x = document.getElementById('food-modal-x').getBoundingClientRect();
     const c = document.getElementById('food-search-cancel');
     const r = { focused: document.activeElement === i, sheetTopMoved: Math.round(b1.top - b0.top), sheetBottomMoved: Math.round(b1.bottom - b0.bottom), searchTop: Math.round(sr.top), searchBottom: Math.round(sr.bottom), kbTop: innerHeight - ${KB}, xTop: Math.round(x.top),
-      overlayBottom: getComputedStyle(document.getElementById('modal-overlay')).bottom, padB: getComputedStyle(document.querySelector('#modal-sheet .food-tab-panel.active')).paddingBottom, font: getComputedStyle(i).fontSize, cancel: c.getBoundingClientRect().width > 0 };
+      overlayBottom: getComputedStyle(document.getElementById('modal-overlay')).bottom, padB: getComputedStyle(document.querySelector('#modal-sheet .food-tab-panel.active')).paddingBottom, font: getComputedStyle(i).fontSize, cancel: c.getBoundingClientRect().width > 0,
+      tabs: [...document.querySelectorAll('#modal-sheet .food-tab')].map(t => { const tb = t.getBoundingClientRect(), row = t.parentElement.getBoundingClientRect(); return Math.round(tb.height) >= 30 && t.scrollHeight <= t.clientHeight + 1 && tb.bottom <= row.bottom + 1 && t.parentElement.scrollHeight <= t.parentElement.clientHeight + 1; }) };
     c.click(); ${W8(50)} r.afterCancel = document.activeElement?.id || 'body'; RebuildersKeyboard.simulate(0);
     document.getElementById('food-modal-x').click(); ${W8(400)} r.closed = !document.getElementById('modal-overlay').classList.contains('open'); return r;`);
-  check('+ 음식 추가 시트 검색 + 키보드: 시트 안 움직임, ×·검색칸 키보드 위에 보임, 목록 아래 여백 300px, 16px, 취소로 키보드 내림, ×로 닫힘', pl.focused && pl.sheetTopMoved === 0 && pl.sheetBottomMoved === 0 && pl.overlayBottom === '0px' && pl.searchTop >= 0 && pl.searchBottom <= pl.kbTop && pl.xTop >= 0 && pl.padB === '300px' && pl.font === '16px' && pl.cancel && pl.afterCancel !== 'food-search' && pl.closed, JSON.stringify(pl));
+  check('+ 음식 추가 시트 검색 + 키보드: 시트 안 움직임, ×·검색칸 키보드 위에 보임, 탭 안 눌림, 16px, 취소로 키보드 내림, ×로 닫힘', pl.focused && pl.sheetTopMoved === 0 && pl.sheetBottomMoved === 0 && pl.overlayBottom === '0px' && pl.searchTop >= 0 && pl.searchBottom <= pl.kbTop && pl.xTop >= 0 && pl.padB === '316px' && pl.font === '16px' && pl.cancel && pl.tabs.length === 3 && pl.tabs.every(Boolean) && pl.afterCancel !== 'food-search' && pl.closed, JSON.stringify(pl));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));
