@@ -6592,14 +6592,16 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape') setF
 // 아래 입력창(식단 채팅·식도감 검색) 키보드 닫기: 바깥 누르기 + 목록을 아래로 끌기(메시지 앱처럼)
 function dismissAiDockKeyboard() {
   const input = document.activeElement;
-  if (!input || !['agent-input', 'foodex-search-input'].includes(input.id)) return false;
+  if (!input || !['agent-input', 'foodex-search-input', 'search-hub-input'].includes(input.id)) return false;
   input.blur();
   try { globalThis.Capacitor?.isNativePlatform?.() && globalThis.Capacitor.Plugins?.Keyboard?.hide?.()?.catch?.(() => {}); } catch { /* ignore */ }
   return true;
 }
 function outsideAiDock(target) {
-  return !(target && target.closest && target.closest('.home-ai-dock'));
+  return !(target && target.closest && target.closest('.home-ai-dock, .search-hub-input-row'));
 }
+// 음식 검색 '취소': 키보드만 내림(검색어·화면은 그대로) → 언제든 빠져나올 수 있음
+document.getElementById('search-hub-cancel')?.addEventListener('click', () => { const i = document.getElementById('search-hub-input'); if (document.activeElement === i) dismissAiDockKeyboard(); else i?.blur?.(); });
 let dockDragStartY = null;
 document.addEventListener('pointerdown', event => { if (event.pointerType !== 'touch' && outsideAiDock(event.target)) dismissAiDockKeyboard(); }, { capture: true, passive: true });
 document.addEventListener('touchstart', event => { dockDragStartY = outsideAiDock(event.target) ? event.touches[0]?.clientY ?? null : null; }, { capture: true, passive: true });

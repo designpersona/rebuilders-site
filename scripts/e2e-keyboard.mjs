@@ -84,6 +84,15 @@ try {
   const hdown = await evaluate(`return document.activeElement?.id || 'body';`); await touch('touchEnd'); await sleep(100);
   check('식단 화면도 아래로 끌면 키보드 내림', hdown !== 'agent-input', hdown);
   await evaluate(`RebuildersKeyboard.simulate(0); return 1;`);
+  // 음식 검색 화면: 키보드 올라와도 검색줄은 보이는 자리, 결과를 스크롤해도 검색줄 고정, '취소'로 언제든 키보드 내림
+  const sh = await evaluate(`setActiveView('search'); ${W8(400)} const i = document.getElementById('search-hub-input'); i.value = '키보드'; i.dispatchEvent(new Event('input', { bubbles: true })); ${W8(100)}
+    i.focus(); RebuildersKeyboard.simulate(${KB}); ${W8(60)}
+    const v = document.getElementById('view-search'); const frame = document.querySelector('.phone-frame'); frame.scrollTop = 140; document.scrollingElement.scrollTop = 140; frame.dispatchEvent(new Event('scroll')); window.dispatchEvent(new Event('scroll')); ${W8(300)}
+    v.scrollTop = 600; ${W8(100)}
+    const row = document.querySelector('.search-hub-input-row').getBoundingClientRect(); const c = document.getElementById('search-hub-cancel'); const cr = c.getBoundingClientRect();
+    const r = { rowTop: Math.round(row.top), rowBottom: Math.round(row.bottom), kbTop: innerHeight - ${KB}, vScroll: v.scrollTop, cancel: cr.width > 0, font: getComputedStyle(i).fontSize, pan: [frame.scrollTop, document.scrollingElement.scrollTop], focused: document.activeElement === i };
+    c.click(); ${W8(50)} r.afterCancel = document.activeElement?.id || 'body'; RebuildersKeyboard.simulate(0); return r;`);
+  check('음식 검색 + 키보드: 결과 스크롤해도 검색줄 보임(키보드 위), 밀림 0, 글자 16px, 취소 보이고 누르면 키보드 내림', sh.rowTop >= 0 && sh.rowBottom <= sh.kbTop && sh.vScroll > 0 && sh.cancel && sh.font === '16px' && sh.pan.every(x => x === 0) && sh.focused && sh.afterCancel !== 'search-hub-input', JSON.stringify(sh));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));

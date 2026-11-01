@@ -13456,3 +13456,10 @@ html, body { background: var(--bg); }
 #view-stats > .report-ghost { position: absolute !important; margin: 0 !important; box-sizing: border-box; pointer-events: none; z-index: 0; }
 #view-stats.report-swiping > :is(.cal-card, .stats-day-card, .report-period, .stats-week-card) { will-change: transform; }
 #view-stats > .report-ghost, #view-stats > .report-ghost *, #view-stats.report-swiping > :is(.cal-card, .stats-day-card, .report-period, .stats-week-card) { animation: none !important; }
+
+/* 음식 검색: 키보드가 올라와도 검색줄은 화면 위에 붙어 있고 결과만 그 아래·키보드 위에서 스크롤. 커서가 있을 때만 '취소'(키보드 내림) */
+.search-hub-input-row { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px; margin: 0 -2px; padding: 6px 2px; background: var(--bg, #fff); }
+.search-hub-input-row .search-hub-input-wrap { flex: 1; min-width: 0; }
+.search-hub-input-wrap input#search-hub-input { font-size: 16px; } /* 16px 미만이면 iOS 가 포커스 때 화면을 확대·이동 */
+.search-hub-cancel { display: none; flex: none; min-height: 44px; padding: 0 6px; border: 0; background: none; color: var(--text-primary, #18181b); font: 600 15px/1 var(--font); }
+.search-hub-input-row:focus-within .search-hub-cancel, body.keyboard-open #view-search .search-hub-cancel { display: inline-flex; align-items: center; }
