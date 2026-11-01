@@ -688,14 +688,39 @@ const FoodSearch = (() => {
      비슷한 것 묶기: 첫 낱말이 검색어인 '… 생것'들은 하나로, 가공식품이 아닌 같은 이름도 하나로 → 대표 1줄 + similar[] */
   const SEARCH_ALIASES = { '계란': ['달걀'], '달걀': ['계란'], '밀감': ['귤'] }; // DB 표기가 다른 흔한 말
   const COMMON_VARIETY = /온주밀감|부사|일반|보통/; // 묶음 대표로 먼저(가장 흔한 품종)
-  function rankAndGroupDb(items, nq, alt = []) {
+  const DEMOTE_FIRST_WORD = /^밥 옥광/;
+  /* 개 단위 기본 양: 앱 기본 목록에 있는 1개 무게(unitGrams)만 씀(지어낸 숫자 없음). 예: '삶은 달걀' 1개 = 50g(USDA) → '달걀' */
+  function pieceGramsFor(base) {
+    for (const name in FOOD_DB) {
+      const g = FOOD_DB[name]?.unitGrams?.['개'];
+      if (g && (name === base || name.split(' ').pop() === base)) return { grams: g, from: name };
+    }
+    return null;
+  }
+  /* 생것 묶음 대표를 보통 이름으로: '귤 온주밀감 생것' → '귤'(검색어가 별칭이면 검색어, 예: 계란). 영양은 그 줄 그대로, 원래 이름은 nutritionSource.name 에 */
+  function plainGeneric(rep, shown, baseWord) {
+    const original = rep.name;
+    const variety = original.replace(new RegExp(`^${baseWord}\\s*`), '').replace(/\s*생것$/, '').trim();
+    const per100 = rep.data?.per100;
+    let data = { ...rep.data, nutritionSource: { ...(rep.data?.nutritionSource || {}), name: original } };
+    const piece = pieceGramsFor(baseWord);
+    if (piece && per100 && (data.serving || '').endsWith('g')) {
+      const f = piece.grams / 100; const r1 = v => Math.round((Number(v) || 0) * f * 10) / 10;
+      data = { ...data, cal: Math.round(per100.cal * f), carbs: r1(per100.carbs), protein: r1(per100.protein), fat: r1(per100.fat), serving: '1개', servingAmount: 1, servingUnit: '개', servingGrams: piece.grams };
+    }
+    data.genericHint = `${variety ? `${variety} ` : ''}생것 기준`;
+    if ('name' in data) data.name = shown;
+    return { ...rep, name: shown, data, plain: true };
+  }
+  function rankAndGroupDb(items, nq, alt = [], queryText = '') {
     const KIND_RANK = { '원재료': 0, '음식': 1, '가공식품': 2 };
     const tierFor = (n, words, q) => n === q ? 0 : words[0] === q ? 1 : n.startsWith(q) ? 2 : words.some(w => w.endsWith(q) && w.length <= q.length + 3) ? 3 : words.some(w => w.startsWith(q)) ? 4 : n.includes(q) ? 5 : 6;
     const scored = items.map(item => {
       const raw = String(item.name || '');
       const n = norm(raw);
       const words = raw.split(/[\s_,()]+/).filter(Boolean).map(norm);
-      const tier = Math.min(...[nq, ...alt].map(q => tierFor(n, words, q)));
+      let tier = Math.min(...[nq, ...alt].map(q => tierFor(n, words, q)));
+      if (DEMOTE_FIRST_WORD.test(raw)) tier = Math.max(tier, 4); // 첫 낱말만 우연히 같은 다른 음식(예: '밥 옥광' = 옥수수 품종)
       const kind = item.mfds ? (KIND_RANK[item.data?.mfdsKind] ?? 2) : 0;
       const fresh = /생것/.test(raw) ? 0 : 1;
       const common = COMMON_VARIETY.test(raw) ? 0 : 1;
@@ -713,7 +738,16 @@ const FoodSearch = (() => {
       groups.set(item.groupKey, rep);
       out.push(rep);
     }
-    return out;
+    const appNames = new Set(items.filter(x => !x.mfds).map(x => norm(x.name)));
+    return out.map(rep => {
+      if (!rep.mfds || !rep.groupKey.endsWith('|생것')) return rep;
+      const base = rep.groupKey.split('|')[0];
+      if (![nq, ...alt].includes(base)) return rep;
+      if (appNames.has(nq) || appNames.has(base)) return rep; // 앱에 같은 이름(예: 사과)이 있으면 그대로
+      const baseWord = String(rep.name).split(/[\s_]+/)[0];
+      const shown = nq === base ? baseWord : (String(queryText).trim() || baseWord); // 별칭으로 찾았으면 검색어(계란)
+      return { ...plainGeneric(rep, shown, baseWord), similar: rep.similar };
+    });
   }
   function search(query) {
     const t0 = performance.now();
@@ -767,7 +801,7 @@ const FoodSearch = (() => {
       db = [...db, ...mf];
       stats.mfdsTotal = mf.total || mf.length;
     }
-    db = rankAndGroupDb(db, nq, (SEARCH_ALIASES[query.trim()] || []).map(norm));
+    db = rankAndGroupDb(db, nq, (SEARCH_ALIASES[query.trim()] || []).map(norm), query);
     stats.lastSearchMs = Math.round((performance.now() - t0) * 100) / 100;
     return { query, sections: [{ key: 'recent', items: recent }, { key: 'mine', items: mine }, { key: 'db', items: db }], ms: stats.lastSearchMs };
   }
@@ -3431,7 +3465,9 @@ function syncTrayButton(btn, key) {
   btn.setAttribute('aria-pressed', String(on));
   btn.innerHTML = on ? '<span aria-hidden="true">✓</span>' : '<span aria-hidden="true">+</span>';
 }
-function toggleTray(name, data) {
+function toggleTray(name, rawData) {
+  const { genericHint, ...data } = rawData || {}; // 목록 표시용 힌트는 기록에 안 넣음
+  void genericHint;
   const key = trayKeyOf(name, data);
   const at = trayIndex(key);
   if (at >= 0) foodTray.splice(at, 1); else foodTray.push({ key, food: { name, ...data } });
@@ -3483,7 +3519,7 @@ function renderFoodRows(container, entries, allowCustomActions = true) {
   void allowCustomActions;
   entries.forEach(([name, data]) => {
     const food = { name, ...data };
-    const visibleName = data?.source === '식약처' ? cleanMfdsName(name) : displayFoodName(food);
+    const visibleName = data?.source === '식약처' && !data.genericHint ? cleanMfdsName(name) : displayFoodName(food);
     const row = document.createElement('div');
     row.className = 'quick-food-row sheet-food-row';
     const badge = sheetFoodBadge(name, data);
@@ -3493,7 +3529,7 @@ function renderFoodRows(container, entries, allowCustomActions = true) {
     btn.innerHTML = `
       <span class="chip-body">
         <span class="chip-title"><span class="chip-name">${escapeHtml(visibleName)}</span>${badge ? `<span class="chip-badge">${escapeHtml(badge)}</span>` : ''}</span>
-        <span class="chip-sub${isNutritionMissing(data) ? ' is-missing' : ''}">${escapeHtml(sheetFoodSubline(food))}</span>
+        <span class="chip-sub${isNutritionMissing(data) ? ' is-missing' : ''}">${data?.genericHint ? `<span class="chip-hint">${escapeHtml(data.genericHint)}</span> · ` : ''}${escapeHtml(sheetFoodSubline(food))}</span>
       </span>`;
     btn.addEventListener('click', () => openSheetFoodDetail(name, data));
     const add = document.createElement('button');
@@ -3538,6 +3574,7 @@ function openSheetFoodDetail(name, data) {
   const badge = sheetFoodBadge(name, data);
   pane.innerHTML = `
     <div class="fpd-head"><button type="button" class="fpd-back" id="fpd-back" aria-label="${en ? 'Back' : '뒤로'}">‹</button><strong class="fpd-name">${escapeHtml(displayFoodName({ name, ...data }))}</strong>${badge ? `<span class="chip-badge">${escapeHtml(badge)}</span>` : ''}</div>
+    ${data.nutritionSource?.name && data.nutritionSource.name !== name ? `<p class="fpd-source">${escapeHtml(en ? 'Nutrition from' : '영양 출처')}: ${escapeHtml(data.nutritionSource.provider || '식약처')} · ${escapeHtml(data.nutritionSource.name)}</p>` : ''}
     ${canScale ? `<label class="fpd-amount"><span>${en ? 'Amount' : '먹은 양'}</span><input id="fpd-amount" type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(String(base.amount))}" /><small>${escapeHtml(base.unit)}</small></label>` : `<p class="fpd-serving">${escapeHtml(sheetServingText({ name, ...data }) || '')}</p>`}
     <div class="fpd-nutri" id="fpd-nutri"></div>
     <div class="fpd-actions">

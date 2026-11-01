@@ -13536,3 +13536,5 @@ html, body { background: var(--bg); }
 /* 검색: 비슷한 항목 묶음 펼치기, 식약처 출처는 작게 */
 #modal-sheet .fs-similar { display: block; width: 100%; padding: 8px 0 10px; border: 0 !important; background: none !important; box-shadow: none !important; text-align: left; color: var(--text-secondary, #6B6F7A) !important; font: 500 13px/1.2 var(--font); border-bottom: 1px solid var(--rb-hairline, #E8E9ED) !important; border-radius: 0 !important; min-height: 0 !important; }
 .food-section-label .fs-attrib { margin-left: 6px; font-size: 11px; font-weight: 500; color: var(--text-tertiary, #9A9DA6); }
+#modal-sheet .chip-hint { color: var(--text-tertiary, #9A9DA6); }
+#modal-sheet .fpd-source { margin: -8px 0 0; font-size: 12px; color: var(--text-tertiary, #9A9DA6); }
