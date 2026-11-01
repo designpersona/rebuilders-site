@@ -13467,3 +13467,14 @@ html, body { background: var(--bg); }
 /* 음식 검색: 키보드는 화면을 덮기만(keyboard.js --kb-overlay-h). 목록 끝까지 스크롤되도록 그만큼 아래 여백만 */
 #view-search { scroll-padding-bottom: var(--kb-overlay-h, 0px); }
 #view-search .search-hub-panel.active { padding-bottom: var(--kb-overlay-h, 0px); }
+
+/* + 음식 추가 시트 검색: 키보드는 덮기만(시트가 키보드 따라 올라가 검색칸이 가려지던 문제). 목록만 키보드 높이만큼 아래 여백 */
+#modal-sheet .modal-food-search input#food-search { font-size: 16px !important; }
+#modal-sheet .modal-food-search .food-search-cancel { margin-left: 4px; }
+#modal-sheet .modal-food-search:focus-within .food-search-cancel { display: inline-flex; align-items: center; }
+#modal-sheet .food-tab-panel.active { padding-bottom: var(--kb-overlay-h, 0px); }
+#modal-sheet .modal-food-search:focus-within { display: flex; align-items: center; }
+#modal-sheet .modal-food-search:focus-within input#food-search { flex: 1; min-width: 0; }
+/* + 음식 추가 시트는 늘 최대 높이(max-height 까지)로 고정: 검색 결과 수·키보드에 따라 시트가 커졌다 줄었다·위로 밀리지 않고, 제목·×·검색칸은 위쪽에 그대로 */
+#modal-sheet.food-modal-sheet { height: 100dvh; display: flex; flex-direction: column; }
+#modal-sheet.food-modal-sheet > .food-tab-panel.active { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }

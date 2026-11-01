@@ -94,6 +94,18 @@ try {
     const r = { rowTop: Math.round(row.top), rowBottom: Math.round(row.bottom), kbTop: innerHeight - ${KB}, vScroll: v.scrollTop, frameH, h: innerHeight, navShown, kbOpenClass: document.body.classList.contains('keyboard-open'), padB: getComputedStyle(document.querySelector('#view-search .search-hub-panel.active')).paddingBottom, cancel: cr.width > 0, font: getComputedStyle(i).fontSize, pan: [frame.scrollTop, document.scrollingElement.scrollTop], focused: document.activeElement === i };
     c.click(); ${W8(50)} r.afterCancel = document.activeElement?.id || 'body'; RebuildersKeyboard.simulate(0); return r;`);
   check('음식 검색 + 키보드: 키보드가 덮기만(화면 높이·아래 탭 그대로, 목록 아래 여백 300px), 결과 스크롤해도 검색줄 보임(키보드 위), 밀림 0, 글자 16px, 취소 보이고 누르면 키보드 내림', sh.rowTop >= 0 && sh.rowBottom <= sh.kbTop && sh.frameH === sh.h && !sh.kbOpenClass && sh.padB === '300px' && sh.vScroll > 0 && sh.cancel && sh.font === '16px' && sh.pan.every(x => x === 0) && sh.focused && sh.afterCancel !== 'search-hub-input', JSON.stringify(sh));
+  // + 버튼(아침 카드)으로 여는 음식 추가 시트: 키보드가 덮기만 — 시트 위치·높이 그대로, 제목·×·검색칸 보임, 목록 아래 여백 = 키보드, 16px, 취소·바깥 톡으로 키보드 내림, ×로 닫힘
+  const pl = await evaluate(`setActiveView('home'); ${W8(400)} const s0 = document.getElementById('modal-sheet');
+    document.getElementById('add-breakfast').click(); ${W8(600)}
+    const sheet = document.getElementById('modal-sheet'); const b0 = sheet.getBoundingClientRect(); const i = document.getElementById('food-search');
+    i.focus(); RebuildersKeyboard.simulate(${KB}); ${W8(400)}
+    const b1 = sheet.getBoundingClientRect(); const sr = document.querySelector('.modal-food-search').getBoundingClientRect(); const x = document.getElementById('food-modal-x').getBoundingClientRect();
+    const c = document.getElementById('food-search-cancel');
+    const r = { focused: document.activeElement === i, sheetTopMoved: Math.round(b1.top - b0.top), sheetBottomMoved: Math.round(b1.bottom - b0.bottom), searchTop: Math.round(sr.top), searchBottom: Math.round(sr.bottom), kbTop: innerHeight - ${KB}, xTop: Math.round(x.top),
+      overlayBottom: getComputedStyle(document.getElementById('modal-overlay')).bottom, padB: getComputedStyle(document.querySelector('#modal-sheet .food-tab-panel.active')).paddingBottom, font: getComputedStyle(i).fontSize, cancel: c.getBoundingClientRect().width > 0 };
+    c.click(); ${W8(50)} r.afterCancel = document.activeElement?.id || 'body'; RebuildersKeyboard.simulate(0);
+    document.getElementById('food-modal-x').click(); ${W8(400)} r.closed = !document.getElementById('modal-overlay').classList.contains('open'); return r;`);
+  check('+ 음식 추가 시트 검색 + 키보드: 시트 안 움직임, ×·검색칸 키보드 위에 보임, 목록 아래 여백 300px, 16px, 취소로 키보드 내림, ×로 닫힘', pl.focused && pl.sheetTopMoved === 0 && pl.sheetBottomMoved === 0 && pl.overlayBottom === '0px' && pl.searchTop >= 0 && pl.searchBottom <= pl.kbTop && pl.xTop >= 0 && pl.padB === '300px' && pl.font === '16px' && pl.cancel && pl.afterCancel !== 'food-search' && pl.closed, JSON.stringify(pl));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));
