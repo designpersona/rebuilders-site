@@ -2615,7 +2615,9 @@ async function removeFood(mealId, idx, food = null) {
     }
   } catch (error) { console.error('시간 초기화 실패(삭제는 계속):', error); }
   try { withFlip(() => renderAll(false)); } catch (error) { console.error('다시 그리기 실패(삭제는 계속):', error); }
-  await persistMealsOrRestore(before);
+  try { await persistMealsOrRestore(before); } catch (error) { showStorageFailure(error); return; }
+  // 영양 채우기 대기 중이던 음식을 지웠으면 대기 목록에서도 뺌(같은 끼니에 같은 이름 미입력 기록이 남아 있으면 그대로)
+  try { if (removed && isNutritionMissing(removed)) { dropBridgeItemsFor(dateKey(currentDate), mealId, meals[mealId].foods); renderBridgePending(); } } catch (error) { console.error('영양 대기 정리 실패(삭제는 됨):', error); }
 }
 
 async function clearMealRecord(mealId, slot = null) {
@@ -7945,6 +7947,27 @@ function queueBridgeLookup(mealId, foods, date = currentDate) {
   return true;
 }
 
+/* 대기 작업 중 그 끼니에 아직 '미입력' 기록으로 남아 있는 이름만(지웠거나 직접 채운 음식은 뺌) */
+function liveBridgeItems(job, foods) {
+  const names = new Set((foods || []).filter(f => f?.name && isNutritionMissing(f)).map(f => compactFoodName(f.name)));
+  return (job.items || []).filter(item => item?.name && names.has(compactFoodName(item.name)));
+}
+/* 대기 목록에서 그 날짜·끼니 작업의 음식 중 더 이상 미입력 기록이 없는 것만 지움(기록 자체는 안 건드림) */
+function dropBridgeItemsFor(date, mealId, foods) {
+  if (!globalThis.RebuildersBridge) return;
+  RebuildersBridge.getQueue().forEach(job => {
+    if (job.date !== date || job.meal !== mealId) return;
+    const live = liveBridgeItems(job, foods);
+    if (live.length === job.items.length) return;
+    if (live.length) RebuildersBridge.setJobItems?.(job.id, live); else RebuildersBridge.removeJob(job.id);
+  });
+}
+async function bridgeJobFoods(job) {
+  if (job.date === dateKey(currentDate)) return meals[job.meal]?.foods || [];
+  const day = await storageRepository.getDay(job.date);
+  return day?.[job.meal] || [];
+}
+
 /* list(해당 끼니 foods 배열)에서 이름이 같은 미입력 기록을 찾아 채움. 반환: 채운 개수 */
 function fillFoodsFromBridge(list, found, records = []) {
   let filled = 0;
@@ -7992,6 +8015,7 @@ async function applyBridgeResult(job, result) {
   if (job.date === dateKey(currentDate)) {
     const before = snapshotMeals();
     const records = [];
+    if (!meals[job.meal]?.foods) return 0;
     const filled = fillFoodsFromBridge(meals[job.meal].foods, found, records);
     if (filled) {
       renderAll(false);
@@ -8032,10 +8056,15 @@ async function runBridgeQueueOnce({ announce = false } = {}) {
   try {
     for (const job of RebuildersBridge.getQueue()) {
       try {
-        const result = await RebuildersBridge.lookup(job);
+        // 그사이 지운 음식은 묻지 않음(다 지웠으면 작업만 지우고 넘어감)
+        const live = liveBridgeItems(job, await bridgeJobFoods(job));
+        if (!live.length) { RebuildersBridge.removeJob(job.id); continue; }
+        const result = await RebuildersBridge.lookup({ ...job, items: live });
         total += await applyBridgeResult(job, result);
         RebuildersBridge.removeJob(job.id);
-        failedNames.push(...result.failed);
+        // 묻는 동안 지운 음식은 '못 찾았어요'에서도 뺌
+        const after = liveBridgeItems({ items: (result.failed || []).map(name => ({ name })) }, await bridgeJobFoods(job));
+        failedNames.push(...after.map(item => item.name));
       } catch (error) {
         const kind = error instanceof RebuildersBridge.BridgeError ? error.kind : 'error';
         stopKind = kind;

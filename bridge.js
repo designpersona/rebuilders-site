@@ -74,6 +74,7 @@
     return job;
   }
   function removeJob(id) { saveQueue(getQueue().filter(job => job.id !== id)); }
+  function setJobItems(id, items) { saveQueue(getQueue().map(job => (job.id === id ? { ...job, items } : job))); }
   function bumpAttempt(id) {
     const list = getQueue();
     const job = list.find(j => j.id === id);
@@ -194,7 +195,7 @@
     return { items: Array.isArray(data.items) ? data.items : [], failed: Array.isArray(data.failed) ? data.failed : [] };
   }
 
-  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupPhoto, forget, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
+  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupPhoto, forget, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
   global.RebuildersBridge = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
