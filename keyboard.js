@@ -24,7 +24,8 @@
   }
   /* 아래 입력창(식단 채팅·식도감 검색)에 커서가 가면 iOS(WebKit)가 화면 전체를 위로 밀어 올림
      → 화면·바깥 틀·잘림 상자의 스크롤을 늘 0으로 되돌려 위쪽(탭·내용)은 제자리, 입력창만 키보드 위로 */
-  const inDock = el => Boolean(el?.closest?.('.home-ai-dock'));
+  // 음식 검색 화면(#view-search) 입력칸도 같음: 포커스 때 WebKit 이 화면을 통째로 밀어 올려 창이 '확' 올라가던 문제
+  const inDock = el => Boolean(el?.closest?.('.home-ai-dock, #view-search'));
   function resetPan() {
     const frame = doc.querySelector('.phone-frame');
     const list = [doc.scrollingElement, doc.documentElement, doc.body, frame];
