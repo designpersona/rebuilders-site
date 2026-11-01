@@ -69,7 +69,7 @@ try {
   // 5. 브리지 꺼짐: AI 칩이 3초 안팎에 '맥 미니 연결 대기'로 끝나고, 대기 기록은 그대로(시도 횟수 안 늘어남)
   const r5 = await evaluate(`RebuildersBridge.setConfig({ url: '127.0.0.1:3999', token: 'test_token_for_offline_e2e_000' }); RebuildersBridge.resetOffline();
     window.fetch = window.__hang; window.__calls = [];
-    RebuildersBridge.enqueue({ date: dateKey(currentDate), meal: 'snack', items: [{ name: '오프라인떡' }] });
+    await addFood('snack', { name: '오프라인떡' }); RebuildersBridge.enqueue({ date: dateKey(currentDate), meal: 'snack', items: [{ name: '오프라인떡' }] }); // 실제처럼 이름만 저장된 기록이 있어야 대기(지운 음식 대기는 정리됨)
     const t0 = performance.now(); const p = processBridgeQueue({ announce: true }); ${W8(300)}
     const chipMid = document.getElementById('bridge-pending').textContent; await p; const ms = Math.round(performance.now() - t0);
     const chip = document.getElementById('bridge-pending'); const q = RebuildersBridge.getQueue();
@@ -111,6 +111,14 @@ try {
     document.querySelector('#meal-detail-modal .modal-close, #meal-detail-close')?.click(); closeFoodEdit?.(); return { item: { name: item.name, cal: item.cal, serving: item.serving, per100: item.per100 }, a, b };`);
   check('식약처 음식 추가 → 수정 창에서 양 2배 → kcal 2배', Number(r10.a.cal) === r10.item.cal && Math.abs(Number(r10.b.cal) - r10.item.cal * 2) <= 1 && r10.item.serving === `${r10.a.amount}${r10.a.unit}`, JSON.stringify(r10));
   if (process.env.SHOT) { await evaluate(`document.querySelector('#page-tabs .page-tab[data-view="foodex"]')?.click(); ${W8(400)} ${type('햇반')} ${W8(400)} return 1;`); const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(process.env.SHOT, Buffer.from(r.data, 'base64')); }
+  // 식약처 검색 순서·묶기: '귤' → 첫 줄은 귤 생것 묶음(대표 1줄 + 비슷한 항목), 위 5개에 가공식품 없음, 목록 이름 정리('(생것)'), 시트엔 그룹 5개 + '비슷한 항목 N개 더 보기'
+  const gq = await evaluate(`await MfdsDB.load(); await FoodSearch.build(); const r = FoodSearch.search('귤'); const db = r.sections.find(s => s.key === 'db').items;
+    const egg = FoodSearch.search('계란').sections.find(s => s.key === 'db').items[0];
+    closeModal?.(); openModal('snack'); ${W8(400)} const f = document.getElementById('food-search'); f.value = '귤'; f.dispatchEvent(new Event('input', { bubbles: true })); ${W8(600)}
+    const rows = [...document.querySelectorAll('#quick-foods .sheet-food-row')]; const names = rows.map(x => x.querySelector('.chip-name').textContent);
+    const sim = document.querySelector('#quick-foods .fs-similar')?.textContent || ''; const attrib = document.querySelector('#quick-foods .fs-attrib')?.textContent || '';
+    closeModal(); return { first: db[0]?.name, firstSim: db[0]?.similar?.length || 0, top5Kinds: db.slice(0, 5).map(x => x.data?.mfdsKind || 'app'), egg: egg?.name, names: names.slice(0, 6), dbRows: rows.length, sim, attrib };`);
+  check("'귤' 검색: 첫 줄 = 귤 온주밀감 생것(비슷한 생것 묶음), 위 5개 가공식품 없음, 목록 이름 '(생것)', '비슷한 항목 N개 더 보기', 식약처 표시 작게 · '계란' → 달걀 생것 먼저", /^귤 온주밀감 생것$/.test(gq.first) && gq.firstSim >= 5 && !gq.top5Kinds.includes('가공식품') && gq.names[0] === '귤 온주밀감 (생것)' && /^비슷한 항목 \d+개 더 보기$/.test(gq.sim) && gq.attrib === '식약처' && /^달걀/.test(gq.egg) && gq.dbRows <= 6, JSON.stringify(gq));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));

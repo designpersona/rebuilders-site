@@ -682,6 +682,39 @@ const FoodSearch = (() => {
   function invalidate() { ready = false; hayCache.clear(); }
   function forgetName(name) { for (const key of [...hayCache.keys()]) if (key.endsWith(`\u0001${name}`)) hayCache.delete(key); }
   function count(name) { return eaten.get(name)?.count || 0; }
+  /* 영양 DB 결과 순서·묶기(데이터는 그대로, 보여주는 것만):
+     1) 이름 = 검색어 → 2) 첫 낱말 = 검색어(예: '귤 온주밀감 생것') → 3) 검색어로 시작 → 4) 낱말 앞에 있음 → 5) 가운데 섞임(귤맛 사탕)
+     같은 단계 안에서는 앱 기본·원재료 → 음식 → 가공식품, '생것' 먼저, 짧은 이름 먼저.
+     비슷한 것 묶기: 첫 낱말이 검색어인 '… 생것'들은 하나로, 가공식품이 아닌 같은 이름도 하나로 → 대표 1줄 + similar[] */
+  const SEARCH_ALIASES = { '계란': ['달걀'], '달걀': ['계란'], '밀감': ['귤'] }; // DB 표기가 다른 흔한 말
+  const COMMON_VARIETY = /온주밀감|부사|일반|보통/; // 묶음 대표로 먼저(가장 흔한 품종)
+  function rankAndGroupDb(items, nq, alt = []) {
+    const KIND_RANK = { '원재료': 0, '음식': 1, '가공식품': 2 };
+    const tierFor = (n, words, q) => n === q ? 0 : words[0] === q ? 1 : n.startsWith(q) ? 2 : words.some(w => w.endsWith(q) && w.length <= q.length + 3) ? 3 : words.some(w => w.startsWith(q)) ? 4 : n.includes(q) ? 5 : 6;
+    const scored = items.map(item => {
+      const raw = String(item.name || '');
+      const n = norm(raw);
+      const words = raw.split(/[\s_,()]+/).filter(Boolean).map(norm);
+      const tier = Math.min(...[nq, ...alt].map(q => tierFor(n, words, q)));
+      const kind = item.mfds ? (KIND_RANK[item.data?.mfdsKind] ?? 2) : 0;
+      const fresh = /생것/.test(raw) ? 0 : 1;
+      const common = COMMON_VARIETY.test(raw) ? 0 : 1;
+      const key = tier <= 1 && fresh === 0 && kind < 2 ? `${words[0]}|생것` : kind < 2 ? `${n}|same` : `${n}|${item.data?.maker || ''}|${item.name}`;
+      const app = !item.mfds && tier <= 3 ? 0 : 1; // 앱 기본 음식(정리된 이름)은 검색어와 잘 맞으면 식약처보다 먼저
+      return { ...item, tier: tier === 0 ? 0 : app ? tier : 0.5, kind, fresh, common, wc: words.length, len: n.length, groupKey: key };
+    });
+    scored.sort((a, b) => a.tier - b.tier || a.kind - b.kind || a.fresh - b.fresh || a.wc - b.wc || a.common - b.common || a.len - b.len || String(a.name).localeCompare(String(b.name), 'ko'));
+    const groups = new Map();
+    const out = [];
+    for (const item of scored) {
+      const head = groups.get(item.groupKey);
+      if (head) { head.similar.push(item); continue; }
+      const rep = { ...item, similar: [] };
+      groups.set(item.groupKey, rep);
+      out.push(rep);
+    }
+    return out;
+  }
   function search(query) {
     const t0 = performance.now();
     const nq = norm(query);
@@ -726,12 +759,15 @@ const FoodSearch = (() => {
     const Mfds = globalThis.MfdsDB;
     if (Mfds && !Mfds.ready) Mfds.load().then(ok => { if (ok) globalThis.rerenderFoodSearchAfterMfds?.(); });
     if (Mfds?.ready) {
-      const korean = /[\uac00-\ud7a3\u3131-\u318e]/.test(query);
-      const mf = Mfds.search(query, 200).filter(item => !seen.has(item.name));
-      db = [...db.map(item => ({ ...item, len: norm(item.name).length })), ...mf]
-        .sort((a, b) => a.r - b.r || a.len - b.len || (a.mfds ? (korean ? -1 : 1) : 0) - (b.mfds ? (korean ? -1 : 1) : 0));
+      const alt = SEARCH_ALIASES[query.trim()] || [];
+      const mfAll = [query, ...alt].flatMap(q => Mfds.search(q, 400));
+      const mfSeen = new Set();
+      const mf = mfAll.filter(item => !seen.has(item.name) && !mfSeen.has(item.name + '|' + (item.data?.maker || '')) && mfSeen.add(item.name + '|' + (item.data?.maker || '')));
+      mf.total = mfAll.length;
+      db = [...db, ...mf];
       stats.mfdsTotal = mf.total || mf.length;
     }
+    db = rankAndGroupDb(db, nq, (SEARCH_ALIASES[query.trim()] || []).map(norm));
     stats.lastSearchMs = Math.round((performance.now() - t0) * 100) / 100;
     return { query, sections: [{ key: 'recent', items: recent }, { key: 'mine', items: mine }, { key: 'db', items: db }], ms: stats.lastSearchMs };
   }
@@ -3434,11 +3470,20 @@ function confirmDiscardTray() {
   return confirm(ACTIVE_LOCALE === 'en' ? `Discard ${foodTray.length} picked food(s)?` : `담은 음식 ${foodTray.length}개를 기록하지 않고 닫을까요?`);
 }
 
+/* 식약처 DB 이름을 보기 좋게(목록에서만, 상세·기록은 원래 이름): '귤_생것' → '귤 (생것)', '귤 온주밀감 생것' → '귤 온주밀감 (생것)',
+   '사과차 사과차 핫(HOT)' → '사과차 핫(HOT)', '귤차 청귤차' → '청귤차'(앞 분류 낱말이 뒤 이름에 들어 있으면 뺌) */
+function cleanMfdsName(name) {
+  let t = String(name || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  const parts = t.split(' ');
+  if (parts.length > 1 && parts[1].includes(parts[0])) t = parts.slice(1).join(' ');
+  t = t.replace(/\s+(생것|삶은것|찐것|구운것|말린것|데친것|볶은것)$/, ' ($1)');
+  return t;
+}
 function renderFoodRows(container, entries, allowCustomActions = true) {
   void allowCustomActions;
   entries.forEach(([name, data]) => {
     const food = { name, ...data };
-    const visibleName = displayFoodName(food);
+    const visibleName = data?.source === '식약처' ? cleanMfdsName(name) : displayFoodName(food);
     const row = document.createElement('div');
     row.className = 'quick-food-row sheet-food-row';
     const badge = sheetFoodBadge(name, data);
@@ -3538,13 +3583,30 @@ function closeSheetFoodDetail() {
 // 음식 추가 시트 검색도 같은 묶음(최근 먹은 → 내 식도감 → 영양 DB, 5개씩 + 더 보기). 누르면 바로 이 끼니에 추가(기존 동작)
 const sheetSearchMore = { q: '', more: {} };
 function renderGroupedQuickFoods(container, q) {
-  if (sheetSearchMore.q !== q) { sheetSearchMore.q = q; sheetSearchMore.more = {}; }
+  if (sheetSearchMore.q !== q) { sheetSearchMore.q = q; sheetSearchMore.more = {}; sheetSearchMore.similar = {}; }
   const result = FoodSearch.search(q);
   if (!result) return;
   for (const section of result.sections) {
     if (!section.items.length) continue;
     const limit = sheetSearchMore.more[section.key] || FOOD_SEARCH_PAGE;
-    renderFoodSection(container, `${foodSearchSectionLabel(section.key)} · ${section.items.length}`, section.items.slice(0, limit).map(item => [item.name, item.data]), false); // 식도감 결과처럼 줄만(수정·삭제는 '내 제품' 탭에서)
+    const label = section.key === 'db' ? foodSearchSectionLabel(section.key) : `${foodSearchSectionLabel(section.key)} · ${section.items.length}`;
+    if (section.key === 'db') { const lab = document.createElement('div'); lab.className = 'quick-add-label food-section-label'; lab.innerHTML = `${escapeHtml(label)}<small class="fs-attrib">${ACTIVE_LOCALE === 'en' ? 'MFDS' : '식약처'}</small>`; container.appendChild(lab); }
+    else { const lab = document.createElement('div'); lab.className = 'quick-add-label food-section-label'; lab.textContent = label; container.appendChild(lab); }
+    for (const item of section.items.slice(0, limit)) {
+      renderFoodRows(container, [[item.name, item.data]], false); // 식도감 결과처럼 줄만(수정·삭제는 '내 제품' 탭에서)
+      const sim = item.similar || [];
+      if (!sim.length) continue;
+      const simKey = `${section.key}:${item.groupKey}`;
+      if (sheetSearchMore.similar?.[simKey]) renderFoodRows(container, sim.map(x => [x.name, x.data]), false);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'fs-similar';
+      toggle.textContent = sheetSearchMore.similar?.[simKey]
+        ? (ACTIVE_LOCALE === 'en' ? 'Hide similar' : '비슷한 항목 접기')
+        : (ACTIVE_LOCALE === 'en' ? `${sim.length} similar` : `비슷한 항목 ${sim.length}개 더 보기`);
+      toggle.addEventListener('click', () => { sheetSearchMore.similar = sheetSearchMore.similar || {}; sheetSearchMore.similar[simKey] = !sheetSearchMore.similar[simKey]; scheduleFoodSearch(); });
+      container.appendChild(toggle);
+    }
     container.lastElementChild?.classList.add('fs-sheet-last');
     const rest = section.items.length - limit;
     if (rest > 0) {

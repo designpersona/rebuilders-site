@@ -13533,3 +13533,6 @@ html, body { background: var(--bg); }
 #modal-sheet .fpd-back, #modal-sheet .fpd-secondary { border: 0 !important; background: var(--rb-btn-bg, #F1F2F5) !important; color: var(--rb-ink, #111216) !important; border-radius: 12px !important; font: 600 15px/1 var(--font); }
 #modal-sheet .fpd-back { border-radius: 50% !important; }
 #modal-sheet .fpd-secondary.is-danger { color: #D93D3D !important; }
+/* 검색: 비슷한 항목 묶음 펼치기, 식약처 출처는 작게 */
+#modal-sheet .fs-similar { display: block; width: 100%; padding: 8px 0 10px; border: 0 !important; background: none !important; box-shadow: none !important; text-align: left; color: var(--text-secondary, #6B6F7A) !important; font: 500 13px/1.2 var(--font); border-bottom: 1px solid var(--rb-hairline, #E8E9ED) !important; border-radius: 0 !important; min-height: 0 !important; }
+.food-section-label .fs-attrib { margin-left: 6px; font-size: 11px; font-weight: 500; color: var(--text-tertiary, #9A9DA6); }

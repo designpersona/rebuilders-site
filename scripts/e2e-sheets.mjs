@@ -99,7 +99,7 @@ try {
     const fb = document.querySelector('.modal-food-search').getBoundingClientRect(); const rows = [...document.querySelectorAll('#quick-foods .quick-food-row')];
     const edges = rows.map(r => { const c = r.getBoundingClientRect(); return [Math.round(c.left - fb.left), Math.round(fb.right - c.right)]; });
     const gaps = []; for (let i = 1; i < rows.length; i++) { const a = rows[i - 1].getBoundingClientRect(), b = rows[i].getBoundingClientRect(); if (rows[i].previousElementSibling === rows[i - 1]) gaps.push(Math.round(b.top - a.bottom)); }
-    const heads = [...document.querySelectorAll('#quick-foods .food-section-label')].map(h => h.textContent.split(' · ')[0]);
+    const heads = [...document.querySelectorAll('#quick-foods .food-section-label')].map(h => h.firstChild.textContent.split(' · ')[0]);
     const parts = rows.every(r => { const c = r.querySelector('.quick-food-chip'); return c.querySelector('.chip-name')?.textContent && /(\\d+kcal|영양정보 없음)$/.test(c.querySelector('.chip-sub')?.textContent || '') && !c.querySelector('.chip-macros, .chip-source'); });
     const sideButtons = document.querySelectorAll('#quick-foods .quick-food-row .tray-add-btn').length - rows.length + document.querySelectorAll('#quick-foods .quick-food-row .custom-food-actions').length;
     closeModal(); ${W8(300)} return { n: rows.length, edges, gaps: [...new Set(gaps)], heads, parts, sideButtons };`);
