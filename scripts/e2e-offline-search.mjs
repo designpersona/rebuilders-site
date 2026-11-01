@@ -7,7 +7,7 @@ const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/M
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'rb-e2e-offline-'));
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--window-size=430,900', ...(process.env.CHROME_NO_SANDBOX ? ['--no-sandbox'] : []), 'about:blank'], { stdio: 'ignore' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-let ws, id = 0; const pending = new Map(); const errors = [];
+let ws, id = 0; const pending = new Map(); const errors = []; const netLog = [];
 async function connect() {
   for (let i = 0; i < 50; i++) {
     try { const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json(); const page = list.find(t => t.type === 'page'); if (page) return page.webSocketDebuggerUrl; } catch {}
@@ -32,8 +32,8 @@ const touch = (type, x, y) => send('Input.dispatchTouchEvent', { type, touchPoin
 try {
   ws = new WebSocket(await connect());
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
-  ws.addEventListener('message', ev => { const m = JSON.parse(ev.data); if (m.id && pending.has(m.id)) { pending.get(m.id).res(m.result || m); pending.delete(m.id); } if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text); });
-  await send('Runtime.enable'); await send('Page.enable');
+  ws.addEventListener('message', ev => { const m = JSON.parse(ev.data); if (m.id && pending.has(m.id)) { pending.get(m.id).res(m.result || m); pending.delete(m.id); } if (m.method === 'Network.requestWillBeSent') netLog.push(m.params.request.url); if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text); });
+  await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 393, height: 852, deviceScaleFactor: 1, mobile: true });
   await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await load(URL);
@@ -49,6 +49,7 @@ try {
     document.querySelector('#page-tabs .page-tab[data-view="foodex"]').click(); ${W8(500)} return 1;`);
   const type = v => `{ const i = document.getElementById('foodex-search-input'); i.value = '${v}'; i.dispatchEvent(new Event('input', { bubbles: true })); }`;
   const view = `const c = document.getElementById('foodex-results'); return { rows: [...c.querySelectorAll('.fs-row .fs-name')].map(n => n.textContent), note: c.querySelector('.fs-note')?.textContent || '', noteFont: c.querySelector('.fs-note') ? getComputedStyle(c.querySelector('.fs-note')).font : '', empty: c.querySelector('.fs-empty')?.textContent || '', register: !!c.querySelector('.fs-register'), spin: document.querySelectorAll('#foodex-results .is-busy, #foodex-results [aria-busy="true"]').length };`;
+  const mfdsBefore = await evaluate(`return MfdsDB.ready;`); netLog.length = 0; // 여기부터 실제 네트워크 요청 기록(바깥 조회는 fetch 를 바꿔 끼워 실제 요청 없음)
   // 1. 바깥 조회가 응답 없음(느린/꺼진 연결): 로컬 결과는 바로, 3초 뒤 안내 문구, 요청은 취소
   const r1 = await evaluate(`let aborted = 0; window.__ext = 0;
     FoodSearch.externalProvider = (q, signal) => { window.__ext++; return new Promise(() => signal.addEventListener('abort', () => aborted++)); };
@@ -87,6 +88,29 @@ try {
     window.fetch = window.__realFetch; RebuildersBridge.setConfig({ url: '', token: '' });
     return { mid, hidden: chip.hidden, working: chip.classList.contains('is-working'), cal: f?.cal, queue: RebuildersBridge.getQueue().length, calls: window.__calls.map(u => u.replace(/^https?:\\/\\/[^/]+/, '')) };`);
   check('느린 맥 미니: 칩 눌러 다시 시도하면 기다렸다가 채우고 칩이 사라짐', /채우는 중/.test(r7.mid) && r7.hidden && !r7.working && r7.cal === 200 && r7.queue === 0 && r7.calls[0] === '/health' && r7.calls.includes('/log'), JSON.stringify(r7));
+  // 8. 식약처 내장 DB: 첫 검색 때만 앱 안 파일(data/mfds.json) 하나를 읽고, 검색 중 다른 요청은 없음
+  await evaluate(`window.fetch = window.__realFetch; FoodSearch.externalProvider = null; FoodSearch.externalOfflineUntil = 0; ${type('')} return 1;`);
+  const r8 = await evaluate(`const t0 = performance.now(); ${type('햇반')} for (let k = 0; k < 100 && !MfdsDB.ready; k++) ${W8(50)} ${W8(200)} const firstMs = Math.round(performance.now() - t0);
+    const sec = document.querySelector('#foodex-results [data-section="db"]');
+    const rows = sec ? [...sec.querySelectorAll('.fs-row')].map(b => ({ name: b.querySelector('.fs-name').textContent, src: b.querySelector('.fs-src').textContent })) : [];
+    const lat = []; for (const q of ['햇', '햇반', '닭가슴살', '라면', '김치']) { FoodSearch.search(q); lat.push(FoodSearch.stats.lastSearchMs); }
+    return { firstMs, loadMs: MfdsDB.state.loadMs, parseMs: MfdsDB.state.parseMs, total: FoodSearch.stats.mfdsTotal, rows, lat };`);
+  const req8 = netLog.slice();
+  check("'햇반': 영양 DB 묶음에 CJ 제품, 검색하는 동안 바깥 요청 0, 앱 안 data/mfds.json 은 첫 검색 때 한 번(그 밖엔 화면 아이콘뿐)", !mfdsBefore && r8.rows.some(r => /햇반/.test(r.name) && /씨제이|CJ/i.test(r.src)) && req8.filter(u => /\/data\/mfds\.json$/.test(u)).length === 1 && req8.every(u => u.startsWith(new globalThis.URL(URL).origin + '/') && !/\.(json|php)$|\/(log|health|photo)$/.test(u.replace(/\/data\/mfds\.json$/, ''))), JSON.stringify({ ...r8, rows: r8.rows.slice(0, 3), req8 }));
+  console.log(`MFDS 첫 검색 ${r8.firstMs}ms (파일 읽기 ${r8.loadMs}ms + 색인 ${r8.parseMs}ms), 검색 ${JSON.stringify(r8.lat)}ms`);
+  netLog.length = 0;
+  const r9 = await evaluate(`${type('김치찌개')} ${W8(300)} const sec = document.querySelector('#foodex-results [data-section="db"]');
+    return { rows: sec ? [...sec.querySelectorAll('.fs-row')].map(b => ({ name: b.querySelector('.fs-name').textContent, src: b.querySelector('.fs-src').textContent })) : [] };`);
+  check("'김치찌개': 영양 DB 묶음에 식약처 음식, 두 번째 검색부터는 요청 0", r9.rows.length > 0 && r9.rows.every(r => /김치찌개/.test(r.name)) && r9.rows.some(r => /식약처/.test(r.src)) && netLog.length === 0, JSON.stringify({ rows: r9.rows.slice(0, 3), net: netLog }));
+  // 10. 고른 식약처 음식을 끼니에 넣고 수정 창에서 g 을 바꾸면 kcal 이 비례
+  const r10 = await evaluate(`const item = MfdsDB.search('김치찌개', 5)[0].data; setActiveView('home'); Object.keys(meals).forEach(k => { meals[k].foods = []; }); renderAll(true);
+    await addFood('lunch', item); ${W8(300)} openFoodEdit('lunch', 0); ${W8(300)}
+    const amt = document.querySelector('[data-serving-amount]'); const cal = () => document.querySelector('#meal-detail-edit-grid [data-edit-field="cal"]').value;
+    const a = { amount: amt.value, unit: document.querySelector('[data-serving-unit]').value, cal: cal() };
+    amt.value = String(Number(amt.value) * 2); amt.dispatchEvent(new Event('input', { bubbles: true })); const b = { amount: amt.value, cal: cal() };
+    document.querySelector('#meal-detail-modal .modal-close, #meal-detail-close')?.click(); closeFoodEdit?.(); return { item: { name: item.name, cal: item.cal, serving: item.serving, per100: item.per100 }, a, b };`);
+  check('식약처 음식 추가 → 수정 창에서 양 2배 → kcal 2배', Number(r10.a.cal) === r10.item.cal && Math.abs(Number(r10.b.cal) - r10.item.cal * 2) <= 1 && r10.item.serving === `${r10.a.amount}${r10.a.unit}`, JSON.stringify(r10));
+  if (process.env.SHOT) { await evaluate(`document.querySelector('#page-tabs .page-tab[data-view="foodex"]')?.click(); ${W8(400)} ${type('햇반')} ${W8(400)} return 1;`); const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(process.env.SHOT, Buffer.from(r.data, 'base64')); }
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));

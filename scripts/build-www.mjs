@@ -9,9 +9,9 @@ const out = join(root, 'www');
 
 const FILES = [
   'index.html', 'privacy.html', 'style.css', 'app.js', 'storage.js', 'backup.js',
-  'notifications.js', 'keyboard.js', 'food-catalog.js', 'demo-seed.js', 'quick-entry.js', 'health.js', 'log-link.js', 'bridge.js', 'manifest.webmanifest',
+  'notifications.js', 'keyboard.js', 'food-catalog.js', 'mfds.js', 'demo-seed.js', 'quick-entry.js', 'health.js', 'log-link.js', 'bridge.js', 'manifest.webmanifest',
 ];
-const DIRS = ['assets'];
+const DIRS = ['assets', 'data'];
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -70,6 +70,12 @@ function scan(dir) {
     const pattern = NETWORK_ALLOWED.has(name) && dirname(path) === out
       ? /clarity\.ms|googletagmanager|google-analytics|\bgtag\(|sendBeacon|XMLHttpRequest/
       : /clarity\.ms|googletagmanager|google-analytics|\bgtag\(|sendBeacon|XMLHttpRequest|\bfetch\(/;
+    // 예외: mfds.js 는 앱 번들 안 파일(data/mfds.json, 상대 경로)만 읽음 — http 주소나 다른 fetch 가 있으면 중단
+    if (name === 'mfds.js' && dirname(path) === out) {
+      const fetches = text.match(/\bfetch\([^)]*\)/g) || [];
+      if (/https?:\/\/|clarity\.ms|googletagmanager|google-analytics|\bgtag\(|sendBeacon|XMLHttpRequest/.test(text) || !/const URL = 'data\/mfds\.json';/.test(text) || fetches.some(f => f !== 'fetch(URL)')) bad.push(path);
+      continue;
+    }
     if (pattern.test(text)) {
       bad.push(path);
     }

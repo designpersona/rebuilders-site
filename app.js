@@ -585,7 +585,7 @@ function foodSourceMeta(data, name) {
   }
   if (CUSTOM_FOODS[name]) return { label: ACTIVE_LOCALE === 'en' ? 'Mine' : '내 등록', cls: 'source-mine' };
   if (FOOD_DB[name]) return { label: ACTIVE_LOCALE === 'en' ? 'Built-in' : '기본', cls: 'source-local' };
-  if (data?.source) return { label: escapeHtml(data.source), cls: 'source-ref' };
+  if (data?.source) return { label: escapeHtml(data.maker ? `${data.source} · ${data.maker}` : data.source), cls: 'source-ref' };
   return { label: ACTIVE_LOCALE === 'en' ? 'Local' : '로컬', cls: 'source-local' };
 }
 
@@ -721,7 +721,17 @@ const FoodSearch = (() => {
       return out;
     };
     const mine = collect(CUSTOM_FOODS);
-    const db = collect(FOOD_DB);
+    let db = collect(FOOD_DB);
+    // 식약처 내장 DB(첫 검색 때 앱 안 파일을 한 번 읽음 → 다 읽으면 결과를 다시 그림). 한글 검색어면 식약처 먼저
+    const Mfds = globalThis.MfdsDB;
+    if (Mfds && !Mfds.ready) Mfds.load().then(ok => { if (ok) globalThis.rerenderFoodSearchAfterMfds?.(); });
+    if (Mfds?.ready) {
+      const korean = /[\uac00-\ud7a3\u3131-\u318e]/.test(query);
+      const mf = Mfds.search(query, 200).filter(item => !seen.has(item.name));
+      db = [...db.map(item => ({ ...item, len: norm(item.name).length })), ...mf]
+        .sort((a, b) => a.r - b.r || a.len - b.len || (a.mfds ? (korean ? -1 : 1) : 0) - (b.mfds ? (korean ? -1 : 1) : 0));
+      stats.mfdsTotal = mf.total || mf.length;
+    }
     stats.lastSearchMs = Math.round((performance.now() - t0) * 100) / 100;
     return { query, sections: [{ key: 'recent', items: recent }, { key: 'mine', items: mine }, { key: 'db', items: db }], ms: stats.lastSearchMs };
   }
@@ -867,6 +877,11 @@ function renderFoodexResults() {
     onAi: (name, button) => findFoodWithAi(name, button),
   });
 }
+// 식약처 내장 DB 를 처음 다 읽었을 때: 지금 보이는 검색 결과만 다시 그림
+globalThis.rerenderFoodSearchAfterMfds = () => {
+  if (foodexSearchQuery()) renderFoodexResults();
+  if (foodSearchInput?.value.trim()) scheduleFoodSearch();
+};
 function scheduleFoodexExternal(q) {
   clearTimeout(foodexSearchState.timer);
   foodexSearchState.abort?.abort();
@@ -1369,6 +1384,7 @@ function applyExtendedStaticCopy() {
   set('#load-sample small', '가상의 4일치 식단을 추가해 앱을 둘러봐요', 'Add four fictional days of meals to look around');
   set('#data-transfer-note', '백업 파일은 직접 보관해 주세요(예: iCloud Drive, 파일 앱). 앱을 삭제하거나 기기를 바꾸면 이 기기의 기록은 사라져요.', 'Keep your backup file somewhere safe (for example iCloud Drive or the Files app). Deleting the app or changing devices removes the records on this device.');
   set('#data-source-note', '내장 음식의 영양 정보는 USDA FoodData Central(fdc.nal.usda.gov)을 참고했고, 일부는 추정값이에요. 직접 등록한 음식은 입력한 값 그대로 사용돼요. 영양 정보는 참고용이며 의학적 조언이 아니에요.', 'Built-in nutrition information is based on USDA FoodData Central (fdc.nal.usda.gov); some values are estimates. Foods you add use the values you enter. Nutrition information is for reference only and is not medical advice.');
+  set('#mfds-source-note', '영양 정보 출처: 식품의약품안전처 식품영양성분 DB (기준일 2026-09-29)', 'Nutrition source: MFDS Korean Food Nutrition Database (as of 2026-09-29)');
   set('#privacy-link', '개인정보 처리방침', 'Privacy policy');
   set('#reminder-title', '식사 기록 알림', 'Meal logging reminders');
   set('#reminder-copy', '정해진 시간에 이 기기에서 알려드려요. 서버를 거치지 않아요.', 'Reminders are scheduled on this device. Nothing goes through a server.');
