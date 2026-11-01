@@ -13463,3 +13463,7 @@ html, body { background: var(--bg); }
 .search-hub-input-wrap input#search-hub-input { font-size: 16px; } /* 16px 미만이면 iOS 가 포커스 때 화면을 확대·이동 */
 .search-hub-cancel { display: none; flex: none; min-height: 44px; padding: 0 6px; border: 0; background: none; color: var(--text-primary, #18181b); font: 600 15px/1 var(--font); }
 .search-hub-input-row:focus-within .search-hub-cancel, body.keyboard-open #view-search .search-hub-cancel { display: inline-flex; align-items: center; }
+
+/* 음식 검색: 키보드는 화면을 덮기만(keyboard.js --kb-overlay-h). 목록 끝까지 스크롤되도록 그만큼 아래 여백만 */
+#view-search { scroll-padding-bottom: var(--kb-overlay-h, 0px); }
+#view-search .search-hub-panel.active { padding-bottom: var(--kb-overlay-h, 0px); }

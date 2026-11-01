@@ -9,18 +9,22 @@
   const doc = global.document;
   if (!doc) return;
 
+  // 음식 검색 칸(#search-hub-input)은 키보드가 화면 위를 덮기만 함(다른 앱 방식): 화면 크기·위치·아래 탭 그대로, 목록만 키보드 높이만큼 아래 여백
+  const isOverlay = () => Boolean(doc.activeElement?.closest?.('.search-hub-input-row'));
   function setOpen(open) {
     if (!doc.body) return;
-    doc.body.classList.toggle(CLASS, Boolean(open));
+    doc.body.classList.toggle(CLASS, Boolean(open) && !isOverlay());
   }
 
   /* 앱: 키보드 높이만큼 화면(.phone-frame)을 키보드와 같은 시간·곡선으로 줄임(style.css 의 --kb-h).
      resize:'none' 이라 iOS 가 웹뷰를 늦게 줄이지 않음 → 입력창이 키보드에 딱 붙어 같이 올라감 */
   function setKeyboardHeight(height) {
     const h = Math.max(0, Math.round(Number(height) || 0));
-    doc.documentElement.style.setProperty('--kb-h', `${h}px`);
+    const overlay = h > 0 && isOverlay();
+    doc.documentElement.style.setProperty('--kb-h', `${overlay ? 0 : h}px`);
+    doc.documentElement.style.setProperty('--kb-overlay-h', `${overlay ? h : 0}px`);
     doc.documentElement.classList.toggle('kb-native', true);
-    doc.documentElement.classList.toggle('kb-up', h > 0); // 키보드가 올라와 있는 동안(아래 페이지 띠 숨김)
+    doc.documentElement.classList.toggle('kb-up', h > 0 && !overlay); // 키보드가 올라와 있는 동안(아래 페이지 띠 숨김)
   }
   /* 아래 입력창(식단 채팅·식도감 검색)에 커서가 가면 iOS(WebKit)가 화면 전체를 위로 밀어 올림
      → 화면·바깥 틀·잘림 상자의 스크롤을 늘 0으로 되돌려 위쪽(탭·내용)은 제자리, 입력창만 키보드 위로 */

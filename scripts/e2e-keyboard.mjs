@@ -88,11 +88,12 @@ try {
   const sh = await evaluate(`setActiveView('search'); ${W8(400)} const i = document.getElementById('search-hub-input'); i.value = '키보드'; i.dispatchEvent(new Event('input', { bubbles: true })); ${W8(100)}
     i.focus(); RebuildersKeyboard.simulate(${KB}); ${W8(60)}
     const v = document.getElementById('view-search'); const frame = document.querySelector('.phone-frame'); frame.scrollTop = 140; document.scrollingElement.scrollTop = 140; frame.dispatchEvent(new Event('scroll')); window.dispatchEvent(new Event('scroll')); ${W8(300)}
+    const nav = document.getElementById('page-tabs'); const navShown = !!nav && getComputedStyle(nav).display !== 'none'; const frameH = Math.round(frame.getBoundingClientRect().height);
     v.scrollTop = 600; ${W8(100)}
     const row = document.querySelector('.search-hub-input-row').getBoundingClientRect(); const c = document.getElementById('search-hub-cancel'); const cr = c.getBoundingClientRect();
-    const r = { rowTop: Math.round(row.top), rowBottom: Math.round(row.bottom), kbTop: innerHeight - ${KB}, vScroll: v.scrollTop, cancel: cr.width > 0, font: getComputedStyle(i).fontSize, pan: [frame.scrollTop, document.scrollingElement.scrollTop], focused: document.activeElement === i };
+    const r = { rowTop: Math.round(row.top), rowBottom: Math.round(row.bottom), kbTop: innerHeight - ${KB}, vScroll: v.scrollTop, frameH, h: innerHeight, navShown, kbOpenClass: document.body.classList.contains('keyboard-open'), padB: getComputedStyle(document.querySelector('#view-search .search-hub-panel.active')).paddingBottom, cancel: cr.width > 0, font: getComputedStyle(i).fontSize, pan: [frame.scrollTop, document.scrollingElement.scrollTop], focused: document.activeElement === i };
     c.click(); ${W8(50)} r.afterCancel = document.activeElement?.id || 'body'; RebuildersKeyboard.simulate(0); return r;`);
-  check('음식 검색 + 키보드: 결과 스크롤해도 검색줄 보임(키보드 위), 밀림 0, 글자 16px, 취소 보이고 누르면 키보드 내림', sh.rowTop >= 0 && sh.rowBottom <= sh.kbTop && sh.vScroll > 0 && sh.cancel && sh.font === '16px' && sh.pan.every(x => x === 0) && sh.focused && sh.afterCancel !== 'search-hub-input', JSON.stringify(sh));
+  check('음식 검색 + 키보드: 키보드가 덮기만(화면 높이·아래 탭 그대로, 목록 아래 여백 300px), 결과 스크롤해도 검색줄 보임(키보드 위), 밀림 0, 글자 16px, 취소 보이고 누르면 키보드 내림', sh.rowTop >= 0 && sh.rowBottom <= sh.kbTop && sh.frameH === sh.h && !sh.kbOpenClass && sh.padB === '300px' && sh.vScroll > 0 && sh.cancel && sh.font === '16px' && sh.pan.every(x => x === 0) && sh.focused && sh.afterCancel !== 'search-hub-input', JSON.stringify(sh));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));
