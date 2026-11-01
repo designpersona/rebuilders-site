@@ -32,13 +32,19 @@ def clean(name):
     name = re.sub(r'\s+', ' ', name).strip()
     return name
 
+def maker_core(m):
+    # 같은 회사 공장·지점 표기 차이(예: '씨제이제일제당(주)' / '씨제이제일제당(주)진천BLOSSOMCAMPUS')를 같은 업체로
+    m = re.sub(r'\s+', '', m or '')
+    m = re.split(r'\(주\)|㈜|주식회사|\(유\)', m.replace('주식회사', '(주)'), maxsplit=1)
+    return (m[0] or ''.join(m)).lower()
+
 def weight(s):
     m = re.match(r'^\s*([\d.]+)\s*(g|ml|mL)\s*$', s or '')
     if not m: return 0
     v = num(m.group(1))
     return r1(v) if v and 0 < v < 5000 else 0
 
-makers, maker_ix, rows, seen, dates = [], {}, [], set(), set()
+makers, maker_ix, rows, seen, dates, dup = [], {}, [], set(), set(), 0
 for fname, kind in FILES:
     with open(os.path.join(SRC, fname), encoding='utf-8-sig') as f:
         for r in csv.DictReader(f):
@@ -52,11 +58,12 @@ for fname, kind in FILES:
                 if v not in NONE: maker = re.sub(r'\s+', ' ', v); break
             w = weight(r.get('식품중량')) or weight(r.get('1회 섭취참고량'))
             row = [name, -1, kind, unit, w, r1(kcal), r1(num(r.get('탄수화물(g)'))), r1(num(r.get('단백질(g)'))), r1(num(r.get('지방(g)')))]
+            # 완전 중복(정규화한 이름 + 업체 + 기준 단위 + 중량 + kcal·탄·단·지)은 하나만 남김
+            key = (re.sub(r'\s+', '', name).lower(), maker_core(maker), unit, row[4], *row[5:9])
+            if key in seen: dup += 1; continue
             if maker:
                 if maker not in maker_ix: maker_ix[maker] = len(makers); makers.append(maker)
                 row[1] = maker_ix[maker]
-            key = (name, row[1], row[5], row[4])
-            if key in seen: continue
             seen.add(key); rows.append(row)
             if r.get('데이터기준일자'): dates.add(r['데이터기준일자'])
 
@@ -64,4 +71,4 @@ os.makedirs(os.path.dirname(OUT), exist_ok=True)
 data = {'v': 1, 'date': max(dates) if dates else '', 'source': '식품의약품안전처 식품영양성분 데이터베이스', 'makers': makers, 'rows': rows}
 with open(OUT, 'w', encoding='utf-8') as f:
     json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
-print(f'{len(rows)} rows, {len(makers)} makers, {os.path.getsize(OUT)/1e6:.2f}MB → {os.path.normpath(OUT)}')
+print(f'{len(rows)} rows (중복 {dup}건 뺌), {len(makers)} makers, {os.path.getsize(OUT)/1e6:.2f}MB → {os.path.normpath(OUT)}')

@@ -1,5 +1,5 @@
 // 건강리포트 한 페이지: 일/주/월 버튼 없음, 위 달력(접힘 = 한 주 = 리포트 기간 주, 펼침 = 한 달), 높이 250ms 감속(넘침 없음), 기록한 날 점·오늘 표시,
-// 날짜 누르면 선택한 날 카드, < > 는 주/달 이동, 손잡이 끌기, 가로 밀기 없음, 디자인 숫자(20/17/15/13/12·28px·12px), 많은 기록에서도 빠름. 사용법: 정적 서버 8765 → node scripts/e2e-report.mjs
+// 날짜 누르면 선택한 날 카드, < > 는 주/달 이동, 손잡이 끌기, 가로 밀기 = 주/달 이동, 디자인 숫자(20/17/15/13/12·28px·12px), 많은 기록에서도 빠름. 사용법: 정적 서버 8765 → node scripts/e2e-report.mjs
 import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 const PORT = 9377, URL = process.argv[2] || 'http://127.0.0.1:8765/index.html';
@@ -85,11 +85,24 @@ try {
   await touch('touchStart', hb2[0], hb2[1]); for (let k = 1; k <= 5; k++) { await touch('touchMove', hb2[0], hb2[1] - k * 10); await sleep(16); } await touch('touchEnd'); await sleep(400);
   const dragUp = (await state()).expanded;
   check('손잡이 아래로 끌면 펼침, 위로 끌면 접힘', dragDown === 'true' && dragUp === 'false', JSON.stringify({ dragDown, dragUp }));
-  // 가로 밀기: 아무 일 없음
-  const before = await state();
-  await touch('touchStart', 330, 600); for (let k = 1; k <= 8; k++) { await touch('touchMove', 330 - k * 32, 600); await sleep(16); } await touch('touchEnd'); await sleep(400);
-  const after = await state();
-  check('건강리포트에서 가로 밀기 → 페이지·기간·고른 날 그대로', after.sel === before.sel && after.range === before.range && await evaluate(`return activeView === 'stats' && !document.getElementById('view-stats').style.transform`), JSON.stringify({ before: before.range, after: after.range }));
+  // 가로 밀기(접힘 = 주): 왼쪽으로 밀면 다음 주, 오른쪽은 이전 주, 리포트도 그 주로
+  const swipe = async (x0, x1, y = 600) => { await touch('touchStart', x0, y); for (let k = 1; k <= 8; k++) { await touch('touchMove', x0 + (x1 - x0) * k / 8, y); await sleep(16); } await touch('touchEnd'); await sleep(400); };
+  const w0 = await state();
+  await swipe(330, 74);
+  const w1 = await state();
+  await swipe(74, 330);
+  const w2 = await state();
+  const clean = await evaluate(`return activeView === 'stats' && !document.querySelector('#view-stats .report-ghost') && !document.querySelector('#view-stats > .cal-card').style.transform`);
+  check('접힘: 왼쪽 밀기 → 다음 주(고른 날 +7, 리포트 = 그 주), 오른쪽 밀기 → 원래 주', w0.expanded === 'false' && w1.sel === '2026-11-03' && w1.range === '11.1 – 11.7' && w1.vis.length === 7 && w2.sel === w0.sel && w2.range === w0.range && clean, JSON.stringify({ w0: [w0.sel, w0.range], w1: [w1.sel, w1.range, w1.logged], w2: [w2.sel, w2.range] }));
+  // 가로 밀기(펼침 = 달): 왼쪽으로 밀면 다음 달, 오른쪽은 이전 달
+  await evaluate(`setStatsCalendarExpanded(true); ${W8(400)} return 1;`);
+  const m0 = await state();
+  await swipe(330, 74, 700);
+  const m1 = await state();
+  await swipe(74, 330, 700); await swipe(74, 330, 700);
+  const m2 = await state();
+  check('펼침: 왼쪽 밀기 → 다음 달(리포트 = 그 달), 오른쪽 두 번 → 이전 달', m0.expanded === 'true' && m0.title === '10월' && m1.title === '11월' && m1.month === '2026년 11월' && m1.logged === '20/30' && m2.title === '9월' && m2.month === '2026년 9월', JSON.stringify({ m0: m0.title, m1: [m1.title, m1.logged], m2: m2.title }));
+  await evaluate(`setStatsCalendarExpanded(false); statsSelectedKey = '2026-10-27'; rerenderStats(); ${W8(400)} return 1;`);
   // 디자인 숫자
   const ds = await evaluate(`const v = document.getElementById('view-stats'); const f = sel => { const e = v.querySelector(sel); if (!e) return null; const c = getComputedStyle(e); return c.fontSize + '/' + c.fontWeight; }; const vs = getComputedStyle(v);
     const cards = [...v.querySelectorAll(':scope > .cal-card, :scope > .stats-day-card, .report-card')].filter(e => !e.hidden && e.offsetHeight); const gaps = cards.slice(1).map((c, i) => Math.round(c.getBoundingClientRect().top - cards[i].getBoundingClientRect().bottom)).filter(g => g < 40);

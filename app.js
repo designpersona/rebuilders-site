@@ -6948,6 +6948,129 @@ let slideDayTo = null;
     return true;
   };
 })();
+/* 건강리포트: 가로로 밀어 기간 이동(접힘 = 한 주, 펼침 = 한 달). 오른쪽으로 밀면 이전, 왼쪽은 다음(미래도 가능).
+   식단기록 날짜 밀기(setupDateSwipe)와 같은 느낌: 지금 기간(복제)과 옆 기간(진짜로 그림)이 손가락을 1:1로 따라오고,
+   너비 25% 넘기거나 빠르게(0.5px/ms) 튕기면 250ms 감속으로 넘어감, 아니면 제자리. 세로 스크롤·달력 손잡이 끌기와 겹치지 않음 */
+(function setupReportSwipe() {
+  const view = document.getElementById('view-stats');
+  if (!view) return;
+  const SETTLE_MS = 250;
+  const EASE = 'cubic-bezier(0.25, 1, 0.5, 1)';
+  const parts = () => [...view.querySelectorAll(':scope > .cal-card, :scope > .stats-day-card, :scope > .report-period, :scope > .stats-week-card')].filter(el => !el.hidden && el.offsetHeight);
+  let st = null; // { base: { key, month }, parts, ghosts, W, dir }
+  let busy = false;
+  const snapshot = () => {
+    const list = parts();
+    const ghosts = list.map(el => {
+      const g = el.cloneNode(true);
+      g.classList.add('report-ghost');
+      g.setAttribute('aria-hidden', 'true');
+      g.style.top = `${el.offsetTop}px`; g.style.left = `${el.offsetLeft}px`; g.style.width = `${el.offsetWidth}px`; g.style.height = `${el.offsetHeight}px`;
+      el.after(g);
+      return g;
+    });
+    view.classList.add('report-swiping');
+    return { parts: list, ghosts };
+  };
+  const place = (x, transition = 'none') => {
+    if (!st) return;
+    st.ghosts.forEach(g => { g.style.transition = transition; g.style.transform = `translate3d(${x}px, 0, 0)`; });
+    const off = st.dir ? x + st.dir * st.W : st.W * 2;
+    st.parts.forEach(el => { el.style.transition = transition; el.style.transform = `translate3d(${off}px, 0, 0)`; });
+  };
+  const cleanup = () => {
+    if (!st) return;
+    st.ghosts.forEach(g => g.remove());
+    st.parts.forEach(el => { el.style.removeProperty('transform'); el.style.removeProperty('transition'); });
+    view.classList.remove('report-swiping');
+    st = null;
+  };
+  const restoreBase = () => { statsSelectedKey = st.base.key; statsMonth = new Date(st.base.month); };
+  const showDir = dir => {
+    if (!st || st.dir === dir) return;
+    st.dir = dir;
+    restoreBase();
+    stepStatsPeriod(dir); // 접힘 = ±7일, 펼침 = ±한 달(리포트 숫자도 그 기간으로)
+  };
+  const settle = commit => {
+    const dur = reduceMotion() ? 0 : SETTLE_MS;
+    busy = true;
+    place(commit ? -st.dir * st.W : 0, dur ? `transform ${dur}ms ${EASE}` : 'none');
+    const done = () => {
+      if (!commit && st) { restoreBase(); cleanup(); rerenderStats(); } else cleanup();
+      busy = false;
+    };
+    if (dur) setTimeout(done, dur + 20); else done();
+  };
+  const blocked = (target, x) => {
+    if (busy || activeView !== 'stats') return true;
+    if (target.closest?.('#cal-expand-toggle')) return true; // 달력 손잡이 끌기 우선
+    if (document.body.classList.contains('keyboard-open')) return true;
+    return pageSwipeBlocked(target, x);
+  };
+  let sx = 0; let sy = 0; let mode = null; let tracking = false; let samples = []; let lastDx = 0;
+  view.addEventListener('touchstart', event => {
+    tracking = false; mode = null; samples = []; lastDx = 0;
+    if (event.touches.length !== 1 || st) return;
+    const t = event.touches[0];
+    if (blocked(event.target, t.clientX)) return;
+    tracking = true; sx = t.clientX; sy = t.clientY;
+    bindTarget(event.target);
+  }, { passive: true });
+  // 옆 기간을 그리면 손가락 아래 칸(달력 날짜 등)이 새로 바뀌어 원래 칸이 문서에서 빠짐 → 이벤트가 위로 안 올라옴.
+  // 그래서 처음 닿은 칸 자체와 document 둘 다에서 받고, 같은 이벤트는 한 번만 처리
+  let boundEl = null;
+  const once = event => { if (event.__reportSwipe) return false; event.__reportSwipe = true; return true; };
+  const onMove = event => {
+    if (!once(event) || !tracking) return;
+    const t = event.touches[0];
+    let dx = t.clientX - sx; const dy = t.clientY - sy;
+    if (!mode) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+      if (mode === 'v') { tracking = false; return; }
+      sx = t.clientX; dx = 0;
+      st = { base: { key: statsSelectedKey, month: new Date(statsMonth) }, W: view.getBoundingClientRect().width || innerWidth, dir: 0, ...snapshot() };
+    }
+    if (event.cancelable) event.preventDefault();
+    const x = Math.max(-st.W, Math.min(st.W, dx));
+    lastDx = x;
+    const now = performance.now();
+    samples.push({ x: t.clientX, t: now });
+    while (samples.length > 2 && now - samples[0].t > 100) samples.shift();
+    if (x !== 0) showDir(x < 0 ? 1 : -1);
+    place(Math.round(x * 10) / 10);
+  };
+  const onEnd = event => {
+    if (!once(event)) return;
+    unbindTarget();
+    if (!tracking) return;
+    tracking = false;
+    if (!st) return;
+    const a = samples[0]; const z = samples[samples.length - 1];
+    const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
+    const flick = Math.abs(vx) > 0.5 && Math.abs(lastDx) >= 20;
+    settle(!!st.dir && (flick ? Math.sign(vx) === Math.sign(lastDx) : Math.abs(lastDx) >= st.W * 0.25));
+  };
+  const onCancel = event => { if (!once(event)) return; unbindTarget(); if (!tracking) return; tracking = false; if (st) settle(false); };
+  function bindTarget(el) {
+    unbindTarget();
+    boundEl = el;
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd, { passive: true });
+    el.addEventListener('touchcancel', onCancel, { passive: true });
+  }
+  function unbindTarget() {
+    if (!boundEl) return;
+    boundEl.removeEventListener('touchmove', onMove);
+    boundEl.removeEventListener('touchend', onEnd);
+    boundEl.removeEventListener('touchcancel', onCancel);
+    boundEl = null;
+  }
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onEnd, { passive: true });
+  document.addEventListener('touchcancel', onCancel, { passive: true });
+})();
 // 밀어서 넘긴 뒤 마무리: 들어오기·차례로 나타나기 없이 바로 그 페이지로
 function commitPage(view) {
   if (foodDex?.classList.contains('open')) closeFoodDex();

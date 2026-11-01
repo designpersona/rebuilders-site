@@ -13449,3 +13449,10 @@ body.keyboard-open #page-tabs.bottom-tabs, html.kb-up #page-tabs.bottom-tabs { d
 /* 띠가 안전 영역을 맡으므로 입력줄·검색줄은 8px만 */
 .home-ai-dock { padding-bottom: 8px !important; }
 html, body { background: var(--bg); }
+
+/* 건강리포트 기간 밀기: 지금 기간(복제)과 옆 기간이 나란히 이동 */
+#view-stats { position: relative; }
+#view-stats.report-swiping { overflow-x: hidden; }
+#view-stats > .report-ghost { position: absolute !important; margin: 0 !important; box-sizing: border-box; pointer-events: none; z-index: 0; }
+#view-stats.report-swiping > :is(.cal-card, .stats-day-card, .report-period, .stats-week-card) { will-change: transform; }
+#view-stats > .report-ghost, #view-stats > .report-ghost *, #view-stats.report-swiping > :is(.cal-card, .stats-day-card, .report-period, .stats-week-card) { animation: none !important; }
