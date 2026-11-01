@@ -13480,6 +13480,8 @@ html, body { background: var(--bg); }
 /* 머리·탭·검색·닫기는 자기 높이 그대로(눌리지 않게), 목록 칸만 줄고 스크롤 */
 #modal-sheet.food-modal-sheet > * { flex-shrink: 0; }
 #modal-sheet.food-modal-sheet > .food-tab-panel.active { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+/* 스크롤 칸을 시트 양 끝까지 넓히고 안쪽에 같은 좌우 여백(20px) → 카드·버튼은 검색칸과 같은 폭, 스크롤 막대·그림자는 내용 밖 */
+#modal-sheet.food-modal-sheet > .food-tab-panel { margin-left: -20px !important; margin-right: -20px !important; padding-left: 20px !important; padding-right: 20px !important; box-sizing: border-box; }
 #modal-sheet.food-modal-sheet > .food-tab-panel:not(.active) { display: none; }
 
 /* + 시트 '내 제품': 카드는 검색칸과 같은 폭(왼쪽 들여쓰기 없음), 수정·삭제는 카드 오른쪽 세로 한 줄 */
