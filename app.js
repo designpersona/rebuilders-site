@@ -3325,6 +3325,8 @@ function closeModal() {
   productRegistrationMode = false;
   foodSearchInput.value = '';
   resetCustomFoodForm();
+  closeSheetFoodDetail();
+  clearFoodTray();
 }
 
 function renderModalProducts() {
@@ -3356,8 +3358,9 @@ foodTabs.forEach(btn => {
 });
 
 document.getElementById('modal-close').addEventListener('click', closeModal);
-document.getElementById('food-modal-x')?.addEventListener('click', closeModal);
-overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+document.getElementById('food-modal-x')?.addEventListener('click', () => { if (confirmDiscardTray()) closeModal(); });
+overlay.addEventListener('click', e => { if (e.target === overlay && confirmDiscardTray()) closeModal(); });
+document.getElementById('food-tray-save')?.addEventListener('click', event => { runButtonAction(event.currentTarget, saveFoodTray).catch?.(error => showStorageFailure(error)); });
 
 document.getElementById('custom-advanced-toggle')?.addEventListener('click', event => {
   const expanded = event.currentTarget.getAttribute('aria-expanded') === 'true';
@@ -3368,76 +3371,167 @@ document.getElementById('custom-advanced-toggle')?.addEventListener('click', eve
   document.querySelectorAll('.custom-advanced-field').forEach(field => { field.hidden = expanded; });
 });
 
-function renderFoodRows(container, entries, allowCustomActions = true) {
-  entries.forEach(([name, data]) => {
-    const visibleName = displayFoodName({ name, ...data });
-    const row = document.createElement('div');
-    row.className = 'quick-food-row';
-    const src = foodSourceMeta(data, name);
+/* + 음식 추가 시트 한 줄: 1줄 = 이름(+ 업체·세트 작은 표시), 2줄 = "1개 (120g) · 71kcal"(영양 없으면 '영양정보 없음').
+   오른쪽 + = 담기(다시 누르면 빼기). 줄을 누르면 시트 안 상세(양 바꾸면 kcal·탄단지 비례, 내 제품·최근은 수정/삭제) */
+const foodTray = []; // { key, food } — 시트를 닫으면 비움(저장된 데이터 아님)
+function trayKeyOf(name, data) { return `${name}|${data?.serving || ''}|${data?.servingAmount ?? ''}${data?.servingUnit || ''}`; }
+function trayIndex(key) { return foodTray.findIndex(item => item.key === key); }
+function sheetServingText(food) {
+  const text = displayServing(food, food.serving || '');
+  return String(text || '').replace(/^(.+?) · ([\d.]+g)$/, '$1 ($2)');
+}
+function sheetFoodBadge(name, data) {
+  if (Array.isArray(data?.items) && data.items.length) return ACTIVE_LOCALE === 'en' ? 'Set' : '세트';
+  return data?.maker || data?.brand || '';
+}
+function sheetFoodSubline(food) {
+  const serving = sheetServingText(food);
+  const kcal = isNutritionMissing(food) ? (ACTIVE_LOCALE === 'en' ? 'No nutrition info' : '영양정보 없음') : `${Math.round(Number(food.cal) || 0)}kcal`;
+  return serving ? `${serving} · ${kcal}` : kcal;
+}
+function syncTrayButton(btn, key) {
+  const on = trayIndex(key) >= 0;
+  btn.classList.toggle('is-added', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.innerHTML = on ? '<span aria-hidden="true">✓</span>' : '<span aria-hidden="true">+</span>';
+}
+function toggleTray(name, data) {
+  const key = trayKeyOf(name, data);
+  const at = trayIndex(key);
+  if (at >= 0) foodTray.splice(at, 1); else foodTray.push({ key, food: { name, ...data } });
+  renderFoodTray();
+  return at < 0;
+}
+function renderFoodTray() {
+  document.querySelectorAll('#modal-sheet .tray-add-btn').forEach(btn => syncTrayButton(btn, btn.dataset.trayKey));
+  const bar = document.getElementById('food-tray-save');
+  const close = document.getElementById('modal-close');
+  if (!bar) return;
+  const n = foodTray.length;
+  bar.hidden = !n;
+  if (close) close.hidden = n > 0;
+  if (!n) return;
+  const kcal = foodTray.reduce((sum, item) => sum + (isNutritionMissing(item.food) ? 0 : Number(item.food.cal) || 0), 0);
+  const en = ACTIVE_LOCALE === 'en';
+  bar.textContent = en ? `Log ${n} food${n > 1 ? 's' : ''}${kcal ? ` · ${Math.round(kcal)}kcal` : ''}` : `담은 음식 ${n}개 · 기록${kcal ? ` (${Math.round(kcal)}kcal)` : ''}`;
+}
+function clearFoodTray() { foodTray.length = 0; renderFoodTray(); }
+/* 담은 음식 기록: 한 개씩 기존 '바로 추가'(addFood)와 똑같이 저장 → 기록 내용은 예전과 같음 */
+async function saveFoodTray() {
+  const mealId = currentMeal;
+  if (!mealId || !foodTray.length) return;
+  const list = foodTray.map(item => item.food);
+  for (const food of list) {
+    if (!currentMeal) currentMeal = mealId;
+    await addFood(mealId, food);
+  }
+  foodTray.length = 0;
+  closeModal();
+  showToast(ACTIVE_LOCALE === 'en' ? `${list.length} logged` : `${list.length}개 기록됨`, 'info');
+}
+function confirmDiscardTray() {
+  if (!foodTray.length) return true;
+  return confirm(ACTIVE_LOCALE === 'en' ? `Discard ${foodTray.length} picked food(s)?` : `담은 음식 ${foodTray.length}개를 기록하지 않고 닫을까요?`);
+}
 
+function renderFoodRows(container, entries, allowCustomActions = true) {
+  void allowCustomActions;
+  entries.forEach(([name, data]) => {
+    const food = { name, ...data };
+    const visibleName = displayFoodName(food);
+    const row = document.createElement('div');
+    row.className = 'quick-food-row sheet-food-row';
+    const badge = sheetFoodBadge(name, data);
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'quick-food-chip';
     btn.innerHTML = `
       <span class="chip-body">
-        <span class="chip-name">${escapeHtml(visibleName)}</span>
-        <span class="chip-serving">${escapeHtml(displayServing({ name, ...data }, data.serving || ''))}</span>
-        <span class="chip-source ${src.cls}">${src.label}</span>
-      </span>
-      <span class="chip-meta">${isNutritionMissing(data)
-        ? `<span class="chip-missing">${escapeHtml(nutritionMissingLabel())}</span>`
-        : `<span>${data.cal || 0}kcal</span>
-        <span class="chip-macros">${ACTIVE_LOCALE === 'en' ? 'C' : '탄'}${data.carbs || 0}g · ${ACTIVE_LOCALE === 'en' ? 'P' : '단'}${data.protein || 0}g · ${ACTIVE_LOCALE === 'en' ? 'F' : '지'}${data.fat || 0}g</span>`}
-      </span>
-    `;
-    btn.addEventListener('click', async () => {
-      if (!currentMeal) return;
-      await runButtonAction(btn, async () => {
-        await addFood(currentMeal, { name, ...data });
-        showToast(`${visibleName} ${ACTIVE_LOCALE === 'en' ? 'saved' : '저장됨'}`, 'info');
-      });
-    });
-    row.appendChild(btn);
-
-    if (allowCustomActions && CUSTOM_FOODS[name]) {
-      const actions = document.createElement('div');
-      actions.className = 'custom-food-actions';
-
-      const editBtn = document.createElement('button');
-      editBtn.className = 'custom-edit-btn';
-      editBtn.type = 'button';
-      editBtn.textContent = ACTIVE_LOCALE === 'en' ? 'Edit' : '수정';
-      editBtn.addEventListener('click', () => {
-        startEditCustomFood(name, data);
-        setFoodTab('custom');
-      });
-      actions.appendChild(editBtn);
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'custom-delete-btn';
-      deleteBtn.type = 'button';
-      deleteBtn.textContent = ACTIVE_LOCALE === 'en' ? 'Delete' : '삭제';
-      deleteBtn.addEventListener('click', async () => {
-        const message = ACTIVE_LOCALE === 'en'
-          ? `Delete ${visibleName} from your custom foods?`
-          : `${name}을(를) 등록 음식에서 삭제할까요?`;
-        if (!confirm(message)) return;
-        await runButtonAction(deleteBtn, async () => {
-          await deleteCustomFood(name);
-          resetCustomFoodForm();
-          const q = foodSearchInput.value.trim().toLowerCase();
-          const entries = getFoodEntries().filter(([entryName, entryData]) =>
-            `${entryName} ${displayFoodName({ name: entryName, ...entryData })}`.toLowerCase().includes(q)
-          );
-          renderQuickFoods(entries);
-          showToast(ACTIVE_LOCALE === 'en' ? `${visibleName} deleted` : `${name} 삭제됨`, 'info');
-        });
-      });
-      actions.appendChild(deleteBtn);
-      row.appendChild(actions);
-    }
-
+        <span class="chip-title"><span class="chip-name">${escapeHtml(visibleName)}</span>${badge ? `<span class="chip-badge">${escapeHtml(badge)}</span>` : ''}</span>
+        <span class="chip-sub${isNutritionMissing(data) ? ' is-missing' : ''}">${escapeHtml(sheetFoodSubline(food))}</span>
+      </span>`;
+    btn.addEventListener('click', () => openSheetFoodDetail(name, data));
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'tray-add-btn';
+    add.dataset.trayKey = trayKeyOf(name, data);
+    add.setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? `Add ${visibleName}` : `${visibleName} 담기`);
+    syncTrayButton(add, add.dataset.trayKey);
+    add.addEventListener('click', event => { event.stopPropagation(); toggleTray(name, data); });
+    row.append(btn, add);
     container.appendChild(row);
   });
+}
+
+/* 시트 안 상세: 양(숫자)을 바꾸면 kcal·탄단지를 비례로 다시 계산. 양을 안 바꾸면 원래 데이터 그대로 담음 */
+let sheetDetail = null; // { name, data }
+function sheetBaseServing(data) {
+  if (data.servingAmount != null && data.servingUnit) return { amount: Number(data.servingAmount), unit: data.servingUnit };
+  const p = parseServingValue(data.serving);
+  return { amount: Number(p.amount), unit: p.unit };
+}
+function scaledSheetFood(name, data, amount) {
+  const base = sheetBaseServing(data);
+  if (!(base.amount > 0) || !(amount > 0) || amount === base.amount) return { name, ...data };
+  const r = amount / base.amount;
+  const round = v => (v == null || v === '' || Number.isNaN(Number(v)) ? v : Math.round(Number(v) * r * 10) / 10);
+  const next = { name, ...data, cal: round(data.cal), carbs: round(data.carbs), protein: round(data.protein), fat: round(data.fat) };
+  if (data.servingAmount != null && data.servingUnit) next.servingAmount = amount;
+  if (data.servingGrams != null) next.servingGrams = round(data.servingGrams);
+  if (data.serving) next.serving = `${amount}${base.unit}`;
+  return next;
+}
+function openSheetFoodDetail(name, data) {
+  const pane = document.getElementById('food-pick-detail');
+  if (!pane) return;
+  sheetDetail = { name, data };
+  const en = ACTIVE_LOCALE === 'en';
+  const base = sheetBaseServing(data);
+  const canScale = base.amount > 0 && !isNutritionMissing(data);
+  const isCustom = Boolean(CUSTOM_FOODS[name]);
+  const isRecent = RECENT_FOODS.some(f => f.name === name);
+  const badge = sheetFoodBadge(name, data);
+  pane.innerHTML = `
+    <div class="fpd-head"><button type="button" class="fpd-back" id="fpd-back" aria-label="${en ? 'Back' : '뒤로'}">‹</button><strong class="fpd-name">${escapeHtml(displayFoodName({ name, ...data }))}</strong>${badge ? `<span class="chip-badge">${escapeHtml(badge)}</span>` : ''}</div>
+    ${canScale ? `<label class="fpd-amount"><span>${en ? 'Amount' : '먹은 양'}</span><input id="fpd-amount" type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(String(base.amount))}" /><small>${escapeHtml(base.unit)}</small></label>` : `<p class="fpd-serving">${escapeHtml(sheetServingText({ name, ...data }) || '')}</p>`}
+    <div class="fpd-nutri" id="fpd-nutri"></div>
+    <div class="fpd-actions">
+      ${isCustom ? `<button type="button" class="fpd-secondary" id="fpd-edit">${en ? 'Edit' : '수정'}</button><button type="button" class="fpd-secondary is-danger" id="fpd-delete">${en ? 'Delete' : '삭제'}</button>` : ''}
+      ${!isCustom && isRecent ? `<button type="button" class="fpd-secondary is-danger" id="fpd-delete-recent">${en ? 'Remove from recent' : '최근에서 삭제'}</button>` : ''}
+    </div>
+    <button type="button" class="fpd-add" id="fpd-add"></button>`;
+  const current = () => scaledSheetFood(name, data, Number(document.getElementById('fpd-amount')?.value) || base.amount);
+  const paint = () => {
+    const f = current();
+    const g = v => `${Math.round((Number(v) || 0) * 10) / 10}g`;
+    document.getElementById('fpd-nutri').innerHTML = isNutritionMissing(f)
+      ? `<p class="fpd-missing">${en ? 'No nutrition info' : '영양정보 없음'}</p>`
+      : `<div><b>${Math.round(Number(f.cal) || 0)}</b><span>kcal</span></div><div><b>${g(f.carbs)}</b><span>${en ? 'Carbs' : '탄수화물'}</span></div><div><b>${g(f.protein)}</b><span>${en ? 'Protein' : '단백질'}</span></div><div><b>${g(f.fat)}</b><span>${en ? 'Fat' : '지방'}</span></div>`;
+    const { name: n, ...rest } = f;
+    const inTray = trayIndex(trayKeyOf(n, rest)) >= 0;
+    document.getElementById('fpd-add').textContent = inTray ? (en ? 'Remove from picks' : '담은 음식에서 빼기') : (en ? 'Add to picks' : '담기');
+  };
+  paint();
+  document.getElementById('fpd-amount')?.addEventListener('input', paint);
+  document.getElementById('fpd-back').addEventListener('click', closeSheetFoodDetail);
+  document.getElementById('fpd-add').addEventListener('click', () => { const { name: n, ...rest } = current(); toggleTray(n, rest); closeSheetFoodDetail(); });
+  document.getElementById('fpd-edit')?.addEventListener('click', () => { closeSheetFoodDetail(); startEditCustomFood(name, data); setFoodTab('custom'); });
+  document.getElementById('fpd-delete')?.addEventListener('click', async () => {
+    if (!confirm(en ? `Delete ${displayFoodName({ name, ...data })} from your custom foods?` : `${name}을(를) 등록 음식에서 삭제할까요?`)) return;
+    try { await deleteCustomFood(name); } catch (error) { showStorageFailure(error); return; }
+    closeSheetFoodDetail(); resetCustomFoodForm(); renderModalProducts(); scheduleFoodSearch();
+    showToast(en ? 'Deleted' : `${name} 삭제됨`, 'info');
+  });
+  document.getElementById('fpd-delete-recent')?.addEventListener('click', async () => {
+    try { await deleteRecentFood(name); } catch (error) { showStorageFailure(error); return; }
+    closeSheetFoodDetail();
+  });
+  pane.hidden = false;
+}
+function closeSheetFoodDetail() {
+  const pane = document.getElementById('food-pick-detail');
+  if (pane) { pane.hidden = true; pane.innerHTML = ''; }
+  sheetDetail = null;
 }
 
 

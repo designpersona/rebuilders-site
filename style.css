@@ -13488,3 +13488,48 @@ html, body { background: var(--bg); }
 #modal-sheet .quick-food-row { display: flex; align-items: stretch; gap: 8px; width: 100%; margin: 0; padding: 0 !important; min-height: 0; }
 #modal-sheet .quick-food-row > .quick-food-chip { flex: 1 1 auto; min-width: 0; margin: 0 !important; transform: none; }
 #modal-sheet .quick-food-row > .custom-food-actions { flex: none; display: flex; flex-direction: column; justify-content: center; gap: 6px; margin: 0; }
+
+/* ===== + 음식 추가 시트 목록 다시 디자인(평평한 줄 + 구분선, 오른쪽 + 담기, 아래 '담은 음식 N개 · 기록') ===== */
+#modal-sheet #recent-edit, #modal-sheet #recent-swipe-hint, #modal-sheet .custom-food-actions { display: none !important; }
+#modal-sheet .sheet-food-row { display: flex !important; align-items: center !important; gap: 12px !important; min-height: 64px; padding: 0 !important; margin: 0 !important; border: 0 !important; border-bottom: 1px solid var(--rb-hairline, #E8E9ED) !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+#modal-sheet .sheet-food-row .swipe-content { display: flex; align-items: center; gap: 12px; width: 100%; background: var(--card, #fff); }
+#modal-sheet .sheet-food-row .quick-food-chip { flex: 1 1 auto !important; min-width: 0; display: block !important; padding: 12px 0 !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; text-align: left; }
+#modal-sheet .sheet-food-row .chip-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+#modal-sheet .sheet-food-row .chip-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+#modal-sheet .sheet-food-row .chip-name { font-size: 16px; font-weight: 600; color: var(--rb-ink, #111216); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#modal-sheet .chip-badge { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border-radius: 6px; background: var(--rb-soft, #F4F5F7); color: var(--text-secondary, #6B6F7A); font-size: 11px; font-weight: 600; }
+#modal-sheet .sheet-food-row .chip-sub { font-size: 13px; color: var(--text-secondary, #6B6F7A); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#modal-sheet .sheet-food-row .chip-sub.is-missing { color: var(--text-tertiary, #9A9DA6); }
+#modal-sheet .tray-add-btn { flex: none; width: 32px; height: 32px; min-height: 0 !important; padding: 0 !important; border-radius: 50% !important; border: 1.5px solid var(--rb-hairline, #D9DBE1) !important; background: var(--card, #fff) !important; color: var(--rb-ink, #111216) !important; font: 500 20px/1 var(--font); display: inline-flex; align-items: center; justify-content: center; }
+#modal-sheet .tray-add-btn.is-added { background: var(--rb-ink, #111216) !important; border-color: var(--rb-ink, #111216) !important; color: #fff !important; font-size: 16px; }
+#modal-sheet .food-tray-save { flex-shrink: 0; width: 100%; min-height: 52px; margin-top: 8px; border: 0; border-radius: 999px; background: var(--rb-ink, #111216); color: #fff; font: 700 16px/1 var(--font); }
+#modal-sheet .food-tray-save[hidden], #modal-sheet #modal-close[hidden] { display: none !important; }
+/* 상세: 시트 위에 덮는 판(같은 시트 안) */
+#modal-sheet { position: relative; }
+#modal-sheet .food-pick-detail { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; gap: 16px; padding: 20px 20px calc(24px + var(--safe-bottom, 0px)); background: var(--card, #fff); border-radius: inherit; overflow-y: auto; }
+#modal-sheet .food-pick-detail[hidden] { display: none; }
+#modal-sheet .fpd-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#modal-sheet .fpd-back { flex: none; width: 36px; height: 36px; min-height: 0 !important; padding: 0 !important; border-radius: 50% !important; font-size: 24px; line-height: 1; }
+#modal-sheet .fpd-name { font-size: 18px; font-weight: 700; color: var(--rb-ink, #111216); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#modal-sheet .fpd-amount { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-secondary, #6B6F7A); }
+#modal-sheet .fpd-amount input { flex: 1; min-width: 0; font-size: 16px !important; text-align: right; }
+#modal-sheet .fpd-serving { margin: 0; font-size: 14px; color: var(--text-secondary, #6B6F7A); }
+#modal-sheet .fpd-nutri { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+#modal-sheet .fpd-nutri > div { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px; border-radius: 12px; background: var(--rb-soft, #F4F5F7); }
+#modal-sheet .fpd-nutri b { font-size: 16px; color: var(--rb-ink, #111216); }
+#modal-sheet .fpd-nutri span { font-size: 12px; color: var(--text-secondary, #6B6F7A); }
+#modal-sheet .fpd-missing { grid-column: 1 / -1; margin: 0; color: var(--text-tertiary, #9A9DA6); font-size: 14px; }
+#modal-sheet .fpd-actions { display: flex; gap: 8px; }
+#modal-sheet .fpd-actions:empty { display: none; }
+#modal-sheet .fpd-secondary { flex: 1; min-height: 44px; }
+#modal-sheet .fpd-secondary.is-danger { color: #D93D3D !important; }
+#modal-sheet .fpd-add { margin-top: auto; min-height: 52px; border: 0; border-radius: 999px; background: var(--rb-ink, #111216); color: #fff; font: 700 16px/1 var(--font); }
+#modal-sheet .quick-foods, #modal-sheet #quick-foods { gap: 0 !important; row-gap: 0 !important; }
+#modal-sheet #quick-foods .food-section-label { margin: 16px 0 4px !important; }
+#modal-sheet #quick-foods .food-section-label:first-child { margin-top: 0 !important; }
+#modal-sheet #quick-foods .sheet-food-row .quick-food-chip { width: auto; }
+#modal-sheet #recent-foods .quick-food-row.sheet-food-row, #modal-sheet #recent-foods .swipe-row.sheet-food-row { border: 0 !important; border-radius: 0 !important; box-shadow: inset 0 -1px 0 var(--rb-hairline, #E8E9ED) !important; }
+#modal-sheet #recent-foods .sheet-food-row .swipe-content { border: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
+#modal-sheet .fpd-back, #modal-sheet .fpd-secondary { border: 0 !important; background: var(--rb-btn-bg, #F1F2F5) !important; color: var(--rb-ink, #111216) !important; border-radius: 12px !important; font: 600 15px/1 var(--font); }
+#modal-sheet .fpd-back { border-radius: 50% !important; }
+#modal-sheet .fpd-secondary.is-danger { color: #D93D3D !important; }

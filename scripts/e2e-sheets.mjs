@@ -47,7 +47,7 @@ try {
   const rest = await evaluate(`for (const f of [{ name: '이자카야 식사', cal: 900, carbs: 70, protein: 45, fat: 40, serving: '1회' }, { name: '사과', cal: 52, serving: '100g' }, { name: '이삭 토스트 햄치즈', serving: '2개' }, { name: '바나나', cal: 89, serving: '100g' }]) await saveRecentFood(f);
     openModal('breakfast'); ${W8(600)}
     const rows = [...document.querySelectorAll('#recent-foods .swipe-row')];
-    const info = rows.map(row => { const d = row.querySelector('.swipe-delete-btn'); const s = getComputedStyle(d); const rr = row.getBoundingClientRect(); const chip = row.querySelector('.quick-food-chip').getBoundingClientRect(); const db = d.getBoundingClientRect();
+    const info = rows.map(row => { const d = row.querySelector('.swipe-delete-btn'); const s = getComputedStyle(d); const rr = row.getBoundingClientRect(); const chip = row.querySelector('.swipe-content').getBoundingClientRect(); const db = d.getBoundingClientRect();
       const pts = [[rr.right - 2, rr.top + rr.height / 2], [rr.right - 2, rr.top + 3], [rr.right - 2, rr.bottom - 2], [db.left + db.width / 2, db.top + db.height / 2]];
       const hit = pts.some(([x, y]) => document.elementFromPoint(x, y)?.closest('.swipe-delete-btn'));
       return { vis: s.visibility, op: +s.opacity, hit, covered: db.left >= chip.left && db.right <= chip.right + 0.5 && db.top >= chip.top - 0.5 && db.bottom <= chip.bottom + 0.5 }; });
@@ -96,14 +96,28 @@ try {
   const sr = await evaluate(`for (const [n, c] of [['닭강정 시트', 280], ['닭죽 시트', 180], ['닭갈비 시트', 330]]) await saveCustomFood(n, { cal: c, carbs: 20, protein: 15, fat: 14, serving: '100g' });
     await addFood('lunch', { name: '닭가슴살', ...FOOD_DB['닭가슴살'] }); await FoodSearch.build();
     openModal('lunch'); ${W8(500)} const f = document.getElementById('food-search'); f.value = '닭'; f.dispatchEvent(new Event('input', { bubbles: true })); ${W8(600)}
-    const fb = f.getBoundingClientRect(); const rows = [...document.querySelectorAll('#quick-foods .quick-food-row')];
-    const edges = rows.map(r => { const c = r.querySelector('.quick-food-chip').getBoundingClientRect(); return [Math.round(c.left - fb.left), Math.round(fb.right - c.right)]; });
+    const fb = document.querySelector('.modal-food-search').getBoundingClientRect(); const rows = [...document.querySelectorAll('#quick-foods .quick-food-row')];
+    const edges = rows.map(r => { const c = r.getBoundingClientRect(); return [Math.round(c.left - fb.left), Math.round(fb.right - c.right)]; });
     const gaps = []; for (let i = 1; i < rows.length; i++) { const a = rows[i - 1].getBoundingClientRect(), b = rows[i].getBoundingClientRect(); if (rows[i].previousElementSibling === rows[i - 1]) gaps.push(Math.round(b.top - a.bottom)); }
     const heads = [...document.querySelectorAll('#quick-foods .food-section-label')].map(h => h.textContent.split(' · ')[0]);
-    const chip = rows[0]?.querySelector('.quick-food-chip'); const parts = !!(chip?.querySelector('.chip-name') && chip.querySelector('.chip-serving') && chip.querySelector('.chip-source') && /탄[\\d.]+g · 단[\\d.]+g · 지[\\d.]+g/.test(chip.querySelector('.chip-macros')?.textContent || ''));
-    const sideButtons = document.querySelectorAll('#quick-foods .quick-food-row button:not(.quick-food-chip):not(.swipe-delete-btn)').length;
+    const parts = rows.every(r => { const c = r.querySelector('.quick-food-chip'); return c.querySelector('.chip-name')?.textContent && /(\\d+kcal|영양정보 없음)$/.test(c.querySelector('.chip-sub')?.textContent || '') && !c.querySelector('.chip-macros, .chip-source'); });
+    const sideButtons = document.querySelectorAll('#quick-foods .quick-food-row .tray-add-btn').length - rows.length + document.querySelectorAll('#quick-foods .quick-food-row .custom-food-actions').length;
     closeModal(); ${W8(300)} return { n: rows.length, edges, gaps: [...new Set(gaps)], heads, parts, sideButtons };`);
-  check('음식 추가 시트 검색 결과: 모든 줄이 검색칸 좌우 끝과 맞음(±1px), 줄 간격 8px, 최근 먹은 → 내 식도감 → 영양 DB, 이름·양·출처·kcal·탄단지', sr.n >= 4 && sr.edges.every(([l, r]) => Math.abs(l) <= 1 && Math.abs(r) <= 1) && sr.gaps.every(g => g === 8) && JSON.stringify(sr.heads) === JSON.stringify(['최근 먹은', '내 식도감', '영양 DB']) && sr.parts && sr.sideButtons === 0, JSON.stringify(sr));
+  check('음식 추가 시트 검색 결과: 모든 줄이 검색칸 좌우 끝과 맞음(±1px), 구분선 줄(간격 0), 최근 먹은 → 내 식도감 → 영양 DB, 이름 + 양 · kcal(탄단지·출처 표시 없음), 줄마다 + 하나', sr.n >= 4 && sr.edges.every(([l, r]) => Math.abs(l) <= 1 && Math.abs(r) <= 1) && sr.gaps.every(g => g === 0) && JSON.stringify(sr.heads) === JSON.stringify(['최근 먹은', '내 식도감', '영양 DB']) && sr.parts && sr.sideButtons === 0, JSON.stringify(sr));
+  // + 시트 담기: 줄마다 + → ✓, 아래 '담은 음식 N개 · 기록', 누르면 이 끼니에 한꺼번에 기록(예전 한 개씩 추가와 같은 내용), ×는 담은 게 있으면 확인
+  const tray = await evaluate(`await saveRecentFood({ name: '담기 사과', cal: 52, carbs: 14, protein: 0.3, fat: 0.2, serving: '100g' }); await saveRecentFood({ name: '담기 바나나', cal: 89, carbs: 23, protein: 1.1, fat: 0.3, serving: '100g' });
+    const before = meals.dinner.foods.length; openModal('dinner'); ${W8(500)} document.activeElement?.blur?.();
+    const rowOf = n => [...document.querySelectorAll('#recent-foods .sheet-food-row')].find(r => r.querySelector('.chip-name')?.textContent === n);
+    rowOf('담기 사과').querySelector('.tray-add-btn').click(); rowOf('담기 바나나').querySelector('.tray-add-btn').click(); ${W8(50)}
+    const bar = document.getElementById('food-tray-save'); const close = document.getElementById('modal-close');
+    const r = { checked: [...document.querySelectorAll('#recent-foods .tray-add-btn.is-added')].length, bar: bar.hidden ? '' : bar.textContent, closeHidden: close.hidden };
+    let asked = 0; const oc = window.confirm; window.confirm = () => { asked++; return false; }; document.getElementById('food-modal-x').click(); window.confirm = oc; r.asked = asked; r.stillOpen = document.getElementById('modal-overlay').classList.contains('open');
+    rowOf('담기 바나나').querySelector('.chip-sub').closest('button').click(); ${W8(50)}
+    const amt = document.getElementById('fpd-amount'); amt.value = '200'; amt.dispatchEvent(new Event('input', { bubbles: true })); r.detailKcal = document.querySelector('#fpd-nutri b')?.textContent; r.detailBtn = document.getElementById('fpd-add').textContent; document.getElementById('fpd-back').click();
+    bar.click(); ${W8(800)}
+    const added = meals.dinner.foods.slice(before).map(f => [f.name, f.cal, f.serving, !!f.id]);
+    r.added = added; r.closed = !document.getElementById('modal-overlay').classList.contains('open'); return r;`);
+  check('+ 시트 담기: + 두 번 → ✓ 2개·"담은 음식 2개 · 기록 (141kcal)"·닫기 숨김, ×는 확인 묻고 안 닫힘, 상세에서 양 200 → 178kcal, 기록 누르면 저녁에 2개(원래 값·id 있음)·시트 닫힘', tray.checked === 2 && tray.bar === '담은 음식 2개 · 기록 (141kcal)' && tray.closeHidden && tray.asked === 1 && tray.stillOpen && tray.detailKcal === '178' && tray.added.length === 2 && JSON.stringify(tray.added) === JSON.stringify([['담기 사과', 52, '100g', true], ['담기 바나나', 89, '100g', true]]) && tray.closed, JSON.stringify(tray));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));
