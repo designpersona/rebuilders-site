@@ -5149,10 +5149,10 @@ function changeStatsMonth(delta) {
   rerenderStats();
 }
 
-/* 리포트 기간: 달력 접힘 = 고른 날이 있는 주(일~토), 펼침 = 보고 있는 달. 고른 날은 '선택한 날' 카드로 따로 */
+/* 리포트 기간: 달력 접힘 = 고른 날이 있는 주의 전 주 + 그 주(2주, 일~토), 펼침 = 보고 있는 달. 고른 날은 '선택한 날' 카드로 따로 */
 function statsPeriod() {
   const sel = parseDateKey(statsSelectedKey);
-  if (!statsCalendarExpanded) return { kind: 'week', start: new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() - sel.getDay()), length: 7 };
+  if (!statsCalendarExpanded) return { kind: 'week', start: new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() - sel.getDay() - 7), length: 14 };
   const start = new Date(statsMonth.getFullYear(), statsMonth.getMonth(), 1);
   return { kind: 'month', start, length: new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate() };
 }
@@ -5181,14 +5181,15 @@ function renderStatsCalendar(animate = false) {
   label.textContent = en ? new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(statsMonth) : `${year}년 ${month + 1}월`;
   const monthPicker = document.getElementById('cal-month-picker');
   if (monthPicker) monthPicker.value = `${year}-${String(month + 1).padStart(2, '0')}`;
+  // 펼침 = 그 달 전체, 접힘 = 고른 날 주의 전 주 + 그 주(2줄)
+  const collapsedStart = statsCalendarExpanded ? null : statsPeriod().start;
   const startPad = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const rows = Math.ceil((startPad + daysInMonth) / 7);
+  const rows = collapsedStart ? 2 : Math.ceil((startPad + daysInMonth) / 7);
   const todayKey = dateKey(new Date());
   const frag = document.createDocumentFragment();
-  let selectedIndex = 0;
   for (let i = 0; i < rows * 7; i++) {
-    const date = new Date(year, month, 1 - startPad + i);
+    const date = collapsedStart ? new Date(collapsedStart.getFullYear(), collapsedStart.getMonth(), collapsedStart.getDate() + i) : new Date(year, month, 1 - startPad + i);
     const key = dateKey(date);
     const outside = date.getMonth() !== month;
     const dayData = statsCache[key];
@@ -5201,7 +5202,6 @@ function renderStatsCalendar(animate = false) {
     btn.dataset.key = key;
     btn.setAttribute('aria-label', `${formatDate(date)}${has ? `, ${kcal}kcal ${levelLabel(level)}` : ''}${key === todayKey ? (en ? ', today' : ', 오늘') : ''}`);
     btn.innerHTML = `<span class="cal-day-mark"><span class="cal-day-num">${date.getDate()}</span><span class="cal-day-kcal">${has ? kcal : ''}</span></span>`;
-    if (key === statsSelectedKey) selectedIndex = i;
     frag.appendChild(btn);
   }
   grid.replaceChildren(frag);
@@ -5222,8 +5222,8 @@ function renderStatsCalendar(animate = false) {
     const transition = animate && !reduceMotion() ? 'height 250ms cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
     viewport.style.transition = transition;
     grid.style.transition = transition.replace('height', 'transform');
-    viewport.style.height = `${statsCalendarExpanded ? rows * step - CAL_GAP : CAL_ROW}px`;
-    grid.style.transform = `translate3d(0, ${statsCalendarExpanded ? 0 : -Math.floor(selectedIndex / 7) * step}px, 0)`;
+    viewport.style.height = `${rows * step - CAL_GAP}px`;
+    grid.style.transform = 'translate3d(0, 0, 0)';
   }
 }
 function setStatsCalendarExpanded(expanded) {
@@ -5232,8 +5232,21 @@ function setStatsCalendarExpanded(expanded) {
   try { localStorage.setItem(REPORT_CAL_KEY, expanded ? '1' : '0'); } catch {}
   rerenderStats(true);
 }
+/* 건강리포트 가로 밀기: 접힘·펼침 모두 한 달씩. 이번 달이면 오늘, 아니면 같은 날짜(그 달 길이로 자름)를 고른 날로 → 접힘 달력은 그 주의 전 주 + 그 주 */
+function swipeStatsMonth(dir) {
+  const sel = parseDateKey(statsSelectedKey);
+  const base = statsCalendarExpanded ? statsMonth : new Date(sel.getFullYear(), sel.getMonth(), 1);
+  const target = new Date(base.getFullYear(), base.getMonth() + dir, 1);
+  const today = new Date();
+  const maxDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  const day = target.getFullYear() === today.getFullYear() && target.getMonth() === today.getMonth() ? today.getDate() : Math.min(sel.getDate(), maxDay);
+  statsMonth = target;
+  statsSelectedKey = dateKey(new Date(target.getFullYear(), target.getMonth(), day));
+  rerenderStats();
+}
 function stepStatsPeriod(dir) {
   if (statsCalendarExpanded) { changeStatsMonth(dir); return; }
+  // < > 버튼(접힘): 한 주씩
   const sel = parseDateKey(statsSelectedKey);
   statsSelectedKey = dateKey(new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() + dir * 7));
   rerenderStats();
@@ -5329,7 +5342,7 @@ function renderStatsWeekChart() {
   const monthMode = period.kind === 'month';
   const en = ACTIVE_LOCALE === 'en';
   const hint = document.getElementById('stats-week-hint');
-  if (hint) hint.textContent = monthMode ? (en ? 'Line: this month · dashed: goal' : '진한 선 이 달 · 점선 목표') : (en ? 'Dark: this week · light: last week · dashed: goal' : '진한 선 이 주 · 연한 선 지난주 · 점선 목표');
+  if (hint) hint.textContent = monthMode ? (en ? 'Line: this month · dashed: goal' : '진한 선 이 달 · 점선 목표') : (en ? 'Dark: these 2 weeks · light: 2 weeks before · dashed: goal' : '진한 선 이 2주 · 연한 선 그 전 2주 · 점선 목표');
   const days = [];
   const previousDays = [];
   for (let i = 0; i < period.length; i++) {
@@ -5347,7 +5360,7 @@ function renderStatsWeekChart() {
       isSelected: key === statsSelectedKey,
     });
     const previousDate = new Date(dt);
-    previousDate.setDate(dt.getDate() - 7);
+    previousDate.setDate(dt.getDate() - period.length);
     const previousData = statsCache[dateKey(previousDate)];
     const previousTotals = dayTotalsFromData(previousData);
     const previousHas = !monthMode && hasDayLog(previousData);
@@ -5464,7 +5477,7 @@ function renderStatsMonthSummary() {
   const todayKey = dateKey(new Date());
   const hasToday = days.some(d => d.key === todayKey);
   const title = period.kind === 'week'
-    ? (hasToday ? (en ? 'This week' : '이번 주') : (en ? 'Week' : '주간'))
+    ? (hasToday ? (en ? 'Last 2 weeks' : '최근 2주') : (en ? '2 weeks' : '2주간'))
     : (en ? new Intl.DateTimeFormat('en', { month: 'long' }).format(period.start) : `${period.start.getMonth() + 1}월`);
   const range = period.kind === 'week' ? `${md(period.start)} – ${md(last)}` : `${period.start.getFullYear()}.${md(period.start)} – ${md(last)}`;
   const pct = (v, t) => Math.max(0, Math.min(100, t ? (v / t) * 100 : 0)).toFixed(1);
@@ -6990,7 +7003,7 @@ let slideDayTo = null;
     if (!st || st.dir === dir) return;
     st.dir = dir;
     restoreBase();
-    stepStatsPeriod(dir); // 접힘 = ±7일, 펼침 = ±한 달(리포트 숫자도 그 기간으로)
+    swipeStatsMonth(dir); // 접힘·펼침 모두 ±한 달(리포트 숫자도 보이는 기간으로)
   };
   const settle = commit => {
     const dur = reduceMotion() ? 0 : SETTLE_MS;

@@ -1,5 +1,5 @@
 // 건강리포트 한 페이지: 일/주/월 버튼 없음, 위 달력(접힘 = 한 주 = 리포트 기간 주, 펼침 = 한 달), 높이 250ms 감속(넘침 없음), 기록한 날 점·오늘 표시,
-// 날짜 누르면 선택한 날 카드, < > 는 주/달 이동, 손잡이 끌기, 가로 밀기 = 주/달 이동, 디자인 숫자(20/17/15/13/12·28px·12px), 많은 기록에서도 빠름. 사용법: 정적 서버 8765 → node scripts/e2e-report.mjs
+// 날짜 누르면 선택한 날 카드, < > 는 주/달 이동, 손잡이 끌기, 가로 밀기 = 한 달씩(접힘은 전 주 + 그 주 2줄), 디자인 숫자(20/17/15/13/12·28px·12px), 많은 기록에서도 빠름. 사용법: 정적 서버 8765 → node scripts/e2e-report.mjs
 import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 const PORT = 9377, URL = process.argv[2] || 'http://127.0.0.1:8765/index.html';
@@ -48,7 +48,7 @@ try {
   const state = () => evaluate(`const vp = document.getElementById('cal-viewport').getBoundingClientRect(); const cells = [...document.querySelectorAll('#cal-grid .cal-day')]; const vis = cells.filter(c => { const b = c.getBoundingClientRect(); return b.top >= vp.top - 0.5 && b.bottom <= vp.bottom + 0.5; });
     return { h: Math.round(vp.height), vis: vis.map(c => c.dataset.key), sel: document.querySelector('#cal-grid .is-selected')?.dataset.key, title: document.querySelector('.report-period-title')?.textContent, range: document.querySelector('.report-period-range')?.textContent, logged: document.getElementById('report-logged-days')?.textContent, avg: document.getElementById('report-avg-cal')?.textContent, day: document.getElementById('stats-day-date')?.textContent, month: document.getElementById('cal-month-label').textContent, expanded: document.getElementById('cal-expand-toggle').getAttribute('aria-expanded'), seg: document.querySelectorAll('#report-range, [data-report-range]').length };`);
   const s1 = await state();
-  check('일/주/월 버튼 없음, 접힘: 고른 날의 한 주(일~토)만 보이고 리포트 = 그 주(10.11–10.17, 기록 5/7·평균 800)', s1.seg === 0 && s1.h === 50 && s1.vis.join() === '2026-10-11,2026-10-12,2026-10-13,2026-10-14,2026-10-15,2026-10-16,2026-10-17' && s1.sel === '2026-10-14' && s1.range === '10.11 – 10.17' && s1.logged === '5/7' && s1.avg === '800' && s1.expanded === 'false', JSON.stringify(s1));
+  check('일/주/월 버튼 없음, 접힘: 고른 날 주의 전 주 + 그 주(2줄)만 보이고 리포트 = 그 2주(10.4–10.17, 기록 10/14·평균 800)', s1.seg === 0 && s1.h === 104 && s1.vis.length === 14 && s1.vis[0] === '2026-10-04' && s1.vis[13] === '2026-10-17' && s1.sel === '2026-10-14' && s1.range === '10.4 – 10.17' && s1.logged === '10/14' && s1.avg === '800' && s1.expanded === 'false', JSON.stringify(s1));
   const dots = await evaluate(`const g = k => document.querySelector('#cal-grid .cal-day[data-key="' + k + '"]'); return { logged: !!g('2026-10-13')?.querySelector('.cal-day-dot'), none: !g('2026-10-12')?.querySelector('.cal-day-dot'), today: document.querySelectorAll('#cal-grid .is-today').length };`);
   await evaluate(`statsSelectedKey = dateKey(new Date()); rerenderStats(); return 1;`);
   const today = await evaluate(`const t = document.querySelector('#cal-grid .cal-day.is-today'); return !!t && t.dataset.key === dateKey(new Date());`);
@@ -76,7 +76,7 @@ try {
   await evaluate(`document.getElementById('cal-prev-month').click(); ${W8(100)} document.getElementById('cal-expand-toggle').click(); ${W8(400)} return 1;`);
   const s5 = await state();
   const s6 = await evaluate(`document.getElementById('cal-next-month').click(); ${W8(100)} return 1;`).then(state);
-  check('< > : 펼침이면 다음 달(11월), 접힘이면 다음 주(고른 날 +7, 리포트 = 그 주)', s4.title === '11월' && s4.month === '2026년 11월' && s5.h === 50 && s5.range === '10.18 – 10.24' && s6.sel === '2026-10-27' && s6.range === '10.25 – 10.31' && s6.vis.length === 7, JSON.stringify({ s4: s4.title, s5: s5.range, s6: { sel: s6.sel, range: s6.range, logged: s6.logged } }));
+  check('< > : 펼침이면 다음 달(11월), 접힘이면 다음 주(고른 날 +7, 리포트 = 전 주 + 그 주)', s4.title === '11월' && s4.month === '2026년 11월' && s5.h === 104 && s5.range === '10.11 – 10.24' && s6.sel === '2026-10-27' && s6.range === '10.18 – 10.31' && s6.vis.length === 14, JSON.stringify({ s4: s4.title, s5: s5.range, s6: { sel: s6.sel, range: s6.range, logged: s6.logged } }));
   // 손잡이를 아래로 끌면 펼침, 위로 끌면 접힘
   const hb = await evaluate(`const b = document.getElementById('cal-expand-toggle').getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2];`);
   await touch('touchStart', hb[0], hb[1]); for (let k = 1; k <= 5; k++) { await touch('touchMove', hb[0], hb[1] + k * 10); await sleep(16); } await touch('touchEnd'); await sleep(400);
@@ -87,15 +87,21 @@ try {
   check('손잡이 아래로 끌면 펼침, 위로 끌면 접힘', dragDown === 'true' && dragUp === 'false', JSON.stringify({ dragDown, dragUp }));
   // 가로 밀기(접힘 = 주): 왼쪽으로 밀면 다음 주, 오른쪽은 이전 주, 리포트도 그 주로
   const swipe = async (x0, x1, y = 600) => { await touch('touchStart', x0, y); for (let k = 1; k <= 8; k++) { await touch('touchMove', x0 + (x1 - x0) * k / 8, y); await sleep(16); } await touch('touchEnd'); await sleep(400); };
+  // 접힘에서도 한 달씩: 같은 날짜(달 길이로 자름), 이번 달로 가면 오늘
+  await evaluate(`statsSelectedKey = '2026-08-31'; rerenderStats(); return 1;`);
   const w0 = await state();
   await swipe(330, 74);
   const w1 = await state();
   await swipe(74, 330);
   const w2 = await state();
   const clean = await evaluate(`return activeView === 'stats' && !document.querySelector('#view-stats .report-ghost') && !document.querySelector('#view-stats > .cal-card').style.transform`);
-  check('접힘: 왼쪽 밀기 → 다음 주(고른 날 +7, 리포트 = 그 주), 오른쪽 밀기 → 원래 주', w0.expanded === 'false' && w1.sel === '2026-11-03' && w1.range === '11.1 – 11.7' && w1.vis.length === 7 && w2.sel === w0.sel && w2.range === w0.range && clean, JSON.stringify({ w0: [w0.sel, w0.range], w1: [w1.sel, w1.range, w1.logged], w2: [w2.sel, w2.range] }));
+  check('접힘: 왼쪽 밀기 → 다음 달 같은 날(8.31 → 9.30, 2줄 = 9.20–10.3, 리포트 = 그 2주), 오른쪽 → 8.30(8.23–9.5)', w0.expanded === 'false' && w1.sel === '2026-09-30' && w1.range === '9.20 – 10.3' && w1.vis.length === 14 && w1.month === '2026년 9월' && w2.sel === '2026-08-30' && w2.range === '8.23 – 9.5' && w2.month === '2026년 8월' && clean, JSON.stringify({ w0: [w0.sel, w0.range], w1: [w1.sel, w1.range, w1.logged], w2: [w2.sel, w2.range] }));
+  const tm = await evaluate(`const t = new Date(); statsSelectedKey = dateKey(new Date(t.getFullYear(), t.getMonth() - 1, 1)); rerenderStats(); return dateKey(t);`);
+  await swipe(330, 74);
+  const w3 = await state();
+  check('접힘: 이번 달로 밀면 오늘이 고른 날, 오늘 주의 전 주 + 이번 주', w3.sel === tm && w3.vis.length === 14 && w3.vis.slice(7).includes(tm), JSON.stringify({ tm, w3: [w3.sel, w3.range] }));
   // 가로 밀기(펼침 = 달): 왼쪽으로 밀면 다음 달, 오른쪽은 이전 달
-  await evaluate(`setStatsCalendarExpanded(true); ${W8(400)} return 1;`);
+  await evaluate(`statsSelectedKey = '2026-10-14'; rerenderStats(); setStatsCalendarExpanded(true); ${W8(400)} return 1;`);
   const m0 = await state();
   await swipe(330, 74, 700);
   const m1 = await state();
