@@ -40,8 +40,10 @@ check('간식으로 딸기우유 먹었어 → 간식, [딸기우유]', r.mealId
 r = p('바나나랑 요거트');
 check('끼니 생략 → 현재 시각(12시=점심), 랑으로 분리, 별칭 요거트', r.mealId === 'lunch' && !r.mealExplicit && names(r).join('|') === '바나나|그릭요거트', r);
 check('끼니 생략 8시 → 아침', p('바나나', 8).mealId === 'breakfast');
+check('끼니 생략 10시 → 아침(카드와 같음, 11시 전까지)', p('바나나', 10).mealId === 'breakfast');
 check('끼니 생략 20시 → 저녁', p('바나나', 20).mealId === 'dinner');
-check('끼니 생략 15시 → 간식', p('바나나', 15).mealId === 'snack');
+check('끼니 생략 15시 → 점심(카드와 같음, 17시 전까지. 간식은 말할 때만)', p('바나나', 15).mealId === 'lunch');
+check('끼니 생략 17시 → 저녁', p('바나나', 17).mealId === 'dinner');
 
 r = p('점심 닭가슴살이랑 현미밥하고 샐러드');
 check('이랑·하고 분리', names(r).join('|') === '닭가슴살|현미밥|샐러드', r);
@@ -95,6 +97,23 @@ check('10월 19일 저녁 바나나', p('10월 19일 저녁 바나나').date ===
 r = p('점심 바나나 2개');
 check('날짜 없으면 date 없음, 양(2개)은 그대로', r.date === null && !r.dateExplicit && r.items[0].amount?.value === 2, r);
 check('내일은 아침 바나나(조사)', p('내일은 아침 바나나').date === '2026-10-21' && names(p('내일은 아침 바나나')).join() === '바나나');
+
+r = p('저녁 밥 반 공기');
+check('밥 반 공기 → 한 항목, 0.5공기', r.items.length === 1 && r.items[0].name === '밥' && !r.items[0].known && r.items[0].amount?.value === 0.5 && r.items[0].amount?.unit === '공기' && r.items[0].food.serving === '반공기', r);
+r = p('저녁 밥 반공기 김치');
+check('저녁 밥 반공기 김치(붙여 쓴 양) 유지', r.mealId === 'dinner' && names(r).join('|') === '밥|김치' && r.items[0].food.serving === '반공기', r);
+r = p('스타벅스 윈터 스카치 바닐라 라떼 톨');
+check('라떼 톨 → 이름 유지, 355ml(톨)', r.items.length === 1 && r.items[0].name === '스타벅스 윈터 스카치 바닐라 라떼' && r.items[0].amount?.value === 355 && r.items[0].amount?.unit === 'ml' && r.items[0].food.serving === '톨', r);
+r = p('아메리카노 그란데');
+check('아메리카노 그란데 → 아는 음식, 473ml로 비례', r.items.length === 1 && r.items[0].known && r.items[0].name === '아메리카노' && r.items[0].food.serving === '그란데' && r.items[0].food.cal === 14.2, r.items[0]);
+r = p('저녁에 스타벅스 윈터 스카치 바닐라 라떼 톨이랑 루돌프 쿠키 치즈 케이크 먹었어');
+check('예문: 라떼+케이크 두 항목(케이크를 기본 DB로 쪼개지 않음)', r.mealId === 'dinner' && r.items.length === 2 && names(r).join('|') === '스타벅스 윈터 스카치 바닐라 라떼|루돌프 쿠키 치즈 케이크' && r.items[0].food.serving === '톨' && !r.items[1].known, r);
+r = p('점심 이삭 햄치즈 토스트 아아');
+check('쉼표 없이 아아 별칭은 계속 분리', names(r).join('|') === '이삭 햄치즈 토스트|아이스 아메리카노', r);
+r = p('라떼 톨사이즈');
+check('톨사이즈 → 톨(355ml)', r.items[0].food.serving === '톨' && r.items[0].amount?.value === 355, r.items[0]);
+r = p('현미밥 1공기');
+check('1공기 단위', r.items[0].name === '현미밥' && r.items[0].amount?.value === 1 && r.items[0].amount?.unit === '공기', r.items[0]);
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

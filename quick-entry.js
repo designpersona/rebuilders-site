@@ -30,9 +30,17 @@
   const NUM_WORDS = { '반': 0.5, '한': 1, '하나': 1, '두': 2, '둘': 2, '세': 3, '셋': 3, '네': 4, '넷': 4, '다섯': 5 };
   const COUNT_UNITS = ['공기', '그릇', '개', '잔', '컵', '접시', '조각', '쪽', '봉지', '봉', '팩', '캔', '병', '인분', '스푼', '숟가락', '큰술', '줌', '장', '알', '줄'];
   const MASS_UNITS = ['kg', 'g', 'ml', 'l'];
+  // 커피 기본 사이즈(스타벅스 기준 ml). 그램을 안 적어도 톨/그란데로 양을 남길 수 있게
+  const CUP_SIZES = {
+    '숏': { value: 237, text: '숏' }, short: { value: 237, text: '숏' },
+    '톨': { value: 355, text: '톨' }, tall: { value: 355, text: '톨' },
+    '그란데': { value: 473, text: '그란데' }, grande: { value: 473, text: '그란데' },
+    '벤티': { value: 591, text: '벤티' }, venti: { value: 591, text: '벤티' },
+  };
+  const CUP_RE = '숏|톨|그란데|벤티|short|tall|grande|venti';
   const UNIT_RE = [...COUNT_UNITS, ...MASS_UNITS].sort((a, b) => b.length - a.length).join('|');
   const AMOUNT_RE = new RegExp(`^(?:(\\d+(?:\\.\\d+)?)\\s*(${UNIT_RE})?|(반|한|하나|두|둘|세|셋|네|넷|다섯)\\s*(${UNIT_RE})?)$`, 'iu');
-  const AMOUNT_SUFFIX_RE = new RegExp(`^(.+?)((?:\\d+(?:\\.\\d+)?\\s*(?:${UNIT_RE}))|(?:(?:반|한|두|세|네|다섯)\\s*(?:${UNIT_RE})))$`, 'iu');
+  const AMOUNT_SUFFIX_RE = new RegExp(`^(.+?)((?:\\d+(?:\\.\\d+)?\\s*(?:${UNIT_RE}))|(?:(?:반|한|두|세|네|다섯)\\s*(?:${UNIT_RE}))|(?:${CUP_RE})(?:사이즈)?)$`, 'iu');
 
   const INTENT_RE = /(먹었|먹음|먹었다|먹은|마셨|마심|마신|기록|등록|추가)/u;
   const FILLER_WORDS = new Set([
@@ -59,6 +67,29 @@
     // "한", "두" 같은 수사는 단위 없이 혼자 오면 음식 이름일 수 있으니 숫자·'반'만 허용
     if (m[3] && !m[4] && m[3] !== '반' && m[3] !== '하나' && m[3] !== '둘' && m[3] !== '셋') return null;
     return amountValue(m);
+  }
+
+  function parseCupSize(token) {
+    const raw = compact(token);
+    if (!raw) return null;
+    const stripped = raw.replace(/사이즈$/u, '').replace(/(을|를|은|는|이|가|도|만|요)$/u, '');
+    const hit = CUP_SIZES[stripped] || CUP_SIZES[raw];
+    return hit ? { value: hit.value, unit: 'ml', text: hit.text } : null;
+  }
+
+  // 한 칸, 또는 "반"+"공기" / "톨"+"사이즈"처럼 다음 칸까지 이어서 양으로 읽음
+  function parseAmountAt(tokens, i) {
+    if (i >= tokens.length) return null;
+    const cup = parseCupSize(tokens[i]);
+    if (cup) return { amount: cup, consumed: 1 };
+    if (i + 1 < tokens.length) {
+      const two = tokens[i] + tokens[i + 1];
+      const joined = parseCupSize(two) || parseAmount(two);
+      if (joined && joined.unit) return { amount: joined, consumed: 2 };
+    }
+    const one = parseAmount(tokens[i]);
+    if (one) return { amount: one, consumed: 1 };
+    return null;
   }
 
   function detectMeal(text) {
@@ -131,11 +162,12 @@
     return out;
   }
 
+  // 홈 끼니 카드와 같게: 11시 전까지 아침, 17시 전까지 점심, 이후 저녁.
+  // 간식은 카드에서 끼니 사이 칸이라, 시각만으로 자동 지정하지 않음(사용자가 "간식"이라고 할 때만).
   function mealForTime(date = new Date()) {
     const hour = date.getHours();
-    if (hour < 10) return 'breakfast';
-    if (hour < 14) return 'lunch';
-    if (hour < 17) return 'snack';
+    if (hour < 11) return 'breakfast';
+    if (hour < 17) return 'lunch';
     return 'dinner';
   }
 
@@ -145,7 +177,7 @@
     const put = (key, entry) => { const k = compact(key); if (k && !index.has(k)) index.set(k, entry); };
     Object.entries(QUICK_ALIASES).forEach(([alias, target]) => {
       const base = foods.find(([name]) => name === target.base);
-      if (base) put(alias, { name: target.name, baseName: base[0], data: base[1] });
+      if (base) put(alias, { name: target.name, baseName: base[0], data: base[1], fromAlias: true });
     });
     foods.forEach(([name, data, extra = []]) => {
       [name, ...extra].filter(Boolean).forEach(key => put(key, { name, baseName: name, data }));
@@ -185,29 +217,34 @@
         if (hit) { matched = { hit, len }; break; }
       }
       if (matched) {
+        // 앞에 모르는 말이 남아 있으면, 별칭(아아 등)이 아닌 한 뒤 단어를 같은 음식 이름으로 봄
+        // ("루돌프 쿠키 치즈 케이크"를 케이크와 따로 나누지 않음. "토스트 아아"는 아아만 분리)
+        if (pending.length && !matched.hit.fromAlias) {
+          pending.push(...tokens.slice(i, i + matched.len));
+          i += matched.len;
+          continue;
+        }
         flushPending();
         const item = { name: matched.hit.name, baseName: matched.hit.baseName, data: matched.hit.data, known: true, amount: null };
         i += matched.len;
-        // "한 알", "2 개"처럼 띄어 쓴 양은 두 토큰을 붙여서 먼저 봄
-        const joined = i + 1 < tokens.length ? parseAmount(tokens[i] + tokens[i + 1]) : null;
-        const amount = joined && joined.unit ? joined : (i < tokens.length ? parseAmount(tokens[i]) : null);
-        if (amount) { item.amount = amount; i += amount === joined ? 2 : 1; }
+        const found = parseAmountAt(tokens, i);
+        if (found) { item.amount = found.amount; i += found.consumed; }
         items.push(item);
         continue;
       }
       const token = tokens[i];
-      const amount = parseAmount(token);
-      if (amount) {
-        if (pending.length) flushPending(amount);
-        else if (items.length && !items[items.length - 1].amount) items[items.length - 1].amount = amount;
-        i += 1;
+      const found = parseAmountAt(tokens, i);
+      if (found) {
+        if (pending.length) flushPending(found.amount);
+        else if (items.length && !items[items.length - 1].amount) items[items.length - 1].amount = found.amount;
+        i += found.consumed;
         continue;
       }
-      // "바나나2개", "밥반공기"처럼 붙여 쓴 양
+      // "바나나2개", "밥반공기", "라떼톨"처럼 붙여 쓴 양
       const suffix = token.match(AMOUNT_SUFFIX_RE);
       if (suffix) {
         const head = suffix[1];
-        const amt = parseAmount(suffix[2]);
+        const amt = parseCupSize(suffix[2]) || parseAmount(suffix[2]);
         const hit = lookup(index, [...pending, head]) || (pending.length ? null : lookup(index, [head]));
         if (hit && amt) {
           pending = [];
@@ -249,7 +286,15 @@
   function scaleFood(item) {
     const data = item.data ? { ...item.data } : null;
     if (!data) {
-      return { name: item.name, serving: item.amount ? item.amount.text : undefined };
+      const result = { name: item.name };
+      if (item.amount) {
+        result.serving = item.amount.text;
+        if (item.amount.unit === 'ml') {
+          result.servingAmount = item.amount.value;
+          result.servingUnit = 'ml';
+        }
+      }
+      return result;
     }
     const result = { name: item.name, ...data };
     delete result.description; delete result.descriptionEn;
@@ -345,7 +390,7 @@
     return (foods || []).filter(isNutritionMissing).length;
   }
 
-  const api = { parseQuickEntry, detectDate, isNutritionMissing, countNutritionMissing, mealForTime, QUICK_ALIASES, NUTRITION_CORE };
+  const api = { parseQuickEntry, detectDate, isNutritionMissing, countNutritionMissing, mealForTime, parseAmountAt, parseCupSize, scaleFood, QUICK_ALIASES, CUP_SIZES, NUTRITION_CORE };
   global.RebuildersQuickEntry = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
