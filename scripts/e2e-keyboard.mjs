@@ -76,7 +76,7 @@ try {
   const closed = await evaluate(`RebuildersKeyboard.simulate(0); ${W8(400)} const d = document.getElementById('foodex-search-bar').getBoundingClientRect(); const f = document.querySelector('.phone-frame').getBoundingClientRect(); return { dock: Math.round(d.bottom), frame: Math.round(f.bottom), h: innerHeight, kb: getComputedStyle(document.documentElement).getPropertyValue('--kb-h').trim() };`);
   check('키보드 닫히면 검색줄이 원래 자리로 내려옴', closed.frame === closed.h && closed.kb === '0px' && closed.dock > closed.h - 120, JSON.stringify(closed));
   // 5) 홈 채팅줄도 같게
-  await evaluate(`const i = document.getElementById('foodex-search-input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); setActiveView('home'); ${W8(400)} return 1;`);
+  await evaluate(`const i = document.getElementById('foodex-search-input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); setActiveView('home'); ${W8(400)} document.getElementById('ai-fab').click(); ${W8(450)} return 1;`);
   const h1 = await evaluate(kbState('agent-input', '#home-ai-dock', '#view-home'));
   check('식단 채팅줄 + 키보드: 위 탭·내용 제자리, 채팅줄만 키보드 바로 위, 밀림 되돌림', h1.tabsMoved === 0 && h1.listTopMoved === 0 && Math.abs(h1.dockBottom - h1.want) <= 2 && h1.pan.every(v => v === 0) && h1.focused, JSON.stringify(h1));
   const hpt = await evaluate(`const b = document.getElementById('view-home').getBoundingClientRect(); return [Math.round(b.left + b.width / 2), Math.round(b.top + 160)];`);

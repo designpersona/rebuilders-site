@@ -589,6 +589,44 @@ function foodSourceMeta(data, name) {
   return { label: ACTIVE_LOCALE === 'en' ? 'Local' : '로컬', cls: 'source-local' };
 }
 
+const SOURCE_LABEL_KEYS = ['공식', '공공DB', '내 음식', '추정', '없음'];
+function sourceNorm(value) {
+  return String(value || '').toLowerCase().normalize('NFC').replace(/[\s·.,()\[\]\-_/]+/g, '');
+}
+function inferSourceLabel(food, name = food?.name) {
+  if (!food) return '없음';
+  if (SOURCE_LABEL_KEYS.includes(food.sourceLabel)) {
+    if (food.sourceLabel !== '없음' || isNutritionMissing(food)) return food.sourceLabel;
+  }
+  if (isNutritionMissing(food)) return '없음';
+  if (food.sourceTrust === 'user' || food.nutritionCustom || food.source === 'user-entry') return '내 음식';
+  if (food.aiEstimate || food.sourceTrust === 'estimate' || food.source === 'openclaw') return '추정';
+  if (food.sourceTrust === 'reference' || food.source === 'Open Food Facts') return '공식';
+  const provider = String(food.nutritionSource?.provider || '');
+  if (food.source === '식약처' || food.mfdsKind || /식품의약품안전처|식약처/.test(provider)) return '공공DB';
+  if (/USDA/i.test(provider) || (name && FOOD_DB[name])) return '공공DB';
+  if (name && CUSTOM_FOODS[name] && !FOOD_DB[name]) return '내 음식';
+  return '없음';
+}
+function applySourceLabel(food) {
+  if (!food || typeof food !== 'object') return food;
+  food.sourceLabel = inferSourceLabel(food, food.name);
+  return food;
+}
+function sourceLabelText(food) {
+  const key = inferSourceLabel(food, food?.name);
+  if (ACTIVE_LOCALE === 'en') {
+    return { '공식': 'Official', '공공DB': 'Public DB', '내 음식': 'Mine', '추정': 'Estimate', '없음': 'None' }[key] || key;
+  }
+  return key;
+}
+function sourceLabelTag(food) {
+  const key = inferSourceLabel(food, food?.name);
+  if (key === '없음') return '';
+  if (key === '추정' && isAiEstimate(food)) return '';
+  return `<span class="macro-tag source-label-tag source-label-${key === '공공DB' ? 'public' : key === '내 음식' ? 'mine' : key === '공식' ? 'official' : 'estimate'}">${escapeHtml(sourceLabelText(food))}</span>`;
+}
+
 
 /* =====================================================================
    통합 음식 검색(아이폰 검색처럼): 최근 먹은 → 내 식도감 → 영양 DB 순 묶음
@@ -2209,7 +2247,7 @@ function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
       <span class="food-name">${escapeHtml(visibleName)}</span>
       <div class="food-detail-line">
         <span class="food-cal">${foodCalText(food)}</span>
-        <div class="food-macros">${isNutritionMissing(food) ? `<span class="macro-tag nutrition-missing-tag">${escapeHtml(nutritionMissingLabel())}</span>` : ''}${aiEstimateTag(food)}${nutritionTags(food)}</div>
+        <div class="food-macros">${isNutritionMissing(food) ? `<span class="macro-tag nutrition-missing-tag">${escapeHtml(nutritionMissingLabel())}</span>` : ''}${aiEstimateTag(food)}${sourceLabelTag(food)}${nutritionTags(food)}</div>
       </div>
     </div>
     <div class="food-actions">
@@ -2774,11 +2812,75 @@ async function addFoods(mealId, foodList) {
 }
 
 function quickEntryFoods() {
-  return getFoodEntries().map(([name, data]) => [
-    name,
-    data,
-    [displayFoodName({ name, ...data }), data.nameEn, FOOD_NAME_EN[name], ...(FOOD_NAME_ALIASES[name] || [])].filter(Boolean),
-  ]);
+  const seen = new Set();
+  const out = [];
+  const add = (name, data, extra = []) => {
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    out.push([name, data, extra.filter(Boolean)]);
+  };
+  getFoodEntries().forEach(([name, data]) => {
+    add(name, data, [displayFoodName({ name, ...data }), data.nameEn, FOOD_NAME_EN[name], ...(FOOD_NAME_ALIASES[name] || [])]);
+  });
+  (RECENT_FOODS || []).forEach(food => {
+    if (food?.name) add(food.name, food, [displayFoodName(food)]);
+  });
+  return out;
+}
+
+async function ensureMfdsReady() {
+  const Mfds = globalThis.MfdsDB;
+  if (!Mfds || Mfds.ready) return;
+  try { await Mfds.load(); } catch { /* 내장 DB를 못 읽어도 이름만 기록 */ }
+}
+
+function pickConfidentMatch(query) {
+  const q = sourceNorm(query);
+  if (!q) return null;
+  const eq = name => sourceNorm(name) === q;
+  for (const name of Object.keys(CUSTOM_FOODS || {})) {
+    if (eq(name)) return { name, data: CUSTOM_FOODS[name], origin: 'mine' };
+  }
+  for (const food of RECENT_FOODS || []) {
+    if (food?.name && eq(food.name)) {
+      const data = CUSTOM_FOODS[food.name] || FOOD_DB[food.name] || food;
+      return { name: food.name, data, origin: CUSTOM_FOODS[food.name] ? 'mine' : (FOOD_DB[food.name] ? 'public' : 'recent') };
+    }
+  }
+  for (const name of Object.keys(FOOD_DB || {})) {
+    if (eq(name)) return { name, data: FOOD_DB[name], origin: 'public' };
+  }
+  if (typeof FoodSearch?.search !== 'function') return null;
+  const result = FoodSearch.search(query);
+  if (!result) return null;
+  const items = (result.sections || []).flatMap(section => (section.items || []).map(item => ({ ...item, section: section.key })));
+  const exact = items.find(item => eq(item.name));
+  if (exact) {
+    return { name: exact.name, data: exact.data || {}, origin: exact.section === 'mine' ? 'mine' : 'public' };
+  }
+  const plain = items.find(item => item.plain && eq(item.name));
+  if (plain) return { name: plain.name, data: plain.data || {}, origin: 'public' };
+  return null;
+}
+
+function resolveParsedItem(item) {
+  if (!item) return null;
+  const scale = globalThis.RebuildersQuickEntry?.scaleFood;
+  if (item.known && item.data) return applySourceLabel({ ...(item.food || { name: item.name }) });
+  const hit = pickConfidentMatch(item.name);
+  if (!hit) {
+    const food = { ...(item.food || { name: item.name }) };
+    food.sourceLabel = '없음';
+    return food;
+  }
+  const raw = { ...item, name: hit.name, baseName: hit.name, data: hit.data, known: true };
+  const food = scale ? scale(raw) : { name: hit.name, ...hit.data, ...(item.amount ? { serving: item.amount.text } : {}) };
+  return applySourceLabel(food);
+}
+
+async function foodsFromParsed(parsed) {
+  await ensureMfdsReady();
+  return (parsed?.items || []).map(resolveParsedItem).filter(food => food?.name);
 }
 
 function parseQuickFoodText(text) {
@@ -2788,8 +2890,11 @@ function parseQuickFoodText(text) {
 
 function quickItemSummary(food) {
   const visible = displayFoodName(food);
-  if (isNutritionMissing(food)) return `${visible}(${ACTIVE_LOCALE === 'en' ? 'no nutrition yet' : '영양정보 미입력'})`;
-  return `${visible} ${Math.round(food.cal || 0)}kcal${food.quantityNote ? ` · ${food.quantityNote}` : ''}`;
+  const amount = food.serving && food.serving !== visible ? ` ${food.serving}` : (food.quantityNote ? ` · ${food.quantityNote}` : '');
+  if (isNutritionMissing(food)) return `${visible}${amount}(${ACTIVE_LOCALE === 'en' ? 'no nutrition yet' : '영양정보 미입력'})`;
+  const src = inferSourceLabel(food);
+  const srcText = src === '추정' || src === '내 음식' ? `(${sourceLabelText(food)})` : '';
+  return `${visible}${amount} ${Math.round(food.cal || 0)}kcal${srcText}${food.quantityNote && !food.serving ? ` · ${food.quantityNote}` : ''}`;
 }
 
 /* ============================
@@ -3332,11 +3437,7 @@ function mountCustomFoodForm(destination = 'modal') {
 }
 
 function getSuggestedMealForNow() {
-  const hour = new Date().getHours();
-  if (hour < 10) return 'breakfast';
-  if (hour < 14) return 'lunch';
-  if (hour < 17) return 'snack';
-  return 'dinner';
+  return globalThis.RebuildersQuickEntry?.mealForTime(new Date()) || 'lunch';
 }
 
 function syncModalMealTarget(mealId) {
@@ -3970,7 +4071,7 @@ async function submitQuickRecord(query) {
   if (!mealId) return false;
   await goToEntryDate(parsed);
   if (mealId === 'snack' && currentMeal !== 'snack') currentSnackSlot = getDefaultSnackSlot();
-  const foods = parsed.items.map(item => item.food);
+  const foods = await foodsFromParsed(parsed);
   await addFoods(mealId, foods);
   await registerLoggedFoods(foods);
   closeModal();
@@ -4257,6 +4358,17 @@ function openFoodDex(food) {
     categoryLabel.textContent = ACTIVE_LOCALE === 'en' ? 'FOOD INDEX' : '음식 도감';
   }
   document.getElementById('food-dex-name').textContent = visibleName || (ACTIVE_LOCALE === 'en' ? 'Food' : '음식');
+  let sourceEl = document.getElementById('food-dex-source');
+  if (!sourceEl) {
+    sourceEl = document.createElement('p');
+    sourceEl.id = 'food-dex-source';
+    sourceEl.className = 'food-dex-source';
+    document.getElementById('food-dex-name')?.after(sourceEl);
+  }
+  const srcKey = inferSourceLabel(referenceFood);
+  sourceEl.textContent = ACTIVE_LOCALE === 'en' ? `Source · ${sourceLabelText(referenceFood)}` : `출처 · ${sourceLabelText(referenceFood)}`;
+  sourceEl.hidden = !srcKey;
+  sourceEl.dataset.source = srcKey;
   const servingText = referenceFood.serving || (ACTIVE_LOCALE === 'en' ? 'Serving not set' : '섭취량 미설정');
   const visibleServing = displayServing(referenceFood, servingText);
   document.getElementById('food-dex-serving').textContent = mode === 'meal'
@@ -4573,12 +4685,24 @@ mealDetailSaveBtn.addEventListener('click', async () => {
   delete next.quantityNote;
   next.name = next.name || food.name;
   if (food.icon) next.icon = food.icon;
+  const wasEstimateOrMissing = inferSourceLabel(food) === '추정' || inferSourceLabel(food) === '없음' || isNutritionMissing(food);
+  if (wasEstimateOrMissing || editRescale?.edited) {
+    next.sourceLabel = '내 음식';
+    next.sourceTrust = 'user';
+  } else {
+    next.sourceLabel = inferSourceLabel(next);
+  }
 
   await runButtonAction(mealDetailSaveBtn, async () => {
     const before = snapshotMeals();
     meals[detailMealId].foods[editingFoodIdx] = next;
     renderAll(true);
     await persistMealsOrRestore(before);
+    if ((wasEstimateOrMissing || editRescale?.edited) && next.name && !FOOD_DB[next.name]) {
+      const { id, _isNew, slot, loggedVia, inputName, ...rest } = next;
+      void id; void _isNew; void slot; void loggedVia; void inputName;
+      try { await saveCustomFood(next.name, { ...rest, discoveryOrigin: rest.discoveryOrigin || 'confirmed' }); } catch (error) { console.warn('remember food', error); }
+    }
     closeFoodEdit();
     showToast(ACTIVE_LOCALE === 'en' ? 'Food information saved.' : '음식 정보가 저장됐어요.', 'info');
   });
@@ -5231,7 +5355,7 @@ function closeFoodexLibrary() {
 
 function setActiveView(view) {
   const prevPanel = visiblePanel();
-  if (view === 'ai') { setActiveView('home'); setTimeout(() => focusAiDock(), 50); return; } // 예전 AI 탭 → 홈 하단 입력창
+  if (view === 'ai') { setTimeout(() => focusAiDock(), 50); return; } // 예전 AI 탭 → 떠 있는 기록 시트
   if (view !== 'profile') {
     previousView = view;
   }
@@ -5240,8 +5364,8 @@ function setActiveView(view) {
   document.body.classList.remove('meal-page-open');
   activeView = view;
   const aiDock = document.getElementById('home-ai-dock');
-  if (aiDock) aiDock.hidden = view !== 'home';
-  document.body.classList.toggle('has-ai-dock', view === 'home'); // 토스트를 입력창 위로
+  if (aiDock && !document.body.classList.contains('ai-sheet-open')) aiDock.hidden = true;
+  document.body.classList.toggle('has-ai-dock', document.body.classList.contains('ai-sheet-open'));
   document.body.classList.toggle('foodex-page', view === 'foodex'); // 식도감 아래 검색창
   if (view !== 'home') {
     document.querySelectorAll('#view-home .meal-card.expanded, #view-home .snack-card.expanded').forEach(card => {
@@ -6514,7 +6638,7 @@ function renderAgentEmpty() {
     button.type = 'button';
     button.className = 'agent-example';
     button.textContent = text;
-    button.addEventListener('click', () => { setAiDockPanel(false); focusAiDock(text); });
+    button.addEventListener('click', () => { focusAiDock(text); });
     box.appendChild(button);
   });
   log.appendChild(box);
@@ -6574,6 +6698,37 @@ function appendFillNutritionButton(message, mealId, idx) {
   appendToAgentMessage(message, button);
 }
 
+function appendUndoSaveButton(message, undoSnapshot) {
+  if (!message || !undoSnapshot) return;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'agent-confirm agent-undo';
+  button.textContent = ACTIVE_LOCALE === 'en' ? 'Undo' : '되돌리기';
+  button.addEventListener('click', async () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const before = snapshotMeals();
+      restoreMeals(undoSnapshot);
+      await persistMealsOrRestore(before);
+      renderAll(true);
+      if (activeMealPageContext) renderMealPage();
+      try {
+        MEAL_IDS.concat(['snack']).forEach(id => {
+          if (isNutritionMissing) dropBridgeItemsFor(dateKey(currentDate), id, meals[id]?.foods || []);
+        });
+        renderBridgePending();
+      } catch { /* 대기 목록 정리는 실패해도 기록은 되돌림 */ }
+      setAgentMessageText(message, ACTIVE_LOCALE === 'en' ? 'Undid that log.' : '방금 기록을 되돌렸어요.');
+      button.remove();
+    } catch (error) {
+      button.disabled = false;
+      showStorageFailure(error);
+    }
+  });
+  appendToAgentMessage(message, button);
+}
+
 async function handleAgentCommand() {
   const input = document.getElementById('agent-input');
   const text = input?.value.trim();
@@ -6589,36 +6744,26 @@ async function handleAgentCommand() {
     return;
   }
 
-  // 끼니를 적었거나, 먹었다/기록 같은 말이 있거나, 모두 아는 음식이면 바로 기록
-  const allKnown = parsed.items.every(item => item.known);
-  if (!parsed.mealExplicit && !parsed.recordIntent && !allKnown) {
-    appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? `Add the meal in front to log it, such as “lunch ${parsed.items[0].name}.”`
-      : `“점심 ${parsed.items[0].name}”처럼 끼니를 앞에 붙이면 바로 기록돼요.`);
-    return;
-  }
-
-  const foods = [];
-  const discoveries = [];
-  for (const item of parsed.items) {
-    let food = item.food;
-    if (!item.known && LOCAL_MODE) {
+  let foods = await foodsFromParsed(parsed);
+  if (typeof LOCAL_MODE !== 'undefined' && LOCAL_MODE) {
+    foods = await Promise.all(foods.map(async (food, i) => {
+      if (!isNutritionMissing(food)) return food;
+      const item = parsed.items[i];
       try {
         const result = await storageRepository.resolveFood({ name: item.name }, { register: false });
-        food = { ...result.food, ...(item.amount && !result.food.serving ? { serving: item.amount.text } : {}) };
-        discoveries.push(food);
+        if (!result?.food) return food;
+        return applySourceLabel({ ...result.food, ...(item.amount && !result.food.serving ? { serving: item.amount.text } : {}) });
       } catch {
-        // 자동 조회가 안 되면 이름만 저장
+        return food;
       }
-    }
-    foods.push(food);
+    }));
   }
 
   const mealId = parsed.mealId;
   await goToEntryDate(parsed);
   if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
   try {
-    void discoveries;
+    const undoSnapshot = snapshotMeals();
     const indexes = await addFoods(mealId, foods);
     await registerLoggedFoods(foods);
     const missing = foods.map((food, i) => ({ food, idx: indexes[i] })).filter(({ food }) => isNutritionMissing(food));
@@ -6630,6 +6775,7 @@ async function handleAgentCommand() {
     const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
       ? `Saved to ${mealLabel(mealId)}: ${summary}.${missing.length ? later : ''}`
       : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.${missing.length ? later : ''}`);
+    appendUndoSaveButton(message, undoSnapshot);
     if (missing.length) {
       appendFillNutritionButton(message, mealId, missing[0].idx);
       appendToAgentMessage(message, buildAskAiButton(mealId, missing.map(({ food }) => ({ name: food.name, serving: food.serving || '' })), 'agent-confirm'));
@@ -6695,7 +6841,7 @@ document.getElementById('ai-dock-form')?.addEventListener('submit', event => {
 });
 
 function focusAiDock(text = '') {
-  if (activeView !== 'home') setActiveView('home');
+  setAiDockPanel(true);
   if (!agentInputEl) return;
   if (text) agentInputEl.value = text;
   refreshAiDockSend();
@@ -6703,35 +6849,46 @@ function focusAiDock(text = '') {
 }
 
 function setAiDockPanel(open) {
+  const dock = document.getElementById('home-ai-dock');
   const panel = document.getElementById('ai-dock-panel');
   const toggle = document.getElementById('ai-dock-toggle');
   const history = document.getElementById('ai-dock-history');
-  if (!panel) return;
+  const fab = document.getElementById('ai-fab');
+  if (!panel || !dock) return;
   let backdrop = document.getElementById('ai-sheet-backdrop');
   if (!backdrop) {
     backdrop = document.createElement('div');
     backdrop.id = 'ai-sheet-backdrop';
     backdrop.className = 'ai-sheet-backdrop';
     backdrop.hidden = true;
-    panel.parentElement.insertBefore(backdrop, panel);
+    dock.parentElement?.insertBefore(backdrop, dock);
   }
   clearTimeout(panel._closeTimer);
   panel.style.transform = '';
   panel.style.transition = '';
+  dock.style.transform = '';
+  dock.style.transition = '';
   if (open) {
-    try { dismissAiDockKeyboard(); } catch {}
+    dock.hidden = false;
     panel.hidden = false;
     backdrop.hidden = false;
-    void panel.offsetHeight;
+    void dock.offsetHeight;
     panel.classList.add('is-open');
+    dock.classList.add('is-open');
     backdrop.classList.add('is-open');
+    document.body.classList.add('ai-sheet-open', 'has-ai-dock');
+    if (fab) { fab.hidden = true; fab.setAttribute('aria-expanded', 'true'); }
     renderAgentEmpty();
     const log = document.getElementById('agent-log');
     if (log) log.scrollTop = log.scrollHeight;
   } else {
+    try { dismissAiDockKeyboard(); } catch {}
     panel.classList.remove('is-open');
+    dock.classList.remove('is-open');
     backdrop.classList.remove('is-open');
-    panel._closeTimer = setTimeout(() => { panel.hidden = true; backdrop.hidden = true; refreshAiDockToggle(); }, reduceMotion() ? 0 : 300);
+    document.body.classList.remove('ai-sheet-open', 'has-ai-dock');
+    if (fab) { fab.hidden = false; fab.setAttribute('aria-expanded', 'false'); }
+    panel._closeTimer = setTimeout(() => { panel.hidden = true; dock.hidden = true; backdrop.hidden = true; refreshAiDockToggle(); }, reduceMotion() ? 0 : 280);
   }
   toggle?.setAttribute('aria-expanded', String(open));
   history?.setAttribute('aria-expanded', String(open));
@@ -6739,20 +6896,24 @@ function setAiDockPanel(open) {
 }
 function refreshAiDockToggle() {
   const toggle = document.getElementById('ai-dock-toggle');
-  const panel = document.getElementById('ai-dock-panel');
   const count = document.querySelectorAll('#agent-log .agent-message').length;
-  if (!toggle) return;
-  toggle.hidden = !count || !panel?.hidden;
-  toggle.textContent = ACTIVE_LOCALE === 'en' ? `Recent messages ${count}` : `최근 대화 ${count}`;
+  if (toggle) {
+    toggle.hidden = true;
+    toggle.textContent = ACTIVE_LOCALE === 'en' ? `Recent messages ${count}` : `최근 대화 ${count}`;
+  }
   const history = document.getElementById('ai-dock-history');
-  if (history) history.dataset.count = String(count);
+  if (history) { history.hidden = true; history.dataset.count = String(count); }
+  const fab = document.getElementById('ai-fab');
+  if (fab && !document.body.classList.contains('ai-sheet-open')) fab.hidden = false;
 }
 document.getElementById('ai-dock-toggle')?.addEventListener('click', () => setAiDockPanel(true));
+document.getElementById('ai-fab')?.addEventListener('click', () => setAiDockPanel(true));
 // 최근 대화 패널 바깥을 누르면 닫기
 document.addEventListener('pointerdown', event => {
   const panel = document.getElementById('ai-dock-panel');
-  if (!panel || panel.hidden) return;
-  if (panel.contains(event.target) || document.getElementById('agent-help-dialog')?.contains(event.target) || document.getElementById('ai-dock-toggle')?.contains(event.target) || document.getElementById('ai-dock-history')?.contains(event.target)) return;
+  const dock = document.getElementById('home-ai-dock');
+  if (!dock || dock.hidden) return;
+  if (dock.contains(event.target) || panel?.contains(event.target) || document.getElementById('agent-help-dialog')?.contains(event.target) || document.getElementById('ai-dock-toggle')?.contains(event.target) || document.getElementById('ai-dock-history')?.contains(event.target) || document.getElementById('ai-fab')?.contains(event.target)) return;
   setAiDockPanel(false);
 }, true);
 
@@ -6791,7 +6952,10 @@ function dismissAiDockKeyboard() {
   return true;
 }
 function outsideAiDock(target) {
-  return !(target && target.closest && target.closest('.home-ai-dock, .search-hub-input-row, .modal-food-search'));
+  if (!target?.closest) return true;
+  // 대화 목록·시트 배경은 입력칸 밖: 아래로 끌거나 누르면 키보드를 내림
+  if (target.closest('#agent-log, .ai-sheet-backdrop')) return true;
+  return !target.closest('.home-ai-dock, .search-hub-input-row, .modal-food-search');
 }
 // 음식 검색 '취소': 키보드만 내림(검색어·화면은 그대로) → 언제든 빠져나올 수 있음
 document.getElementById('food-search-cancel')?.addEventListener('click', () => { if (!dismissAiDockKeyboard()) document.getElementById('food-search')?.blur?.(); });
@@ -7772,7 +7936,7 @@ function showStorageUnavailable(error) {
   if (message) message.textContent = storageErrorMessage(error);
   if (phone) phone.hidden = true;
   if (screen) screen.hidden = false;
-  document.body.classList.add('app-ready'); motionOnReady(); setTimeout(() => FoodSearch.build().catch(() => {}), 300);
+  document.body.classList.add('app-ready'); motionOnReady(); setTimeout(() => { FoodSearch.build().catch(() => {}); globalThis.MfdsDB?.load?.().catch(() => {}); }, 300);
 }
 
 function showAppScreen() {
@@ -8177,6 +8341,7 @@ function fillFoodsFromBridge(list, found, records = []) {
     if (displayName && displayName !== existing.name) next.inputName = existing.name;
     if (existing.serving) next.serving = existing.serving;
     if (existing.slot !== undefined) next.slot = existing.slot;
+    if (!next.sourceLabel || next.sourceLabel === '없음') next.sourceLabel = '추정';
     list[idx] = next;
     records.push(next);
     filled += 1;
@@ -8367,8 +8532,8 @@ function renderBridgePending() {
     : bridgeProcessing ? (en ? 'Filling nutrition…' : '영양 채우는 중…')
       : offline ? (en ? `Waiting for Mac mini ${count}` : `맥 미니 연결 대기 ${count}`)
         : (en ? `Nutrition waiting ${count}` : `영양 대기 ${count}`);
-  const dock = document.getElementById('home-ai-dock');
-  if (dock && el.parentElement !== dock) dock.appendChild(el);
+  const frame = document.querySelector('.phone-frame');
+  if (frame && el.parentElement !== frame) frame.appendChild(el);
   document.body.classList.toggle('has-bridge-chip', !el.hidden);
   el.setAttribute('aria-label', en
     ? `${count} foods waiting for the Mac mini AI. Tap to try again.`
@@ -8408,8 +8573,8 @@ function saveBridgeSettingsFromInputs() {
 
 function setupBridge() {
   const dock = document.getElementById('home-ai-dock');
-  if (dock) dock.hidden = activeView !== 'home';
-  document.body.classList.toggle('has-ai-dock', activeView === 'home');
+  if (dock && !document.body.classList.contains('ai-sheet-open')) dock.hidden = true;
+  document.body.classList.toggle('has-ai-dock', document.body.classList.contains('ai-sheet-open'));
   renderBridgeSettings();
   renderBridgePending();
   processBridgeQueue();
@@ -8489,7 +8654,7 @@ async function initializeApp() {
   setupDeepLinks();
   setupBridge();
   showAppScreen();
-  document.body.classList.add('app-ready'); motionOnReady(); setTimeout(() => FoodSearch.build().catch(() => {}), 300);
+  document.body.classList.add('app-ready'); motionOnReady(); setTimeout(() => { FoodSearch.build().catch(() => {}); globalThis.MfdsDB?.load?.().catch(() => {}); }, 300);
   registerServiceWorker();
 }
 

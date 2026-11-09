@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=f40" />
+  <link rel="stylesheet" href="style.css?v=f41" />
 </head>
 
 <body>
@@ -951,11 +951,18 @@
     </div>
 
     <!-- Bottom Navigation: 내 냉장고 · 채팅 · 홈 · Foodex · 통계 -->
+    <!-- 모든 화면 오른쪽 아래: 둥근 AI 버튼. 누르면 기록 대화 시트가 열림 -->
+    <button type="button" class="ai-fab" id="ai-fab" aria-label="식단 기록하기" aria-controls="home-ai-dock" aria-expanded="false">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4H16.5A2.5 2.5 0 0 1 19 6.5V13a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.2V15.5H7.5A2.5 2.5 0 0 1 5 13V6.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M9 9.2h6M9 12h3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </button>
     <!-- 홈 하단 AI 입력창: 메신저처럼 탭바 바로 위. 키보드가 열리면 탭바가 숨고 입력창이 키보드 위에 붙음 -->
-    <div class="home-ai-dock" id="home-ai-dock">
+    <div class="home-ai-dock" id="home-ai-dock" hidden>
       <div class="ai-dock-panel" id="ai-dock-panel" hidden>
         <div class="ai-dock-panel-head">
-          <strong>최근 대화</strong>
+          <strong>식단 기록</strong>
           <span class="ai-dock-panel-actions">
             <button type="button" class="ai-dock-text-btn" id="agent-help" aria-label="AI 입력 도움말">도움말</button>
             <button type="button" class="ai-dock-text-btn" id="ai-dock-panel-close" aria-label="최근 대화 닫기">닫기</button>
@@ -967,10 +974,10 @@
       <form class="ai-dock-bar" id="ai-dock-form" action="#" autocomplete="off" novalidate>
         <button type="button" class="ai-dock-icon" id="ai-photo" aria-label="사진으로 기록" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 8.5C4 7.4 4.9 6.5 6 6.5H8L9.5 4.5H14.5L16 6.5H18C19.1 6.5 20 7.4 20 8.5V17.5C20 18.6 19.1 19.5 18 19.5H6C4.9 19.5 4 18.6 4 17.5V8.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.7"/></svg></button>
         <input type="file" id="ai-photo-input" accept="image/*" hidden />
-        <button type="button" class="ai-dock-history" id="ai-dock-history" aria-label="최근 대화 보기" aria-expanded="false" aria-controls="ai-dock-panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 4.5v3.8h3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.2l2.8 1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button type="button" class="ai-dock-history" id="ai-dock-history" hidden aria-label="최근 대화 보기" aria-expanded="false" aria-controls="ai-dock-panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 4.5v3.8h3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4.2l2.8 1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <label class="ai-dock-capsule" for="agent-input">
           <span class="ai-dock-lead" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.9"/><path d="M16 16L20 20" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span>
-          <input id="agent-input" class="ai-dock-input" type="text" placeholder="오늘 식단 기록하기" autocomplete="off" enterkeyhint="send" aria-label="먹은 음식 입력" />
+          <input id="agent-input" class="ai-dock-input" type="text" placeholder="오늘 먹은 음식을 적어 주세요" autocomplete="off" enterkeyhint="send" aria-label="먹은 음식 입력" />
           <button type="button" class="ai-dock-icon agent-voice" id="agent-voice" aria-label="음성으로 입력" aria-pressed="false" hidden><svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="7" y="2" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M4.5 9.5C4.5 12.5 6.8 15 10 15C13.2 15 15.5 12.5 15.5 9.5M10 15V18M7.5 18H12.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
         </label>
         <button type="submit" class="ai-dock-send is-empty" id="agent-send" aria-label="보내기"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -1328,11 +1335,11 @@
   <script src="notifications.js?v=1"></script>
   <script src="keyboard.js?v=4"></script>
   <script src="demo-seed.js?v=3"></script>
-  <script src="quick-entry.js?v=3"></script>
+  <script src="quick-entry.js?v=4"></script>
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=4"></script>
-  <script src="app.js?v=f40"></script>
+  <script src="app.js?v=f41"></script>
 </body>
 
 </html>

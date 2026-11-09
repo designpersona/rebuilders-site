@@ -99,6 +99,21 @@ try {
   dinner = await evaluate(stored('dinner'));
   check('새로고침 후 기록 유지, 미입력 3개(밥·김치·잡채)', ['밥', '김치'].every(n => dinner.some(f => f.name === n)) && !note.hidden && note.text.includes('미입력 3개'), JSON.stringify(note));
 
+  // 8b) 끼니 말 없이 모르는 음식도 바로 저장
+  reply = await evaluate(chat('알수없는음식xyz123'));
+  check('끼니 없이 모르는 음식도 거절하지 않고 저장', /저장했어요/.test(reply) && !reply.includes('끼니를 앞에'), reply);
+
+  // 8c) 예문: 라떼 톨 + 케이크 두 항목, 케이크를 기본 DB로 쪼개지 않음
+  reply = await evaluate(chat('저녁에 스타벅스 윈터 스카치 바닐라 라떼 톨이랑 루돌프 쿠키 치즈 케이크 먹었어'));
+  dinner = await evaluate(stored('dinner'));
+  check('예문 두 항목 즉시 저장(라떼·케이크)', dinner.some(f => f.name === '스타벅스 윈터 스카치 바닐라 라떼' && f.serving === '톨') && dinner.some(f => f.name === '루돌프 쿠키 치즈 케이크' && f.cal === null), JSON.stringify(dinner) + ' | ' + reply);
+
+  // 8d) 밥 반 공기 = 한 항목
+  const riceN = dinner.filter(f => f.name === '밥').length;
+  reply = await evaluate(chat('저녁 밥 반 공기'));
+  dinner = await evaluate(stored('dinner'));
+  check('밥 반 공기 → 저녁에 밥 하나(반공기)', dinner.filter(f => f.name === '밥').length === riceN + 1 && dinner.filter(f => f.name === '밥').some(f => f.serving === '반공기') && !dinner.some(f => f.name === '공기'), JSON.stringify(dinner.filter(f => f.name === '밥' || f.name === '공기')));
+
   // 9) 데모 제품 버튼 제거
   const demo = await evaluate(`CUSTOM_FOODS = {}; renderCollectionProducts(); return { btn: !!document.querySelector('.collection-demo-product'), text: document.getElementById('collection-products-list')?.textContent.includes('데모 제품') }`);
   check('내 제품 빈 화면에 "데모 제품 추가" 버튼 없음', !demo.btn && !demo.text, JSON.stringify(demo));

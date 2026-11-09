@@ -13538,3 +13538,147 @@ html, body { background: var(--bg); }
 .food-section-label .fs-attrib { margin-left: 6px; font-size: 11px; font-weight: 500; color: var(--text-tertiary, #9A9DA6); }
 #modal-sheet .chip-hint { color: var(--text-tertiary, #9A9DA6); }
 #modal-sheet .fpd-source { margin: -8px 0 0; font-size: 12px; color: var(--text-tertiary, #9A9DA6); }
+
+
+/* ===== 떠 있는 AI 버튼 + 기록 시트 ===== */
+.ai-fab {
+  position: absolute;
+  right: max(16px, var(--safe-right));
+  bottom: calc(44px + var(--safe-bottom) + 14px);
+  z-index: 260;
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text-primary, #111216);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.22);
+  cursor: pointer;
+}
+.ai-fab:active { transform: scale(0.94); }
+.ai-fab[hidden] { display: none !important; }
+body.foodex-page:not(.ai-sheet-open) .ai-fab {
+  bottom: calc(44px + var(--safe-bottom) + 14px + 66px);
+}
+body.keyboard-open .ai-fab,
+html.kb-up .ai-fab,
+body.meal-page-open .ai-fab,
+body.food-dex-open .ai-fab,
+body.ai-sheet-open .ai-fab { display: none !important; }
+
+.ai-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 270;
+  background: rgba(15, 15, 20, 0.28);
+}
+.ai-sheet-backdrop[hidden] { display: none !important; }
+
+#home-ai-dock.home-ai-dock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 280;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: min(72vh, 640px);
+  max-height: calc(100% - 52px);
+  margin: 0;
+  padding: 0 0 calc(8px + var(--safe-bottom, 0px)) !important;
+  border: 0;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  background: var(--bg, #fff);
+  box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.16);
+}
+#home-ai-dock.home-ai-dock[hidden] { display: none !important; }
+html.kb-up #home-ai-dock.home-ai-dock,
+body.keyboard-open #home-ai-dock.home-ai-dock {
+  top: 0;
+  height: auto;
+  max-height: none;
+  padding-bottom: 8px !important;
+  border-radius: 0;
+  box-shadow: none;
+}
+#home-ai-dock .ai-dock-panel {
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 20px 20px 0 0;
+  overflow: hidden;
+  background: transparent;
+}
+#home-ai-dock .ai-dock-panel[hidden] { display: none !important; }
+#home-ai-dock .agent-log.ai-dock-log {
+  flex: 1 1 auto;
+  max-height: none !important;
+  min-height: 0;
+}
+#home-ai-dock .ai-dock-bar {
+  padding: 8px 12px 0 !important;
+}
+#home-ai-dock .ai-dock-toggle { display: none !important; }
+
+.macro-tag.source-label-tag {
+  background: #F3F4F6;
+  color: #6B7280;
+  font-weight: 600;
+}
+.macro-tag.source-label-tag.source-label-estimate { background: #e8f1ff; color: #1d4f91; }
+.macro-tag.source-label-tag.source-label-mine { background: #ECFDF3; color: #166534; }
+.macro-tag.source-label-tag.source-label-official { background: #FFF7ED; color: #9A3412; }
+.food-dex-source {
+  margin: 4px 0 0;
+  font: 500 12px/1.4 var(--font);
+  color: var(--text-secondary, #6B7280);
+}
+.food-dex-source[hidden] { display: none !important; }
+
+body:not(.ai-sheet-open) #view-home,
+body:not(.ai-sheet-open) #view-stats,
+body:not(.ai-sheet-open) #view-profile {
+  padding-bottom: calc(88px + var(--safe-bottom)) !important;
+}
+.toast-host { bottom: calc(44px + var(--safe-bottom) + 78px) !important; }
+body.ai-sheet-open .toast-host,
+body.has-ai-dock .toast-host,
+body.has-ai-dock.keyboard-open .toast-host {
+  bottom: calc(var(--kb-h, 0px) + 84px + 8px) !important;
+}
+body.has-ai-dock.has-bridge-chip .toast-host {
+  bottom: calc(var(--kb-h, 0px) + 84px + 44px) !important;
+}
+.phone-frame > .bridge-pending {
+  position: absolute;
+  top: auto;
+  bottom: calc(44px + var(--safe-bottom) + 78px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 255;
+  padding: 6px 12px;
+  background: var(--rb-pill-dark, #1C1D21);
+  font: var(--rb-type-caption, 700 12px/1.3 var(--font));
+  box-shadow: none;
+}
+body.foodex-page:not(.ai-sheet-open) .phone-frame > .bridge-pending {
+  bottom: calc(44px + var(--safe-bottom) + 78px + 66px);
+}
+body.ai-sheet-open .phone-frame > .bridge-pending {
+  bottom: calc(var(--kb-h, 0px) + 92px);
+}
