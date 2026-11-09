@@ -87,7 +87,7 @@ try {
     const chip = document.getElementById('bridge-pending'); const f = meals.snack.foods.find(x => x.name === '오프라인떡');
     window.fetch = window.__realFetch; RebuildersBridge.setConfig({ url: '', token: '' });
     return { mid, hidden: chip.hidden, working: chip.classList.contains('is-working'), cal: f?.cal, queue: RebuildersBridge.getQueue().length, calls: window.__calls.map(u => u.replace(/^https?:\\/\\/[^/]+/, '')) };`);
-  check('느린 맥 미니: 칩 눌러 다시 시도하면 기다렸다가 채우고 칩이 사라짐', /채우는 중/.test(r7.mid) && r7.hidden && !r7.working && r7.cal === 200 && r7.queue === 0 && r7.calls[0] === '/health' && r7.calls.includes('/log'), JSON.stringify(r7));
+  check('느린 맥 미니: 칩 눌러 다시 시도하면 기다렸다가 채우고 칩이 사라짐', /채우는 중/.test(r7.mid) && r7.hidden && !r7.working && r7.cal === 200 && r7.queue === 0 && r7.calls[0] === '/health' && (r7.calls.includes('/jobs') || r7.calls.includes('/log')), JSON.stringify(r7));
   // 8. 식약처 내장 DB: 첫 검색 때만 앱 안 파일(data/mfds.json) 하나를 읽고, 검색 중 다른 요청은 없음
   await evaluate(`window.fetch = window.__realFetch; FoodSearch.externalProvider = null; FoodSearch.externalOfflineUntil = 0; ${type('')} return 1;`);
   const r8 = await evaluate(`const t0 = performance.now(); ${type('햇반')} for (let k = 0; k < 100 && !MfdsDB.ready; k++) ${W8(50)} ${W8(200)} const firstMs = Math.round(performance.now() - t0);

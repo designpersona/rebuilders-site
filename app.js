@@ -1046,7 +1046,8 @@ async function findFoodWithAi(name, button) {
   button.disabled = true;
   label.textContent = en ? 'AI is searching…' : '영양 찾는 중…';
   try {
-    const result = await RebuildersBridge.lookup({ date: dateKey(currentDate), meal: 'snack', items: [{ name }] });
+    const job = { date: dateKey(currentDate), meal: 'snack', items: [{ name }] };
+    const result = RebuildersBridge.lookupAndWait ? await RebuildersBridge.lookupAndWait(job) : await RebuildersBridge.lookup(job);
     const item = result.items?.[0];
     const fields = item ? RebuildersBridge.toFoodFields(item) : null;
     if (!fields) { showToast(en ? 'AI could not find it. Register it yourself.' : 'AI가 찾지 못했어요. 직접 등록해 주세요.', 'info'); return; }
@@ -6878,6 +6879,7 @@ function setAiDockPanel(open) {
     backdrop.classList.add('is-open');
     document.body.classList.add('ai-sheet-open', 'has-ai-dock');
     if (fab) { fab.hidden = true; fab.setAttribute('aria-expanded', 'true'); }
+    if (globalThis.RebuildersBridge?.getQueue().length) processBridgeQueue({ fresh: true });
     renderAgentEmpty();
     const log = document.getElementById('agent-log');
     if (log) log.scrollTop = log.scrollHeight;
@@ -8281,8 +8283,13 @@ logLinkModal?.addEventListener('click', event => { if (event.target === logLinkM
    - 빠른 입력/채팅으로 저장한 '영양정보 미입력' 음식의 이름·양만 맥 미니로 보내고,
      받은 값(AI 추정)으로 그 기록을 바로 채움. 연결이 안 되면 대기 → 앱을 열거나 다시 볼 때 재시도.
    - 텔레그램 'AI에게 물어보기'는 그대로 대체 방법으로 남김.
+   - 맥 미니에 맡기고(바로 답) 결과는 나중에 받아옴: 맡긴 직후 몇 번(3초~1분 간격), 앱 열기·화면 복귀·AI 대화창 열기·칩 누를 때.
+     음식마다 따로 찾으니 먼저 찾은 것부터 채움. 채우는 건 아직 '미입력'인 기록만(내 음식·직접 고친 값은 안 건드림).
    ============================ */
 let bridgeProcessing = false;
+const BRIDGE_POLL_DELAYS = [3000, 6000, 10000, 15000, 20000, 30000, 45000, 60000];
+let bridgePollTimer = null;
+let bridgePollStep = 0;
 let bridgeLastStop = ''; // 마지막 대기 목록 처리 결과('unreachable' 이면 칩이 '맥 미니 연결 대기')
 let bridgeRerun = false;
 let bridgeAnnounce = false;
@@ -8422,7 +8429,18 @@ async function runBridgeQueueOnce({ announce = false } = {}) {
         if (!live.length) { RebuildersBridge.removeJob(job.id); continue; }
         const result = await RebuildersBridge.lookup({ ...job, items: live });
         total += await applyBridgeResult(job, result);
-        RebuildersBridge.removeJob(job.id);
+        // 아직 찾는 음식(그사이 지우거나 직접 채우지 않은 것)만 작업 번호와 함께 남겨 두고 나중에 결과만 받아옴
+        const pendingNames = new Set((result.pending || []).map(name => compactFoodName(name)));
+        const still = result.remoteId
+          ? liveBridgeItems(job, await bridgeJobFoods(job)).filter(item => pendingNames.has(compactFoodName(item.name)))
+          : [];
+        if (still.length) {
+          if (!job.remoteId || job.remoteId !== result.remoteId) bridgePollStep = 0; // 새로 맡김 → 다시 짧은 간격부터
+          RebuildersBridge.setJobItems(job.id, still);
+          RebuildersBridge.setJobRemote(job.id, result.remoteId);
+        } else {
+          RebuildersBridge.removeJob(job.id);
+        }
         // 묻는 동안 지운 음식은 '못 찾았어요'에서도 뺌
         const after = liveBridgeItems({ items: (result.failed || []).map(name => ({ name })) }, await bridgeJobFoods(job));
         failedNames.push(...after.map(item => item.name));
@@ -8450,9 +8468,21 @@ async function runBridgeQueueOnce({ announce = false } = {}) {
 }
 
 /* 대기 목록 처리(이미 도는 중이면 같은 작업을 기다림). 반환: 채운 개수 */
-function processBridgeQueue({ announce = false, force = false } = {}) {
+/* 맡겨 둔 작업이 있으면 잠시 뒤 결과만 다시 받아옴(간격은 점점 길게, 몇 번까지만 — 그 뒤는 앱 열기·화면 복귀·2분 타이머) */
+function scheduleBridgePoll() {
+  clearTimeout(bridgePollTimer);
+  bridgePollTimer = null;
+  if (!globalThis.RebuildersBridge || !RebuildersBridge.getQueue().some(job => job.remoteId)) { bridgePollStep = 0; return; }
+  if (bridgeLastStop === 'unreachable' || bridgeLastStop === 'unauthorized') return;
+  if (bridgePollStep >= BRIDGE_POLL_DELAYS.length) return;
+  const delay = BRIDGE_POLL_DELAYS[bridgePollStep++];
+  bridgePollTimer = setTimeout(() => { bridgePollTimer = null; if (!document.hidden) processBridgeQueue(); }, delay);
+}
+
+function processBridgeQueue({ announce = false, force = false, fresh = false } = {}) {
   if (!globalThis.RebuildersBridge) return Promise.resolve(0);
   if (force) RebuildersBridge.resetOffline?.(); // 칩을 눌러 다시 시도: 쉬는 시간 무시하고 바로 연결 확인
+  if (force || fresh) bridgePollStep = 0;
   if (announce) bridgeAnnounce = true;
   if (bridgeRunPromise) { bridgeRerun = true; return bridgeRunPromise; }
   if (!RebuildersBridge.isConfigured() || !RebuildersBridge.getQueue().length) {
@@ -8475,6 +8505,7 @@ function processBridgeQueue({ announce = false, force = false } = {}) {
     bridgeRunPromise = null;
     bridgeRerun = false;
     renderBridgePending();
+    scheduleBridgePoll();
   });
   return bridgeRunPromise;
 }
@@ -8527,11 +8558,14 @@ function renderBridgePending() {
   el.hidden = !count && !photo;
   el.classList.toggle('is-working', bridgeProcessing || photo);
   const offline = !bridgeProcessing && bridgeLastStop === 'unreachable';
+  const searching = !bridgeProcessing && !offline && RebuildersBridge.getQueue().some(job => job.remoteId);
   el.classList.toggle('is-offline', offline && !photo);
+  if (searching && !photo) el.classList.add('is-working');
   el.textContent = photo ? (en ? 'AI is looking at the photo…' : 'AI가 사진 보는 중…')
     : bridgeProcessing ? (en ? 'Filling nutrition…' : '영양 채우는 중…')
       : offline ? (en ? `Waiting for Mac mini ${count}` : `맥 미니 연결 대기 ${count}`)
-        : (en ? `Nutrition waiting ${count}` : `영양 대기 ${count}`);
+        : searching ? (en ? `AI is searching ${count}` : `AI가 찾는 중 ${count}`)
+          : (en ? `Nutrition waiting ${count}` : `영양 대기 ${count}`);
   const frame = document.querySelector('.phone-frame');
   if (frame && el.parentElement !== frame) frame.appendChild(el);
   document.body.classList.toggle('has-bridge-chip', !el.hidden);
@@ -8608,12 +8642,12 @@ function setupBridge() {
     if (state === 'ok') processBridgeQueue({ announce: true });
   }));
   document.getElementById('bridge-pending')?.addEventListener('click', () => processBridgeQueue({ announce: true, force: true }));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) processBridgeQueue(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) processBridgeQueue({ fresh: true }); });
   window.addEventListener('online', () => processBridgeQueue({ force: true }));
   setInterval(() => { if (!document.hidden && RebuildersBridge.getQueue().length) processBridgeQueue(); }, 120000);
   const cap = globalThis.Capacitor;
   const appPlugin = cap?.isNativePlatform?.() ? (cap.Plugins?.App || cap.registerPlugin?.('App')) : null;
-  appPlugin?.addListener?.('appStateChange', state => { if (state?.isActive) processBridgeQueue(); });
+  appPlugin?.addListener?.('appStateChange', state => { if (state?.isActive) processBridgeQueue({ fresh: true }); });
 }
 
 function setupDeepLinks() {
