@@ -4,6 +4,10 @@ const config: CapacitorConfig = {
   appId: 'kr.co.rebuilders.foodtracker',
   appName: '리빌더스',
   webDir: 'www',
+  android: {
+    // 개발 중 맥 미니 브리지(http)에 연결하기 위함. 출시 전 https 서버로 바꾸면 끔.
+    allowMixedContent: true,
+  },
   ios: {
     contentInset: 'never',
   },
