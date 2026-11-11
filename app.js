@@ -64,7 +64,8 @@ const FOOD_NAME_ALIASES = Object.freeze({
   '그릭요거트': ['요거트', '그릭 요거트', 'yogurt', 'yoghurt', 'greek yoghurt'],
   '로메인': ['romaine'],
   '방울토마토': ['cherry tomatoes'],
-  '삶은 달걀': ['boiled eggs'],
+  '삶은 달걀': ['boiled eggs', '계란', '달걀', '삶은계란'],
+  '밥': ['쌀밥', '백미밥', '공기밥', '흰밥', '흰쌀밥'],
 });
 
 function displayFoodName(foodOrName) {
@@ -196,23 +197,34 @@ function displayServing(foodOrName, fallback = '') {
   const food = typeof foodOrName === 'object' && foodOrName ? foodOrName : {};
   const name = typeof foodOrName === 'string' ? foodOrName : food.name || '';
   const estimated = food.sourceTrust === 'estimate' || food.servingGramsEstimated === true;
+  const U = globalThis.RebuildersUnits;
   const amount = food.servingAmount;
   const unit = food.servingUnit;
   let serving = '';
 
   if (amount !== undefined && amount !== null && unit) {
-    const primary = `${amount}${unit}`;
-    const grams = food.servingGrams;
-    serving = grams !== undefined && grams !== null && unit !== 'g'
-      ? (estimated ? `${primary} (${grams}g 추정)` : `${primary} · ${grams}g`)
-      : primary;
+    if (U) {
+      serving = U.formatAmount({ value: amount, unit, grams: food.servingGrams, estimated });
+      if (food.serving && /^(숏|톨|그란데|벤티)$/u.test(String(food.serving))) {
+        const g = food.servingGrams;
+        serving = g != null
+          ? (estimated ? `${food.serving} (${U.trimNum(g)}ml 추정)` : `${food.serving} (${U.trimNum(g)}ml)`)
+          : food.serving;
+      }
+    } else {
+      const primary = `${amount}${unit}`;
+      const grams = food.servingGrams;
+      serving = grams !== undefined && grams !== null && unit !== 'g' && unit !== 'ml'
+        ? (estimated ? `${primary} (${grams}g 추정)` : `${primary} (${grams}g)`)
+        : primary;
+    }
   } else {
     serving = String(food.serving || fallback || '').trim().replace(/\s*추정$/, '');
     const gramSuffix = serving.match(/^(.+?)\s*\(([\d.]+)\s*g\)$/i);
     if (gramSuffix) {
       serving = estimated
         ? `${gramSuffix[1].trim()} (${gramSuffix[2]}g 추정)`
-        : `${gramSuffix[1].trim()} · ${gramSuffix[2]}g`;
+        : `${gramSuffix[1].trim()} (${gramSuffix[2]}g)`;
     }
   }
 
@@ -422,7 +434,7 @@ function timeEntryFor(mealId, slot = null) {
 }
 
 function resetCardTime(mealId, slot = null) {
-  if (mealId === 'snack') mealTimes.snack[slot] = normaliseTimeEntry(null, DEFAULT_SNACK_TIME_VALUES[slot]);
+  if (mealId === 'snack') mealTimes.snack[slot] = normaliseTimeEntry(null);
   else mealTimes[mealId] = normaliseTimeEntry(null, DEFAULT_MEAL_TIME_VALUES[mealId]);
 }
 
@@ -432,13 +444,12 @@ function setCardTime(mealId, slot, value, manual = true) {
   else mealTimes[mealId] = entry;
 }
 
-function setAutoTimeForFirstFood(mealId, slot, wasEmpty) {
+function setAutoTimeForFirstFood(mealId, slot, wasEmpty, clock) {
   if (!wasEmpty) return;
   const entry = timeEntryFor(mealId, slot);
   if (!entry.manual) {
-    // 사용자가 직접 설정하지 않으면 평균 고정 시간 유지
-    const fixed = mealId === 'snack' ? null : DEFAULT_MEAL_TIME_VALUES[mealId];
-    entry.value = fixed || currentClockTime();
+    // 첫 음식을 넣은 시각, 또는 문장에 말한 시각. 평균 고정 시간(08:00 등)은 쓰지 않음.
+    entry.value = (typeof clock === 'string' && /^\d{2}:\d{2}$/.test(clock)) ? clock : currentClockTime();
   }
 }
 
@@ -1178,6 +1189,7 @@ function dayDataFromMeals(mealsData) {
     snack: mealsData.snack.foods,
     dinner: mealsData.dinner.foods,
     mealTimes: cloneMealTimes(),
+    cardOrder: normalizeCardOrder(cardOrder),
   };
 }
 
@@ -1188,6 +1200,8 @@ const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 let currentDate = new Date(); // 오늘 날짜로 시작
 let currentMeal = null;
 let mealTimes = defaultMealTimes();
+const DEFAULT_CARD_ORDER = Object.freeze(['snack-0', 'breakfast', 'snack-1', 'lunch', 'snack-2', 'dinner', 'snack-3']);
+let cardOrder = DEFAULT_CARD_ORDER.slice();
 let timelineEditing = false;
 let activeMealPageContext = null;
 
@@ -1225,7 +1239,8 @@ function applyCurrentDayData(data) {
   });
   // snack은 MEAL_IDS에 없지만 별도로 로드
   meals.snack.foods = day.snack.map(f => ({ ...f }));
-  mealTimes = normaliseMealTimes(data?.mealTimes);
+  mealTimes = normaliseMealTimes(data?.mealTimes || day.mealTimes);
+  cardOrder = normalizeCardOrder(data?.cardOrder || day.cardOrder);
 }
 
 /* ============================
@@ -2221,6 +2236,212 @@ function nutritionTags(food) {
     .join('');
 }
 
+
+function foodAmountLabel(food) {
+  const text = displayServing(food);
+  if (text) return text;
+  if (food?.quantityNote) return food.quantityNote;
+  if (food?.serving) return food.serving;
+  return ACTIVE_LOCALE === 'en' ? 'Set amount' : '양 입력';
+}
+
+function toggleAmountUnit(food, value, unit) {
+  const U = globalThis.RebuildersUnits;
+  if (!U) return null;
+  if (U.isMassUnit(unit)) {
+    const preferred = food.servingUnitPreferred || U.typicalServing(food.baseFood || food.name, food)?.unit || '개';
+    const per = U.gramsForUnit(food.baseFood || food.name, preferred, food);
+    if (!per) return null;
+    const raw = value / per.grams;
+    const step = U.stepFor(preferred);
+    const snapped = Math.max(step, Math.round(raw / step) * step);
+    return { value: Math.round(snapped * 100) / 100, unit: preferred };
+  }
+  const per = U.gramsForUnit(food.baseFood || food.name, unit, food);
+  if (!per) return null;
+  const info = U.GENERIC_UNITS[unit];
+  const mass = info && info.kind === 'volume' ? 'ml' : 'g';
+  return { value: Math.round(value * per.grams * 10) / 10, unit: mass };
+}
+
+let amountEditorState = null;
+function closeAmountEditor(persist = true) {
+  const pop = document.getElementById('food-amount-popover');
+  if (pop) pop.hidden = true;
+  const state = amountEditorState;
+  amountEditorState = null;
+  if (!state || !persist) return;
+  void (async () => {
+    try {
+      await persistMealsOrRestore(state.before);
+      const food = meals[state.mealId]?.foods[state.idx];
+      if (!food) return;
+      const label = inferSourceLabel(food);
+      if ((label === '추정' || label === '없음' || isNutritionMissing(food)) && food.name && !FOOD_DB[food.name]) {
+        const { id, _isNew, slot, loggedVia, inputName, ...rest } = food;
+        void id; void _isNew; void slot; void loggedVia; void inputName;
+        try { await saveCustomFood(food.name, { ...rest, discoveryOrigin: rest.discoveryOrigin || 'confirmed', sourceLabel: '내 음식', sourceTrust: 'user' }); }
+        catch (error) { console.warn('remember food amount', error); }
+      }
+    } catch (error) { showStorageFailure(error); }
+  })();
+}
+
+function paintAmountEditor() {
+  const state = amountEditorState;
+  const pop = document.getElementById('food-amount-popover');
+  if (!state || !pop) return;
+  const U = globalThis.RebuildersUnits;
+  const food = meals[state.mealId]?.foods[state.idx];
+  if (!food) { closeAmountEditor(false); return; }
+  pop.querySelector('.food-amount-value').textContent = foodAmountLabel(food);
+  const cal = pop.querySelector('.food-amount-cals');
+  if (cal) cal.textContent = isNutritionMissing(food) ? (ACTIVE_LOCALE === 'en' ? 'No nutrition yet' : '영양정보 미입력') : `${Math.round(food.cal || 0)}kcal`;
+  const unitBtn = pop.querySelector('.food-amount-unit');
+  if (unitBtn) {
+    const unit = food.servingUnit || '';
+    const mass = U && !U.isMassUnit(unit);
+    unitBtn.hidden = !U || !toggleAmountUnit(food, Number(food.servingAmount) || 0, unit || '개');
+    unitBtn.textContent = (U && U.isMassUnit(unit))
+      ? (ACTIVE_LOCALE === 'en' ? 'Use piece' : '개 단위')
+      : (ACTIVE_LOCALE === 'en' ? 'Use g' : 'g으로');
+    if (U && U.GENERIC_UNITS[unit]?.kind === 'volume') {
+      unitBtn.textContent = U.isMassUnit(unit)
+        ? (ACTIVE_LOCALE === 'en' ? 'Use cup' : '잔·컵')
+        : (ACTIVE_LOCALE === 'en' ? 'Use ml' : 'ml로');
+    }
+  }
+}
+
+function commitAmountEdit(nextAmount) {
+  const state = amountEditorState;
+  if (!state) return;
+  const U = globalThis.RebuildersUnits;
+  const list = meals[state.mealId]?.foods;
+  if (!list || !list[state.idx] || !U) return;
+  const current = list[state.idx];
+  const next = U.applyAmount(current, nextAmount, current);
+  const label = inferSourceLabel(current);
+  if (label === '추정' || label === '없음') {
+    next.sourceLabel = '내 음식';
+    next.sourceTrust = 'user';
+    next.source = 'user-entry';
+  }
+  list[state.idx] = next;
+  const row = document.querySelector(`.food-item[data-food-id="${CSS.escape(next.id || '')}"]`);
+  if (row) {
+    const btn = row.querySelector('.food-amount-btn');
+    if (btn) btn.textContent = foodAmountLabel(next);
+    const calEl = row.querySelector('.food-cal');
+    if (calEl) calEl.textContent = foodCalText(next);
+    const macros = row.querySelector('.food-macros');
+    if (macros) macros.innerHTML = `${isNutritionMissing(next) ? `<span class="macro-tag nutrition-missing-tag">${escapeHtml(nutritionMissingLabel())}</span>` : ''}${aiEstimateTag(next)}${sourceLabelTag(next)}${nutritionTags(next)}`;
+  }
+  const totals = getTotals();
+  updateRing(totals, false);
+  updateMacroBars(totals, false);
+  MEAL_IDS.forEach(id => {
+    const el = document.getElementById(`${id}-kcal`);
+    if (el) el.textContent = `${Math.round(getMealCal(id))}kcal`;
+  });
+  SNACK_SLOTS.forEach(slot => {
+    const el = document.getElementById(`snack-slot-kcal-${slot}`);
+    if (!el) return;
+    const kcal = snackFoodsForSlot(slot).reduce((s, { food }) => s + (food.cal || 0), 0);
+    el.textContent = kcal ? `${Math.round(kcal)}kcal` : '';
+  });
+  if (activeMealPageContext) {
+    const pageCal = document.getElementById('meal-page-kcal');
+    if (pageCal && activeMealPageContext.mealId === state.mealId) pageCal.textContent = `${Math.round(getMealCal(state.mealId))}kcal`;
+  }
+  paintAmountEditor();
+}
+
+function openAmountEditor(food, dragCtx, anchor) {
+  closeAmountEditor(Boolean(amountEditorState));
+  const mealId = dragCtx?.mealId;
+  const idx = resolveFoodIndex(mealId, dragCtx?.idx, food);
+  if (!mealId || idx < 0) return;
+  const U = globalThis.RebuildersUnits;
+  let current = meals[mealId].foods[idx];
+  if (U && (current.servingAmount == null || !current.servingUnit)) {
+    const typ = U.typicalServing(current.baseFood || current.name, current) || U.parseServing(current.serving || current.quantityNote || '');
+    if (typ) {
+      const next = U.applyAmount(U.attachBasis(current, current), typ, current);
+      // 예전 기록: 기준을 알 수 없으면 숫자는 그대로 두고 양만 붙임
+      if (!U.getBasis(current) && !current.basisNutrients) {
+        next.cal = current.cal; next.carbs = current.carbs; next.protein = current.protein; next.fat = current.fat;
+      }
+      meals[mealId].foods[idx] = current = next;
+    }
+  }
+  let pop = document.getElementById('food-amount-popover');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'food-amount-popover';
+    pop.className = 'food-amount-popover';
+    pop.innerHTML = `<div class="food-amount-card">
+      <button type="button" class="food-amount-step" data-dir="-1" aria-label="-">−</button>
+      <div class="food-amount-copy"><strong class="food-amount-value"></strong><span class="food-amount-cals"></span></div>
+      <button type="button" class="food-amount-step" data-dir="1" aria-label="+">+</button>
+      <button type="button" class="food-amount-unit"></button>
+    </div>`;
+    document.body.appendChild(pop);
+    pop.addEventListener('click', event => event.stopPropagation());
+    pop.querySelectorAll('.food-amount-step').forEach(btn => {
+      btn.addEventListener('click', event => {
+        event.preventDefault();
+        const state = amountEditorState;
+        if (!state) return;
+        const foodNow = meals[state.mealId]?.foods[state.idx];
+        if (!foodNow) return;
+        const U2 = globalThis.RebuildersUnits;
+        const unit = foodNow.servingUnit || U2?.typicalServing(foodNow.baseFood || foodNow.name, foodNow)?.unit || '개';
+        const step = U2 ? U2.stepFor(unit) : 1;
+        const dir = Number(btn.dataset.dir) || 1;
+        const value = Math.max(step, Math.round(((Number(foodNow.servingAmount) || step) + dir * step) * 100) / 100);
+        commitAmountEdit({ value, unit });
+      });
+    });
+    pop.querySelector('.food-amount-unit')?.addEventListener('click', event => {
+      event.preventDefault();
+      const state = amountEditorState;
+      if (!state) return;
+      const foodNow = meals[state.mealId]?.foods[state.idx];
+      if (!foodNow) return;
+      const toggled = toggleAmountUnit(foodNow, Number(foodNow.servingAmount) || 0, foodNow.servingUnit || '개');
+      if (!toggled) return;
+      if (!globalThis.RebuildersUnits.isMassUnit(foodNow.servingUnit || '')) foodNow.servingUnitPreferred = foodNow.servingUnit;
+      commitAmountEdit(toggled);
+    });
+  }
+  amountEditorState = { mealId, idx, before: snapshotMeals() };
+  pop.hidden = false;
+  paintAmountEditor();
+  const rect = anchor.getBoundingClientRect();
+  const width = Math.min(320, window.innerWidth - 24);
+  let left = rect.left + rect.width / 2 - width / 2;
+  left = Math.max(12, Math.min(left, window.innerWidth - width - 12));
+  const top = rect.bottom + 8;
+  const below = window.innerHeight - top;
+  pop.style.width = `${width}px`;
+  pop.style.left = `${left}px`;
+  if (below < 120) {
+    pop.style.top = 'auto';
+    pop.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+  } else {
+    pop.style.bottom = 'auto';
+    pop.style.top = `${top}px`;
+  }
+}
+
+document.addEventListener('pointerdown', event => {
+  const pop = document.getElementById('food-amount-popover');
+  if (!pop || pop.hidden) return;
+  if (event.target.closest('#food-amount-popover') || event.target.closest('.food-amount-btn')) return;
+  closeAmountEditor(true);
+});
+
 function dragHandleSvg() {
   return '<svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="3" r="1.4"/><circle cx="9" cy="3" r="1.4"/><circle cx="3" cy="8" r="1.4"/><circle cx="9" cy="8" r="1.4"/><circle cx="3" cy="13" r="1.4"/><circle cx="9" cy="13" r="1.4"/></svg>';
 }
@@ -2245,7 +2466,10 @@ function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
   div.innerHTML = `
     <button type="button" class="food-drag-handle" aria-label="${escapeHtml(dragLabel)}" title="${ACTIVE_LOCALE === 'en' ? 'Drag to move' : '드래그해서 이동'}">${dragHandleSvg()}</button>
     <div class="food-main">
-      <span class="food-name">${escapeHtml(visibleName)}</span>
+      <div class="food-title-row">
+        <span class="food-name">${escapeHtml(visibleName)}</span>
+        <button type="button" class="food-amount-btn" aria-label="${escapeHtml(ACTIVE_LOCALE === 'en' ? `${visibleName} amount` : `${visibleName} 양 수정`)}">${escapeHtml(foodAmountLabel(food))}</button>
+      </div>
       <div class="food-detail-line">
         <span class="food-cal">${foodCalText(food)}</span>
         <div class="food-macros">${isNutritionMissing(food) ? `<span class="macro-tag nutrition-missing-tag">${escapeHtml(nutritionMissingLabel())}</span>` : ''}${aiEstimateTag(food)}${sourceLabelTag(food)}${nutritionTags(food)}</div>
@@ -2267,6 +2491,11 @@ function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
     openFoodDex(food, { mode: 'meal', editContext: dragCtx });
   });
   setupFoodItemDragHandle(div.querySelector('.food-drag-handle'), dragCtx);
+  div.querySelector('.food-amount-btn')?.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    openAmountEditor(food, dragCtx, e.currentTarget);
+  });
   div.querySelector('.food-edit').addEventListener('click', e => {
     e.stopPropagation();
     onEdit();
@@ -2350,6 +2579,7 @@ async function clearCurrentDay() {
   MEAL_IDS.forEach(id => { meals[id].foods = []; });
   meals.snack.foods = [];
   mealTimes = defaultMealTimes();
+  cardOrder = DEFAULT_CARD_ORDER.slice();
   renderAll(false);
   try {
     await saveCurrentDay();
@@ -2418,6 +2648,7 @@ function updateTimelineStates() {
 
 function renderAll(skipAnimation = false) {
   ensureFoodIds();
+  applyCardOrder();
   MEAL_IDS.forEach(renderMeal);
   renderSnack();
   updateTimelineStates();
@@ -2687,6 +2918,7 @@ function snapshotMeals() {
       Object.entries(meals).map(([id, meal]) => [id, (meal.foods || []).filter(Boolean).map(food => ({ ...food }))])
     ),
     mealTimes: cloneMealTimes(),
+    cardOrder: normalizeCardOrder(cardOrder),
   };
 }
 
@@ -2697,6 +2929,7 @@ function restoreMeals(snapshot) {
     meals[id].foods = foods.map(food => ({ ...food }));
   });
   mealTimes = normaliseMealTimes(snapshot.mealTimes);
+  if (snapshot.cardOrder) cardOrder = normalizeCardOrder(snapshot.cardOrder);
 }
 
 async function persistMealsOrRestore(before) {
@@ -2742,7 +2975,7 @@ async function clearMealRecord(mealId, slot = null) {
   await persistMealsOrRestore(before);
 }
 
-async function addFood(mealId, foodData) {
+async function addFood(mealId, foodData, clock) {
   const before = snapshotMeals();
   const data = { ...foodData, id: newFoodId(), _isNew: true };
   // 간식이면 현재 선택된 슬롯을 자동으로 태깅
@@ -2752,7 +2985,7 @@ async function addFood(mealId, foodData) {
     ? !snackFoodsForSlot(currentSnackSlot).length
     : !meals[mealId].foods.length;
   meals[mealId].foods.push(data);
-  setAutoTimeForFirstFood(mealId, mealId === 'snack' ? currentSnackSlot : null, wasEmpty);
+  setAutoTimeForFirstFood(mealId, mealId === 'snack' ? currentSnackSlot : null, wasEmpty, clock);
   withFlip(() => renderAll(false));
   try {
     const result = await storageRepository.saveDayAndRecent(
@@ -2780,7 +3013,7 @@ async function addFood(mealId, foodData) {
 
 /* 여러 음식을 한 번에 기록(빠른 입력). 저장은 한 번만 하고, 최근 음식에도 순서대로 넣습니다.
    반환값: 각 음식이 들어간 meals[mealId].foods 인덱스 목록 */
-async function addFoods(mealId, foodList) {
+async function addFoods(mealId, foodList, clock) {
   const list = (foodList || []).filter(food => food?.name);
   if (!list.length) return [];
   const before = snapshotMeals();
@@ -2795,7 +3028,7 @@ async function addFoods(mealId, foodList) {
     meals[mealId].foods.push(data);
     return meals[mealId].foods.length - 1;
   });
-  setAutoTimeForFirstFood(mealId, destinationSlot, wasEmpty);
+  setAutoTimeForFirstFood(mealId, destinationSlot, wasEmpty, clock);
   withFlip(() => renderAll(false));
   try {
     const result = await storageRepository.saveDayAndRecent(dateKey(currentDate), dayDataFromMeals(meals), list[list.length - 1]);
@@ -2934,7 +3167,34 @@ function destinationAtPoint(x, y) {
 }
 
 /* 끼니 카드 끌어 옮기기: 집은 카드는 들려서 손가락을 따라가고, 나머지 카드가 실시간으로 비켜 자리를 만듦.
-   놓으면 그 자리로 내려앉고(250ms), 사이 카드들의 내용이 한 칸씩 밀림(자리 이름·시간 순서는 그대로) */
+   놓으면 그 자리로 내려앉고(250ms). 끼니 종류와 음식은 그대로 두고, 보이는 순서만 바꿈. */
+function cardKeyFromEl(card) {
+  if (!card) return '';
+  if (card.classList.contains('snack-card') || card.id?.startsWith('snack-slot-')) return `snack-${card.dataset.slot}`;
+  return card.dataset.meal || card.id?.replace(/-card$/, '') || '';
+}
+function cardElFromKey(key) {
+  if (String(key).startsWith('snack-')) return document.getElementById(`snack-slot-${String(key).slice(6)}`);
+  return document.getElementById(`${key}-card`);
+}
+function normalizeCardOrder(order) {
+  const seen = new Set();
+  const next = [];
+  [...(Array.isArray(order) ? order : []), ...DEFAULT_CARD_ORDER].forEach(key => {
+    if (DEFAULT_CARD_ORDER.includes(key) && !seen.has(key)) { seen.add(key); next.push(key); }
+  });
+  return next.length ? next : DEFAULT_CARD_ORDER.slice();
+}
+function applyCardOrder() {
+  const section = document.querySelector('#view-home .meals-section');
+  if (!section) return;
+  normalizeCardOrder(cardOrder).forEach(key => {
+    const el = cardElFromKey(key);
+    if (el) section.appendChild(el);
+  });
+}
+
+
 let cardSwapBatch = false;
 const CARD_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 function cardDesc(card) {
@@ -2998,12 +3258,12 @@ async function finishCardReorder(drag) {
   }
   if (to === from) { clearCardReorder(drag); cleanupDrag(drag); return; }
   const before = snapshotMeals();
-  const descs = r.items.map(cardDesc);
-  cardSwapBatch = true;
-  try {
-    const step = to > from ? 1 : -1;
-    for (let k = from; k !== to; k += step) await swapCardContents(descs[k], descs[k + step]);
-  } finally { cardSwapBatch = false; }
+  const visible = r.items.map(cardKeyFromEl);
+  const nextVisible = visible.filter((_, i) => i !== from);
+  nextVisible.splice(to, 0, visible[from]);
+  let cursor = 0;
+  cardOrder = normalizeCardOrder(cardOrder).map(key => (visible.includes(key) ? nextVisible[cursor++] : key));
+  applyCardOrder();
   clearCardReorder(drag);
   renderAll(false);
   cleanupDrag(drag);
@@ -4073,7 +4333,7 @@ async function submitQuickRecord(query) {
   await goToEntryDate(parsed);
   if (mealId === 'snack' && currentMeal !== 'snack') currentSnackSlot = getDefaultSnackSlot();
   const foods = await foodsFromParsed(parsed);
-  await addFoods(mealId, foods);
+  await addFoods(mealId, foods, parsed.time);
   await registerLoggedFoods(foods);
   closeModal();
   const missing = foods.filter(isNutritionMissing).length;
@@ -4607,6 +4867,11 @@ let editRescale = null;
 function editUnitGrams(food, unit) {
   if (unit === 'g' || unit === 'ml') return 1;
   if (unit === 'kg' || unit === 'l') return 1000;
+  const U = globalThis.RebuildersUnits;
+  if (U) {
+    const hit = U.gramsForUnit(food?.baseFood || food?.name, unit, food);
+    if (hit && Number(hit.grams) > 0) return Number(hit.grams);
+  }
   const table = food?.unitGrams || FOOD_DB[food?.baseFood || food?.name]?.unitGrams; // 예전 기록은 DB 의 한 개 무게로
   if (table && Number(table[unit]) > 0) return Number(table[unit]);
   if (food?.servingUnit === unit && Number(food.servingGrams) > 0 && Number(food.servingAmount) > 0) return Number(food.servingGrams) / Number(food.servingAmount);
@@ -6765,7 +7030,7 @@ async function handleAgentCommand() {
   if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
   try {
     const undoSnapshot = snapshotMeals();
-    const indexes = await addFoods(mealId, foods);
+    const indexes = await addFoods(mealId, foods, parsed.time);
     await registerLoggedFoods(foods);
     const missing = foods.map((food, i) => ({ food, idx: indexes[i] })).filter(({ food }) => isNutritionMissing(food));
     const summary = foods.map(quickItemSummary).join(', ');
@@ -8347,8 +8612,23 @@ function fillFoodsFromBridge(list, found, records = []) {
     const next = { ...existing, ...rest, name: displayName || existing.name };
     if (displayName && displayName !== existing.name) next.inputName = existing.name;
     if (existing.serving) next.serving = existing.serving;
+    if (existing.servingAmount != null) next.servingAmount = existing.servingAmount;
+    if (existing.servingUnit) next.servingUnit = existing.servingUnit;
+    if (existing.servingGrams != null) next.servingGrams = existing.servingGrams;
     if (existing.slot !== undefined) next.slot = existing.slot;
     if (!next.sourceLabel || next.sourceLabel === '없음') next.sourceLabel = '추정';
+    const U = globalThis.RebuildersUnits;
+    if (U && next.basisNutrients && next.basisGrams) {
+      const amount = (existing.servingAmount != null && existing.servingUnit)
+        ? { value: existing.servingAmount, unit: existing.servingUnit }
+        : (existing.serving ? (U.parseServing(existing.serving) || null) : (next.typicalServing ? U.parseServing(next.typicalServing) : U.typicalServing(next.name, next)));
+      if (amount) {
+        const scaled = U.applyAmount(next, amount, next);
+        if (existing.serving && /^(숏|톨|그란데|벤티)$/u.test(String(existing.serving))) scaled.serving = existing.serving;
+        else if (existing.serving && existing.servingAmount == null) scaled.serving = existing.serving;
+        Object.assign(next, scaled);
+      }
+    }
     list[idx] = next;
     records.push(next);
     filled += 1;

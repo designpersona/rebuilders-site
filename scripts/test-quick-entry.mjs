@@ -9,9 +9,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ctx = { globalThis: null };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
+vm.runInContext(readFileSync(join(root, 'units.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'food-catalog.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'quick-entry.js'), 'utf8'), ctx);
-const { parseQuickEntry, isNutritionMissing, countNutritionMissing } = ctx.RebuildersQuickEntry;
+const { parseQuickEntry, detectTime, isNutritionMissing, countNutritionMissing } = ctx.RebuildersQuickEntry;
 const foods = Object.entries(ctx.NILIRI_FOOD_CATALOG).map(([n, d]) => [n, d, n === '그릭요거트' ? ['요거트'] : []]);
 const at = h => new Date(2026, 9, 20, h, 0, 0);
 
@@ -21,15 +22,15 @@ const names = r => r.items.map(i => i.name);
 const p = (text, h = 12) => parseQuickEntry(text, { foods, now: at(h) });
 
 let r = p('아침 바나나');
-check('아침 바나나 → 아침, [바나나] 기본 DB', r.mealId === 'breakfast' && r.mealExplicit && names(r).join() === '바나나' && r.items[0].known && r.items[0].food.cal === 89, r);
+check('아침 바나나 → 아침, [바나나] 기본 DB, 양을 안 쓰면 1개(118g)로 환산', r.mealId === 'breakfast' && r.mealExplicit && names(r).join() === '바나나' && r.items[0].known && r.items[0].food.cal === 105 && r.items[0].food.servingGrams === 118 && r.items[0].food.serving === '1개', r);
 
 r = p('점심 이삭 햄치즈, 아아');
 check('점심 이삭 햄치즈, 아아 → 2개, 아아=아이스 아메리카노', r.mealId === 'lunch' && names(r).join('|') === '이삭 햄치즈|아이스 아메리카노' && !r.items[0].known && r.items[1].known, r);
 check('미등록 음식은 영양값을 0으로 채우지 않음', r.items[0].food.cal === undefined && r.items[0].food.carbs === undefined && isNutritionMissing(r.items[0].food), r.items[0]);
-check('아아는 아메리카노 영양값 사용', r.items[1].food.cal === 3 && r.items[1].food.baseFood === '아메리카노', r.items[1]);
+check('아아는 아메리카노 영양값 사용(1잔 톨 355ml)', r.items[1].food.cal === 10.7 && r.items[1].food.baseFood === '아메리카노' && r.items[1].food.servingGrams === 355, r.items[1]);
 
 r = p('저녁 밥 반공기 김치');
-check('저녁 밥 반공기 김치 → [밥(반공기), 김치]', r.mealId === 'dinner' && names(r).join('|') === '밥|김치' && r.items[0].food.serving === '반공기', r);
+check('저녁 밥 반공기 김치 → [밥(반공기 105g), 김치]', r.mealId === 'dinner' && names(r).join('|') === '밥|김치' && r.items[0].known && r.items[0].food.serving === '반공기' && r.items[0].food.servingGrams === 105 && r.items[0].food.cal === 136.5, r);
 
 r = p('아침에 바나나 먹었어');
 check('기존 문장 "아침에 바나나 먹었어" 유지', r.mealId === 'breakfast' && names(r).join() === '바나나' && r.recordIntent, r);
@@ -58,7 +59,7 @@ r = p('아침 바나나 150g');
 check('g 단위는 기준량 비례 계산', r.items[0].food.cal === 133.5 && r.items[0].food.serving === '150g', r.items[0].food);
 
 r = p('아침 바나나2개');
-check('붙여 쓴 양(바나나2개): 단위 변환 불가 → 기준량 유지 + 메모', names(r).join() === '바나나' && r.items[0].food.cal === 89 && r.items[0].food.quantityNote === '2개', r.items[0]);
+check('붙여 쓴 양(바나나2개): 2개=236g로 환산', names(r).join() === '바나나' && r.items[0].food.cal === 210 && r.items[0].food.serving === '2개' && r.items[0].food.servingGrams === 236 && !r.items[0].food.quantityNote, r.items[0]);
 
 r = p('간식 프로틴바 2개');
 check('"1개 60g" 기준(영양은 100g 기준) → 2개 = 120g 만큼(350 × 1.2 = 420kcal)', r.items[0].food.cal === 420 && r.items[0].food.serving === '2개' && r.items[0].food.servingGrams === 120, r.items[0].food);
@@ -99,9 +100,9 @@ check('날짜 없으면 date 없음, 양(2개)은 그대로', r.date === null &&
 check('내일은 아침 바나나(조사)', p('내일은 아침 바나나').date === '2026-10-21' && names(p('내일은 아침 바나나')).join() === '바나나');
 
 r = p('저녁 밥 반 공기');
-check('밥 반 공기 → 한 항목, 0.5공기', r.items.length === 1 && r.items[0].name === '밥' && !r.items[0].known && r.items[0].amount?.value === 0.5 && r.items[0].amount?.unit === '공기' && r.items[0].food.serving === '반공기', r);
+check('밥 반 공기 → 한 항목, 0.5공기(105g) 기본 DB', r.items.length === 1 && r.items[0].name === '밥' && r.items[0].known && r.items[0].amount?.value === 0.5 && r.items[0].amount?.unit === '공기' && r.items[0].food.serving === '반공기' && r.items[0].food.servingGrams === 105, r);
 r = p('저녁 밥 반공기 김치');
-check('저녁 밥 반공기 김치(붙여 쓴 양) 유지', r.mealId === 'dinner' && names(r).join('|') === '밥|김치' && r.items[0].food.serving === '반공기', r);
+check('저녁 밥 반공기 김치(붙여 쓴 양) 유지', r.mealId === 'dinner' && names(r).join('|') === '밥|김치' && r.items[0].food.serving === '반공기' && r.items[0].known, r);
 r = p('스타벅스 윈터 스카치 바닐라 라떼 톨');
 check('라떼 톨 → 이름 유지, 355ml(톨)', r.items.length === 1 && r.items[0].name === '스타벅스 윈터 스카치 바닐라 라떼' && r.items[0].amount?.value === 355 && r.items[0].amount?.unit === 'ml' && r.items[0].food.serving === '톨', r);
 r = p('아메리카노 그란데');
@@ -113,7 +114,32 @@ check('쉼표 없이 아아 별칭은 계속 분리', names(r).join('|') === '�
 r = p('라떼 톨사이즈');
 check('톨사이즈 → 톨(355ml)', r.items[0].food.serving === '톨' && r.items[0].amount?.value === 355, r.items[0]);
 r = p('현미밥 1공기');
-check('1공기 단위', r.items[0].name === '현미밥' && r.items[0].amount?.value === 1 && r.items[0].amount?.unit === '공기', r.items[0]);
+check('현미밥 1공기 = 210g, 315kcal', r.items[0].name === '현미밥' && r.items[0].amount?.value === 1 && r.items[0].amount?.unit === '공기' && r.items[0].food.servingGrams === 210 && r.items[0].food.cal === 315, r.items[0]);
+
+
+// 합친 음식 나누기 · 시각 · 기본 1회 양
+r = p('점심 참치김치찌개 백미밥');
+check('참치김치찌개 백미밥 → 두 항목(찌개 + 밥)', names(r).join('|') === '참치김치찌개|밥' && r.items[1].known && r.items[1].food.serving === '1공기' && r.items[1].food.servingGrams === 210, r);
+r = p('점심 김치찌개에 밥');
+check('김치찌개에 밥 → 두 항목', names(r).join('|') === '김치찌개|밥' && r.items[1].known, r);
+r = p('점심 김치찌개+밥');
+check('김치찌개+밥 → 두 항목', names(r).join('|') === '김치찌개|밥', r);
+r = p('점심 김치볶음밥');
+check('김치볶음밥은 나누지 않음', r.items.length === 1 && r.items[0].name === '김치볶음밥' && !r.items[0].known, r);
+r = p('점심 비빔밥');
+check('비빔밥은 나누지 않음', r.items.length === 1 && names(r).join() === '비빔밥', r);
+r = p('점심 참치김밥');
+check('참치김밥은 나누지 않음', r.items.length === 1 && names(r).join() === '참치김밥', r);
+r = p('토마토 한 접시');
+check('토마토 한 접시 → 3개(369g)', r.items[0].name === '토마토' && r.items[0].food.servingAmount === 3 && r.items[0].food.servingUnit === '개' && r.items[0].food.servingGrams === 369, r.items[0].food);
+r = p('계란');
+check('계란만 써도 1개 50g로 맞춤(AI 없이)', r.items[0].known && r.items[0].food.name === '삶은 달걀' && r.items[0].food.servingGrams === 50 && r.items[0].food.cal === 77.5, r.items[0].food);
+
+check('detectTime 오후 2시 → 14:00', detectTime('오후 2시에 라떼') === '14:00');
+check('detectTime 저녁 7시 반 → 19:30', detectTime('저녁 7시 반에 밥') === '19:30');
+check('detectTime 14:30', detectTime('14:30 점심 김치') === '14:30');
+check('detectTime 오전 9시 15분', detectTime('오늘 오전 9시 15분 요거트') === '09:15');
+r = p('오후 3시에 라떼');
+check('말한 시각은 time으로, 끼니는 점심(17시 전)', r.time === '15:00' && r.timeExplicit && r.mealId === 'lunch', r);
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
-process.exit(failed ? 1 : 0);

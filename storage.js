@@ -20,6 +20,18 @@
     return clone(DEFAULT_DAY);
   }
 
+  function withDayMeta(day) {
+    const nextDay = {
+      breakfast: clone(day?.breakfast || []),
+      lunch: clone(day?.lunch || []),
+      snack: clone(day?.snack || []),
+      dinner: clone(day?.dinner || []),
+    };
+    if (Object.prototype.hasOwnProperty.call(day || {}, 'mealTimes')) nextDay.mealTimes = clone(day.mealTimes || {});
+    if (Object.prototype.hasOwnProperty.call(day || {}, 'cardOrder')) nextDay.cardOrder = clone(day.cardOrder || []);
+    return nextDay;
+  }
+
   /*
    * 장보기·창고 데이터(state.shopping). 예전 버전에는 이 키가 없었으므로 없으면 빈 목록으로 봅니다.
    * { items: [{ id, name, group, status, bought, note?, nameEn?, noteEn?, essential?, createdAt?, boughtAt? }],
@@ -224,15 +236,7 @@
     }
 
     async saveDay(dateKey, day) {
-      const nextDay = {
-        breakfast: clone(day?.breakfast || []),
-        lunch: clone(day?.lunch || []),
-        snack: clone(day?.snack || []),
-        dinner: clone(day?.dinner || []),
-      };
-      if (Object.prototype.hasOwnProperty.call(day || {}, 'mealTimes')) {
-        nextDay.mealTimes = clone(day.mealTimes || {});
-      }
+      const nextDay = withDayMeta(day);
       await this._update(all => ({ ...all, [dateKey]: nextDay }));
       return clone(nextDay);
     }
@@ -298,15 +302,7 @@
     }
 
     async saveDayAndRecent(dateKey, day, food) {
-      const nextDay = {
-        breakfast: clone(day?.breakfast || []),
-        lunch: clone(day?.lunch || []),
-        snack: clone(day?.snack || []),
-        dinner: clone(day?.dinner || []),
-      };
-      if (Object.prototype.hasOwnProperty.call(day || {}, 'mealTimes')) {
-        nextDay.mealTimes = clone(day.mealTimes || {});
-      }
+      const nextDay = withDayMeta(day);
       const nextFood = clone(food);
       let recentFoods;
       await this._update(all => {
@@ -386,8 +382,7 @@
     }
 
     async saveDay(dateKey, day) {
-      const nextDay = { breakfast: clone(day?.breakfast || []), lunch: clone(day?.lunch || []), snack: clone(day?.snack || []), dinner: clone(day?.dinner || []) };
-      if (Object.prototype.hasOwnProperty.call(day || {}, 'mealTimes')) nextDay.mealTimes = clone(day.mealTimes || {});
+      const nextDay = withDayMeta(day);
       const result = await this._request(`/api/day/${encodeURIComponent(dateKey)}`, { method: 'PUT', body: JSON.stringify({ day: nextDay }) });
       return clone(result.day || nextDay);
     }

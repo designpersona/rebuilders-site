@@ -44,10 +44,10 @@ try {
     const setAmt = x => { const i = document.querySelector('[data-serving-amount]'); i.value = String(x); i.dispatchEvent(new Event('input', { bubbles: true })); };
     const setUnit = u => { const s = document.querySelector('[data-serving-unit]'); s.value = u; s.dispatchEvent(new Event('change', { bubbles: true })); };
     const setField = (f, x) => { const i = document.querySelector('#meal-detail-edit-grid [data-edit-field="' + f + '"]'); i.value = String(x); i.dispatchEvent(new Event('input', { bubbles: true })); };`;
-  // 1. 채팅 '아침 계란 2개' → 100g 만큼(155kcal), "2개 · 100g"
+  // 1. 채팅 '아침 계란 2개' → 100g 만큼(155kcal), "2개 (100g)"
   const r1 = await evaluate(`setActiveView('home'); Object.keys(meals).forEach(k => { meals[k].foods = []; }); renderAll(true); const i = document.getElementById('agent-input'); i.value = '아침 계란 2개'; document.getElementById('ai-dock-form').requestSubmit(); ${W8(900)}
     const f = meals.breakfast.foods[0] || {}; return { name: f.name, cal: f.cal, protein: f.protein, grams: f.servingGrams, serving: f.serving, shown: displayServing(f), note: f.quantityNote || '' };`);
-  check("채팅 '아침 계란 2개' → 2개 × 50g = 100g 만큼 155kcal·단백질 12.6g, 표시 '2개 · 100g'", r1.name === '삶은 달걀' && r1.cal === 155 && r1.protein === 12.6 && r1.grams === 100 && r1.serving === '2개' && r1.shown === '2개 · 100g' && !r1.note, JSON.stringify(r1));
+  check("채팅 '아침 계란 2개' → 2개 × 50g = 100g 만큼 155kcal·단백질 12.6g, 표시 '2개 (100g)'", r1.name === '삶은 달걀' && r1.cal === 155 && r1.protein === 12.6 && r1.grams === 100 && r1.serving === '2개' && r1.shown === '2개 (100g)' && !r1.note, JSON.stringify(r1));
   // 2. 수정 창: 2개 → 1개 바로 절반, g 로 바꿔 150 → 150g 만큼
   const r2 = await evaluate(`${vals} openFoodEdit('breakfast', 0); ${W8(300)} const a = out(); setAmt(1); const b = out(); setUnit('g'); setAmt(150); const c = out(); return { a, b, c };`);
   check('수정 창: 2개(155) → 1개 입력하면 바로 77.5kcal·탄 0.6·단 6.3·지 5.3, 단위를 g 로 바꾸고 150 → 232.5kcal', r2.a.amount === '2' && r2.a.unit === '개' && r2.b.cal === '77.5' && r2.b.carbs === '0.6' && r2.b.protein === '6.3' && r2.b.fat === '5.3' && r2.c.cal === '232.5' && r2.c.protein === '18.9' && r2.c.sodium === '186', JSON.stringify(r2));
@@ -57,7 +57,7 @@ try {
   check('칼로리를 300 으로 직접 고친 뒤 75g → 150kcal(고친 값에서 비례)·단백질 9.5g, 저장하면 직접 입력 표시', r3.d.cal === '150' && r3.d.protein === '9.5' && r3.saved.cal === 150 && r3.saved.serving === '75g' && r3.saved.custom && r3.saved.grams === null, JSON.stringify(r3));
   // 4. 예전 기록(100g 값 + '1개' 메모): 단위를 개, 양 1 로 바꾸면 DB 의 한 개 무게(50g)로 77.5kcal
   const r4 = await evaluate(`${vals} meals.breakfast.foods = [{ ...NILIRI_FOOD_CATALOG['삶은 달걀'], unitGrams: undefined, name: '삶은 달걀', serving: '100g', quantityNote: '1개', id: 'old-egg' }]; renderAll(true); openFoodEdit('breakfast', 0); ${W8(300)} const a = out(); setUnit('개'); setAmt(1); const b = out(); document.getElementById('meal-detail-save-btn').click(); ${W8(500)} const f = meals.breakfast.foods[0]; return { a, b, saved: { cal: f.cal, serving: f.serving, grams: f.servingGrams, note: f.quantityNote ?? null, shown: displayServing(f) } };`);
-  check("예전 기록(100g·155kcal, 메모 '1개'): 1개로 고치면 77.5kcal, 저장 '1개 · 50g', 메모 없어짐", r4.a.amount === '100' && r4.a.unit === 'g' && r4.b.cal === '77.5' && r4.saved.cal === 77.5 && r4.saved.grams === 50 && r4.saved.shown === '1개 · 50g' && r4.saved.note === null, JSON.stringify(r4));
+  check("예전 기록(100g·155kcal, 메모 '1개'): 1개로 고치면 77.5kcal, 저장 '1개 (50g)', 메모 없어짐", r4.a.amount === '100' && r4.a.unit === 'g' && r4.b.cal === '77.5' && r4.saved.cal === 77.5 && r4.saved.grams === 50 && r4.saved.shown === '1개 (50g)' && r4.saved.note === null, JSON.stringify(r4));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (err) { results.push('ERROR ' + (err.stack || err.message)); failed++; }
 finally {

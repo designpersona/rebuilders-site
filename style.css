@@ -13682,3 +13682,104 @@ body.foodex-page:not(.ai-sheet-open) .phone-frame > .bridge-pending {
 body.ai-sheet-open .phone-frame > .bridge-pending {
   bottom: calc(var(--kb-h, 0px) + 92px);
 }
+
+
+/* 음식 줄의 양(1개 (20g)): 이름 옆에 두고 눌러서 −/+ 로 고침 */
+.food-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.food-title-row .food-name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.food-amount-btn {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #6a6762;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  line-height: 1.2;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(106, 103, 98, 0.45);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.food-amount-btn:hover,
+.food-amount-btn:focus-visible {
+  color: #18181b;
+  text-decoration-color: currentColor;
+  outline: none;
+}
+.food-amount-popover {
+  position: fixed;
+  z-index: 320;
+  pointer-events: auto;
+}
+.food-amount-popover[hidden] { display: none !important; }
+.food-amount-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--rb-surface, #fff);
+  border: var(--rb-card-border, 1px solid rgba(17, 18, 22, 0.08));
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(17, 18, 22, 0.16), 0 2px 6px rgba(17, 18, 22, 0.06);
+}
+.food-amount-step {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: 1px solid rgba(17, 18, 22, 0.12);
+  border-radius: 50%;
+  background: #f6f5f3;
+  color: #18181b;
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.food-amount-step:active { transform: scale(0.96); }
+.food-amount-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+}
+.food-amount-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #18181b;
+}
+.food-amount-cals {
+  font-size: 11px;
+  color: #6a6762;
+}
+.food-amount-unit {
+  flex: 0 0 auto;
+  border: 1px solid rgba(17, 18, 22, 0.12);
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #18181b;
+  cursor: pointer;
+}
+.food-amount-unit[hidden] { display: none !important; }

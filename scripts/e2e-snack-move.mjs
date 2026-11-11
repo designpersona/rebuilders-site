@@ -96,7 +96,8 @@ try {
   for (let k = 1; k <= 20; k++) { await touch('touchMove', c4[0], Math.round(c4[1] + (c4[2] - c4[1]) * k / 20)); await sleep(25); }
   await sleep(150); await touch('touchEnd'); await sleep(800);
   const r4 = await state();
-  check('간식 카드 손잡이로 끌어 저녁과 자리 바꾸기', !c4[3] && JSON.stringify(r4.d) === JSON.stringify(['사과']) && JSON.stringify(r4.s) === JSON.stringify(['CU 생초코모찌@3', '맥심 라떼@3']), JSON.stringify({ c4, r4 }));
+  const r4order = await evaluate(`return [...document.querySelectorAll('#view-home .meal-card, #view-home .snack-card')].filter(c => !c.hidden).map(c => c.id);`);
+  check('간식 카드 손잡이로 끌어 저녁 위로: 끼니와 음식은 그대로, 순서만 바뀜', !c4[3] && JSON.stringify(r4.d) === JSON.stringify(['CU 생초코모찌', '맥심 라떼']) && JSON.stringify(r4.s) === JSON.stringify(['사과@3']) && r4order.indexOf('snack-slot-3') >= 0 && r4order.indexOf('dinner-card') >= 0 && r4order.indexOf('snack-slot-3') < r4order.indexOf('dinner-card'), JSON.stringify({ c4, r4, r4order }));
   // 5. 드래그가 끝나면 빈 간식 자리는 다시 숨김
   const r5 = await evaluate(`return { empties: [...document.querySelectorAll('#view-home .snack-card')].filter(c => !c.hidden && !c.classList.contains('has-items')).length, ph: document.querySelectorAll('.drop-placeholder').length, cls: document.body.classList.contains('food-drag-active') };`);
   check('드래그 후 빈 간식 자리 다시 숨김', r5.empties === 0 && r5.ph === 0 && !r5.cls, JSON.stringify(r5));

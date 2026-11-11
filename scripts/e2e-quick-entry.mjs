@@ -43,7 +43,7 @@ try {
   let lunch = await evaluate(stored('lunch'));
   check('채팅 "점심 이삭 햄치즈, 아아" → 점심에 2개 저장', lunch.map(f => f.name).join('|') === '이삭 햄치즈|아이스 아메리카노', JSON.stringify(lunch));
   check('미등록 음식은 영양값 없이 저장(0으로 채우지 않음)', lunch[0] && lunch[0].cal === null && lunch[0].carbs === null, JSON.stringify(lunch[0]));
-  check('아아 = 아이스 아메리카노, 아메리카노 영양값', lunch[1]?.cal === 3, JSON.stringify(lunch[1]));
+  check('아아 = 아이스 아메리카노, 아메리카노 영양값(1잔 355ml)', lunch[1]?.cal === 10.7 && lunch[1]?.serving === '1잔', JSON.stringify(lunch[1]));
   check('답장에 미입력 안내', reply.includes('영양정보 미입력') && reply.includes('점심'), reply);
   const fillBtn = await evaluate(`return [...document.querySelectorAll('#agent-log .agent-confirm:not(.ask-ai-btn)')].pop()?.textContent || ''`);
   check('답장에 "영양정보 채우기" 버튼', fillBtn === '영양정보 채우기', fillBtn);
@@ -54,7 +54,7 @@ try {
   const tag = await evaluate(`return [...document.querySelectorAll('#lunch-items .food-item')].map(el => el.querySelector('.food-name').textContent + ':' + el.querySelector('.food-cal').textContent + ':' + (el.querySelector('.nutrition-missing-tag')?.textContent || ''))`);
   check('기록 항목에 미입력 태그, kcal은 "— kcal"', tag[0] === '이삭 햄치즈:— kcal:영양정보 미입력' && !tag[1].endsWith('미입력'), JSON.stringify(tag));
   const kcal = await evaluate(`return getTotals().cal`);
-  check('합계는 미입력을 0으로 계산(3kcal)', kcal === 3, String(kcal));
+  check('합계는 미입력을 0으로 계산(아아 10.7kcal)', kcal === 10.7, String(kcal));
 
   // 3) 기록 상세에서 핵심 4개 채우기
   const sheet = await evaluate(`document.getElementById('nutrition-missing-note').click(); await new Promise(r => setTimeout(r, 50)); const g = document.getElementById('meal-detail-edit-grid'); return { title: document.getElementById('edit-food-title').textContent, note: !!g.querySelector('.meal-edit-missing-note'), core: ['cal','carbs','protein','fat'].every(f => g.querySelector('.meal-edit-nutrition [data-edit-field="'+f+'"]')), advancedClosed: !g.querySelector('details.meal-advanced-nutrients').open }`);
@@ -89,7 +89,7 @@ try {
   // 7) 기존 문장 계속 동작
   reply = await evaluate(chat('아침에 바나나 먹었어'));
   breakfast = await evaluate(stored('breakfast'));
-  check('기존 문장 "아침에 바나나 먹었어" → 아침 바나나 89kcal', breakfast.some(f => f.name === '바나나' && f.cal === 89), JSON.stringify(breakfast));
+  check('기존 문장 "아침에 바나나 먹었어" → 아침 바나나 1개(118g) 105kcal', breakfast.some(f => f.name === '바나나' && f.cal === 105 && f.serving === '1개'), JSON.stringify(breakfast));
   reply = await evaluate(chat('바나나랑 요거트 먹었어'));
   check('끼니 생략 + 랑 분리 → 2개 저장', /2|바나나.*그릭요거트/.test(reply) && reply.includes('그릭요거트'), reply);
 
@@ -97,7 +97,7 @@ try {
   await load();
   note = await evaluate(`const n = document.getElementById('nutrition-missing-note'); return { hidden: n.hidden, text: n.textContent }`);
   dinner = await evaluate(stored('dinner'));
-  check('새로고침 후 기록 유지, 미입력 3개(밥·김치·잡채)', ['밥', '김치'].every(n => dinner.some(f => f.name === n)) && !note.hidden && note.text.includes('미입력 3개'), JSON.stringify(note));
+  check('새로고침 후 기록 유지, 미입력 2개(김치·잡채; 밥은 기본 DB)', ['밥', '김치'].every(n => dinner.some(f => f.name === n)) && !note.hidden && note.text.includes('미입력 2개'), JSON.stringify(note));
 
   // 8b) 끼니 말 없이 모르는 음식도 바로 저장
   reply = await evaluate(chat('알수없는음식xyz123'));

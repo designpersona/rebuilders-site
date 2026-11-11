@@ -120,6 +120,26 @@
     if (displayName) out.displayName = displayName;
     const serving = noParen(item.serving).split(/\s*[·,/]\s*/)[0].slice(0, 20);
     if (serving) out.serving = serving;
+    const typical = noParen(item.typical_serving || item.typicalServing).slice(0, 40);
+    if (typical) out.typicalServing = typical;
+    const basisLabel = noParen(item.basis).slice(0, 20);
+    const basisNum = (value, max) => {
+      const n = typeof value === 'number' ? value : Number(value);
+      return Number.isFinite(n) && n >= 0 && n <= max ? Math.round(n * 10) / 10 : null;
+    };
+    const bCal = basisNum(item.basis_kcal ?? item.basisKcal, 5000);
+    const bCarbs = basisNum(item.basis_carbs_g ?? item.basisCarbs, 1000);
+    const bProtein = basisNum(item.basis_protein_g ?? item.basisProtein, 1000);
+    const bFat = basisNum(item.basis_fat_g ?? item.basisFat, 1000);
+    if (bCal != null && bCarbs != null && bProtein != null && bFat != null) {
+      out.basisNutrients = { cal: bCal, carbs: bCarbs, protein: bProtein, fat: bFat };
+      const basisG = basisNum(item.basis_grams ?? item.basisGrams, 5000);
+      const parsed = String(basisLabel || '100g').match(/^(\d+(?:\.\d+)?)\s*(g|ml)$/i);
+      out.basisGrams = basisG || (parsed ? Number(parsed[1]) : 100);
+      out.basis = basisLabel || `${out.basisGrams}g`;
+    }
+    const sGrams = basisNum(item.serving_grams ?? item.servingGrams, 20000);
+    if (sGrams != null) out.servingGrams = sGrams;
     const note = String(item.source_note || '').replace(/\s+/g, ' ').trim().slice(0, 120);
     if (note) out.sourceNote = note;
     try { const u = new URL(String(item.source_url || '')); if (u.protocol === 'https:') out.sourceUrl = u.href.slice(0, 300); } catch { /* 없음 */ }

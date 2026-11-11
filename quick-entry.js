@@ -25,10 +25,15 @@
     '제로 콜라': { name: '제로콜라', base: '제로콜라' },
     '콜라 제로': { name: '제로콜라', base: '제로콜라' },
     '닭가슴': { name: '닭가슴살', base: '닭가슴살' },
+    '쌀밥': { name: '밥', base: '밥' },
+    '백미밥': { name: '밥', base: '밥' },
+    '공기밥': { name: '밥', base: '밥' },
+    '흰밥': { name: '밥', base: '밥' },
+    '흰쌀밥': { name: '밥', base: '밥' },
   };
 
   const NUM_WORDS = { '반': 0.5, '한': 1, '하나': 1, '두': 2, '둘': 2, '세': 3, '셋': 3, '네': 4, '넷': 4, '다섯': 5 };
-  const COUNT_UNITS = ['공기', '그릇', '개', '잔', '컵', '접시', '조각', '쪽', '봉지', '봉', '팩', '캔', '병', '인분', '스푼', '숟가락', '큰술', '줌', '장', '알', '줄'];
+  const COUNT_UNITS = ['공기', '그릇', '개', '잔', '컵', '접시', '조각', '쪽', '봉지', '봉', '팩', '캔', '병', '인분', '스푼', '숟가락', '큰술', '작은술', '한줌', '줌', '장', '알', '줄', '회'];
   const MASS_UNITS = ['kg', 'g', 'ml', 'l'];
   // 커피 기본 사이즈(스타벅스 기준 ml). 그램을 안 적어도 톨/그란데로 양을 남길 수 있게
   const CUP_SIZES = {
@@ -53,6 +58,26 @@
   ]);
 
   const compact = value => String(value || '').toLowerCase().replace(/\s+/g, '');
+
+  const unitsApi = () => global.RebuildersUnits;
+  const CUP_LABELS = new Set(['숏', '톨', '그란데', '벤티', 'short', 'tall', 'grande', 'venti']);
+  function servingLabel(amount, resolved) {
+    if (amount && amount.text && CUP_LABELS.has(amount.text)) return amount.text;
+    return resolved?.text || amount?.text || '';
+  }
+
+
+  function isStapleHit(hit) {
+    const U = unitsApi();
+    if (!U) return false;
+    return U.isStapleName(hit?.name || hit?.baseName);
+  }
+
+  function splitUnknownName(name) {
+    const U = unitsApi();
+    return U ? U.splitCombinedFoods(name) : [name];
+  }
+
 
   function amountValue(match) {
     if (!match) return null;
@@ -162,6 +187,49 @@
     return out;
   }
 
+  const TIME_CLOCK_RE = /(?:(오전|아침|am)|(오후|저녁|pm))\s*(\d{1,2})\s*[:：]\s*(\d{2})(?:분)?/iu;
+  const TIME_BARE_CLOCK_RE = /(^|[^\d])(\d{1,2})\s*[:：]\s*(\d{2})(?:분)?(?!\d)/u;
+  const TIME_SI_RE = /(?:(오전|아침|am)|(오후|저녁|pm))?\s*(\d{1,2})\s*시(?:\s*(반)|\s*(\d{1,2})\s*분)?/iu;
+
+  function padTime(h, m) {
+    if (!Number.isFinite(h) || h < 0 || h > 23 || !Number.isFinite(m) || m < 0 || m > 59) return null;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  function hourWithPeriod(hour, afternoon) {
+    if (afternoon === true) return hour === 12 ? 12 : hour + 12;
+    if (afternoon === false) return hour === 12 ? 0 : hour;
+    return hour;
+  }
+
+  /** 입력에서 시각을 찾음 → 'HH:MM' 또는 null */
+  function detectTime(text) {
+    const raw = String(text || '');
+    let m = raw.match(TIME_CLOCK_RE);
+    if (m) {
+      const afternoon = m[2] ? true : (m[1] ? false : null);
+      return padTime(hourWithPeriod(Number(m[3]), afternoon), Number(m[4]));
+    }
+    m = raw.match(TIME_SI_RE);
+    if (m) {
+      const afternoon = m[2] ? true : (m[1] ? false : null);
+      const hour = Number(m[3]);
+      const min = m[4] ? 30 : (m[5] != null ? Number(m[5]) : 0);
+      // '15시'처럼 24시간제(13~23)는 오전/오후 없이 그대로
+      const h = hour >= 13 ? hour : hourWithPeriod(hour, afternoon);
+      return padTime(h, min);
+    }
+    m = raw.match(TIME_BARE_CLOCK_RE);
+    if (m) return padTime(Number(m[2]), Number(m[3]));
+    return null;
+  }
+
+  function stripTimeWords(text) {
+    return String(text || '')
+      .replace(TIME_CLOCK_RE, ' ')
+      .replace(TIME_SI_RE, ' ')
+      .replace(TIME_BARE_CLOCK_RE, '$1 ');
+  }
+
   // 홈 끼니 카드와 같게: 11시 전까지 아침, 17시 전까지 점심, 이후 저녁.
   // 간식은 카드에서 끼니 사이 칸이라, 시각만으로 자동 지정하지 않음(사용자가 "간식"이라고 할 때만).
   function mealForTime(date = new Date()) {
@@ -195,18 +263,26 @@
   }
 
   function cleanUnknown(name) {
-    return name.replace(/\s+/g, ' ').trim().replace(/(을|를)$/u, '').trim();
+    return name.replace(/\s+/g, ' ').trim().replace(/(을|를|에|는|은|이|가|도|만|요|와|과|랑|하고)$/u, '').trim();
   }
 
   function parseChunk(chunk, index) {
     const tokens = chunk.split(/\s+/).filter(Boolean).filter(tok => !FILLER_WORDS.has(tok.toLowerCase()));
     const items = [];
     let pending = [];
+    const pushUnknown = (name, amount = null) => {
+      splitUnknownName(name).forEach((part, i, parts) => {
+        const amt = i === parts.length - 1 ? amount : null;
+        const hit = lookup(index, [part]);
+        if (hit) items.push({ name: hit.name, baseName: hit.baseName, data: hit.data, known: true, amount: amt });
+        else items.push({ name: part, known: false, amount: amt });
+      });
+    };
     const flushPending = (amount = null) => {
       if (!pending.length) return;
       const name = cleanUnknown(pending.join(' '));
       pending = [];
-      if (name) items.push({ name, known: false, amount });
+      if (name) pushUnknown(name, amount);
     };
     let i = 0;
     while (i < tokens.length) {
@@ -219,7 +295,10 @@
       if (matched) {
         // 앞에 모르는 말이 남아 있으면, 별칭(아아 등)이 아닌 한 뒤 단어를 같은 음식 이름으로 봄
         // ("루돌프 쿠키 치즈 케이크"를 케이크와 따로 나누지 않음. "토스트 아아"는 아아만 분리)
-        if (pending.length && !matched.hit.fromAlias) {
+        // 다만 밥·백미밥처럼 따로 먹는 주식은 앞 음식과 나눔("참치김치찌개 백미밥"). 김치볶음밥·비빔밥·김밥은 그대로.
+        if (pending.length && isStapleHit(matched.hit) && !unitsApi()?.isCompoundDish(cleanUnknown([...pending, ...tokens.slice(i, i + matched.len)].join(' ')))) {
+          flushPending();
+        } else if (pending.length && !matched.hit.fromAlias) {
           pending.push(...tokens.slice(i, i + matched.len));
           i += matched.len;
           continue;
@@ -271,8 +350,13 @@
     const m = String(data.basis || data.serving || '').match(/^(\d+(?:\.\d+)?)\s*(g|ml)$/i);
     return m ? Number(m[1]) : null;
   }
-  // 한 개(알·조각…)의 무게 g: DB 의 unitGrams(출처 있는 값) 또는 "1개 60g" 같은 기준량 문구에서만. 없으면 null(지어내지 않음)
-  function unitGramsFor(data, unit) {
+  // 한 개(알·조각…)의 무게 g: 단위 표·DB 의 unitGrams·"1개 60g" 문구. 없으면 null
+  function unitGramsFor(data, unit, foodName) {
+    const U = unitsApi();
+    if (U) {
+      const hit = U.gramsForUnit(foodName || data?.name, unit, data);
+      if (hit) return hit;
+    }
     const table = data.unitGrams && typeof data.unitGrams === 'object' ? data.unitGrams : null;
     if (table) {
       if (unit && Number(table[unit]) > 0) return { unit, grams: Number(table[unit]) };
@@ -285,11 +369,23 @@
 
   function scaleFood(item) {
     const data = item.data ? { ...item.data } : null;
+    const U = unitsApi();
     if (!data) {
       const result = { name: item.name };
       if (item.amount) {
         result.serving = item.amount.text;
-        if (item.amount.unit === 'ml') {
+        result.servingAmount = item.amount.value;
+        result.servingUnit = item.amount.unit || undefined;
+        if (U && item.amount.unit) {
+          const resolved = U.resolveAmount(item.name, item.amount.value, item.amount.unit, null);
+          if (resolved) {
+            result.serving = servingLabel(item.amount, resolved);
+            result.servingAmount = resolved.value;
+            result.servingUnit = resolved.unit;
+            if (resolved.grams != null) result.servingGrams = resolved.grams;
+            result.servingGramsEstimated = Boolean(resolved.estimated);
+          }
+        } else if (item.amount.unit === 'ml') {
           result.servingAmount = item.amount.value;
           result.servingUnit = 'ml';
         }
@@ -299,11 +395,25 @@
     const result = { name: item.name, ...data };
     delete result.description; delete result.descriptionEn;
     if (item.name !== item.baseName) { delete result.nameEn; result.baseFood = item.baseName; }
+    const foodName = item.baseName || item.name;
+    if (U) {
+      const withBasis = U.attachBasis(result, data);
+      let amount = item.amount;
+      if (!amount) {
+        const typ = U.typicalServing(foodName, data);
+        if (typ) amount = typ;
+      } else if (amount.unit === '접시' || amount.unit) {
+        amount = { value: amount.value, unit: amount.unit, text: amount.text };
+      }
+      if (!amount) return withBasis;
+      const scaled = U.applyAmount(withBasis, amount, data);
+      if (item.amount && CUP_LABELS.has(item.amount.text)) scaled.serving = item.amount.text;
+      return scaled;
+    }
     const basisG = basisGrams(data);
     let amount = item.amount;
-    // 개수로 먹는 음식(한 개 무게를 아는 것)은 양을 안 쓰면 1개
     if (!amount && basisG && data.unitGrams) {
-      const u = unitGramsFor(data, null);
+      const u = unitGramsFor(data, null, foodName);
       if (u) amount = { value: 1, unit: u.unit, text: `1${u.unit}` };
     }
     if (!amount) return result;
@@ -316,9 +426,8 @@
       factor = amount.value / Number(servingMatch[1]);
     } else if (amount.unit === 'kg' && servingMatch && servingMatch[2].toLowerCase() === 'g') {
       factor = (amount.value * 1000) / Number(servingMatch[1]);
-    } else if (isCount && basisG && unitGramsFor(data, amount.unit || null)) {
-      // 개수 × 한 개 무게(g) → 기준량(예: 100g) 대비 비율
-      const u = unitGramsFor(data, amount.unit || null);
+    } else if (isCount && basisG && unitGramsFor(data, amount.unit || null, foodName)) {
+      const u = unitGramsFor(data, amount.unit || null, foodName);
       grams = Math.round(amount.value * u.grams * 10) / 10;
       factor = grams / basisG;
       if (!amount.unit) amount = { ...amount, unit: u.unit, text: `${amount.value}${u.unit}` };
@@ -326,7 +435,6 @@
       factor = amount.value;
     }
     if (factor == null || !Number.isFinite(factor) || factor <= 0) {
-      // 단위를 바꿀 수 없으면 기준량 그대로 두고 먹은 양만 메모
       result.quantityNote = amount.text;
       return result;
     }
@@ -357,7 +465,8 @@
     const meal = detectMeal(raw);
     const recordIntent = INTENT_RE.test(raw) || /\b(ate|had|log|record|add)\b/i.test(raw);
     const date = detectDate(raw, options.now || new Date());
-    let body = stripDateWords(stripMealWords(raw));
+    const time = detectTime(raw);
+    let body = stripTimeWords(stripDateWords(stripMealWords(raw)));
     body = body
       .replace(/(먹었어요|먹었어|먹었다|먹었음|먹었는데|먹었고|먹은\s*거|먹은것|먹음|마셨어요|마셨어|마셨다|마셨고|마심)/gu, ' ')
       .replace(/(식단에?\s*)?(기록|등록|추가)(해\s*줘|해주세요|해줘|해|할게|할래)?/gu, ' ')
@@ -374,6 +483,8 @@
       mealExplicit: Boolean(meal),
       date,
       dateExplicit: Boolean(date),
+      time,
+      timeExplicit: Boolean(time),
       recordIntent,
       items,
     };
@@ -390,7 +501,7 @@
     return (foods || []).filter(isNutritionMissing).length;
   }
 
-  const api = { parseQuickEntry, detectDate, isNutritionMissing, countNutritionMissing, mealForTime, parseAmountAt, parseCupSize, scaleFood, QUICK_ALIASES, CUP_SIZES, NUTRITION_CORE };
+  const api = { parseQuickEntry, detectDate, detectTime, isNutritionMissing, countNutritionMissing, mealForTime, parseAmountAt, parseCupSize, scaleFood, QUICK_ALIASES, CUP_SIZES, NUTRITION_CORE };
   global.RebuildersQuickEntry = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
