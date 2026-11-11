@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 맥 미니 영양 브리지는 HTTP라 cleartext가 필요함.
+     Macui-Macmini.local 은 domain-config로 허용.
+     사설 LAN IP는 이 파일에서 CIDR로 적을 수 없어, 재부팅 후 바뀌는 IP를 쓰려면 base-config에서도 cleartext를 허용함. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">Macui-Macmini.local</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
