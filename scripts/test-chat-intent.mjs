@@ -117,6 +117,19 @@ check('브륄래/케익 오타도 브륄레 케이크로 매칭', found.best?.na
 const loose = findCatalogMatches('너트한줌 럭셔리신제품', { mine: catalogs.mine, recent: [], db: [] });
 check('비슷한 짧은 이름에 단어를 더한 신제품은 자동으로 같은 음식으로 보지 않음', !loose.best, loose);
 
+const noBrulee = {
+  mine: [
+    { name: '스타벅스 치즈케이크', data: { cal: 0, brand: '스타벅스' }, origin: 'mine' },
+    { name: '스타벅스 더블치즈케이크', data: { cal: 503, brand: '스타벅스' }, origin: 'mine' },
+  ],
+  recent: [],
+  db: [],
+};
+localFood = matchLocalFood('점심에 스벅 브륄레 치즈 케익 먹었어', noBrulee);
+check('저장된 음식에 브륄레가 없으면 다른 치즈케이크를 후보로 고르지 않고 AI로 넘김',
+  !localFood.ok && !(localFood.ambiguousCandidates && localFood.ambiguousCandidates.length),
+  localFood.ambiguousCandidates?.map(e => e.name) || localFood);
+
 
 const payload2 = buildInterpretPayload('4조각으로 나눠서 1조각만 먹었어', {
   meal: 'lunch',

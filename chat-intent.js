@@ -104,7 +104,8 @@
       }
       // 쿼리에만 있는 뚜렷한 단어(사과, 신제품 등)가 있으면 같은 제품으로 단정하지 않음.
       const leftover = unmatchedQueryTokens(qTokens, usedFold, usedTokens);
-      if (leftover.length && qFold !== tFold && !usedFold.includes(qFold)) score = Math.min(score, 0.6);
+      // 쿼리에만 있는 뚜렷한 단어가 있으면 후보로도 올리지 않음(브륄레 vs 더블치즈케이크).
+      if (leftover.length && qFold !== tFold && !usedFold.includes(qFold)) score = Math.min(score, 0.45);
       if (score > best) best = score;
     });
     return best;
