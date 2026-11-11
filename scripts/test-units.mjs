@@ -61,5 +61,46 @@ const typG = U.parseServing('1개 118g');
 check('parseServing 1개 118g', typG.value === 1 && typG.unit === '개' && typG.grams === 118);
 check('parseServing 톨', U.parseServing('톨').value === 355 && U.parseServing('톨').unit === 'ml');
 
+const lotus = {
+  name: '로투스 비스코프 오리지널 쿠키',
+  cal: 30, carbs: 4.7, protein: 0.4, fat: 1.2,
+  serving: '1개', servingAmount: 1, servingUnit: '개', servingGrams: 8,
+};
+const lotus2 = U.applyAmount(lotus, { value: 2, unit: '개' }, lotus);
+check('로투스 1개 30kcal(수정 없음) + → 2개 16g 60kcal, 탄단지도 두 배',
+  lotus2.cal === 60 && lotus2.carbs === 9.4 && lotus2.protein === 0.8 && lotus2.fat === 2.4
+  && lotus2.servingAmount === 2 && lotus2.serving === '2개' && lotus2.servingGrams === 16, lotus2);
+const lotus1 = U.applyAmount(lotus2, { value: 1, unit: '개' }, lotus2);
+check('로투스 2개에서 − → 다시 1개 8g 30kcal',
+  lotus1.cal === 30 && lotus1.servingAmount === 1 && lotus1.servingGrams === 8, lotus1);
+
+const handmade = {
+  name: '수제 쿠키',
+  cal: 30, carbs: 4.7, protein: 0.4, fat: 1.2,
+  serving: '1개', servingAmount: 1, servingUnit: '개', servingGrams: 8,
+  nutritionCustom: true,
+  basis: '100g', basisGrams: 100,
+  basisNutrients: { cal: 120, carbs: 20, protein: 2, fat: 5 },
+};
+const handmade2 = U.applyAmount(handmade, { value: 2, unit: '개' }, handmade);
+check('kcal을 1개 30으로 직접 고친 기록(낡은 100g 기준이 남아 있어도) + → 2개 16g 60kcal',
+  handmade2.cal === 60 && handmade2.carbs === 9.4 && handmade2.protein === 0.8 && handmade2.fat === 2.4
+  && handmade2.servingGrams === 16 && handmade2.servingAmount === 2, handmade2);
+
+const noGrams = {
+  name: '수제 쿠키', cal: 30, carbs: 4.7, protein: 0.4, fat: 1.2,
+  serving: '1개', servingAmount: 1, servingUnit: '개',
+};
+const noGrams2 = U.applyAmount(noGrams, { value: 2, unit: '개' }, noGrams);
+check('한 개 무게를 몰라도 1개 30kcal + → 2개 60kcal',
+  noGrams2.cal === 60 && noGrams2.servingAmount === 2 && noGrams2.serving === '2개', noGrams2);
+
+const attached = U.attachBasis({ name: '수제 쿠키', cal: 30, serving: '1개', servingAmount: 1, servingUnit: '개' });
+check('1개 기록의 기준을 100g으로 두지 않음',
+  attached.basisGrams == null && attached.basisAmount === 1 && attached.basisUnit === '개' && attached.basisNutrients.cal === 30, attached);
+
+const smallBanana = U.gramsForUnit('바나나', '개', { servingUnit: '개', servingAmount: 1, servingGrams: 80 });
+check('기록에 적힌 한 개 무게가 음식 표보다 우선', smallBanana && smallBanana.grams === 80, smallBanana);
+
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

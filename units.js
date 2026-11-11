@@ -150,6 +150,9 @@
     '아이스아메리카노': '아메리카노', '아이스 아메리카노': '아메리카노',
     '믹스 너트': '믹스너트', '견과믹스': '믹스너트', '견과류': '믹스너트',
     'lotus 비스코프': '비스코프', 'lotus biscoff': '비스코프', 'biscoff': '비스코프',
+    '로투스 비스코프': '비스코프', '로투스비스코프': '비스코프',
+    '로투스 비스코프 오리지널': '비스코프', '로투스 비스코프 오리지널 쿠키': '비스코프',
+    'lotus biscoff original': '비스코프', 'lotus biscoff original cookie': '비스코프',
     '참치김치찌개': '김치찌개',
   };
 
@@ -195,12 +198,20 @@
     if (lower === 'g' || lower === 'ml') return { grams: 1, unit: lower, estimated: false };
     if (lower === 'kg' || lower === 'l') return { grams: 1000, unit: lower, estimated: false };
 
+    // 이 기록에 적힌 한 개 무게가 있으면 표를 덮어쓰지 않음(직접 고친 양·제품 무게).
+    const table = data && data.unitGrams && typeof data.unitGrams === 'object' ? data.unitGrams : null;
+    if (table && Number(table[u]) > 0) return { grams: Number(table[u]), unit: u, estimated: Boolean(data.servingGramsEstimated) };
+    if (data && String(data.servingUnit || '') === u && Number(data.servingGrams) > 0 && Number(data.servingAmount) > 0) {
+      return {
+        grams: Number(data.servingGrams) / Number(data.servingAmount),
+        unit: u,
+        estimated: Boolean(data.servingGramsEstimated),
+      };
+    }
     const food = lookupFood(foodName);
     if (food && food.units && food.units[u] && Number(food.units[u].grams) > 0) {
       return { grams: Number(food.units[u].grams), unit: u, estimated: !food.units[u].official, source: food.units[u].source };
     }
-    const table = data && data.unitGrams && typeof data.unitGrams === 'object' ? data.unitGrams : null;
-    if (table && Number(table[u]) > 0) return { grams: Number(table[u]), unit: u, estimated: false };
     const generic = GENERIC_UNITS[u] || GENERIC_UNITS[lower];
     if (generic && Number(generic.grams) > 0) {
       return { grams: Number(generic.grams), unit: u, estimated: !generic.official, source: generic.source };
@@ -309,10 +320,25 @@
     return { value, unit, text: `${trimNum(value)}${unit}`, grams };
   }
 
+  function pickNutrients(src) {
+    const nutrients = {};
+    NUTRIENT_KEYS.forEach(key => { if (typeof src[key] === 'number') nutrients[key] = src[key]; });
+    return nutrients;
+  }
+
   function getBasis(food) {
     if (!food) return null;
     if (food.basisNutrients && Number(food.basisGrams) > 0) {
       return { nutrients: food.basisNutrients, grams: Number(food.basisGrams), label: food.basis || `${food.basisGrams}g` };
+    }
+    if (food.basisNutrients && Number(food.basisAmount) > 0 && food.basisUnit) {
+      return {
+        nutrients: food.basisNutrients,
+        amount: Number(food.basisAmount),
+        unit: food.basisUnit,
+        grams: null,
+        label: food.basis || `${trimNum(food.basisAmount)}${food.basisUnit}`,
+      };
     }
     if (Number(food.servingGrams) > 0) {
       const nutrients = {};
@@ -326,12 +352,8 @@
     const m = label.match(/^(\d+(?:\.\d+)?)\s*(g|ml)$/i);
     if (m && Number(m[1]) > 0) {
       const grams = Number(m[1]);
-      const nutrients = {};
-      let any = false;
-      NUTRIENT_KEYS.forEach(key => {
-        if (typeof food[key] === 'number') { nutrients[key] = food[key]; any = true; }
-      });
-      if (any) return { nutrients, grams, label: `${trimNum(grams)}${m[2].toLowerCase()}` };
+      const nutrients = pickNutrients(food);
+      if (Object.keys(nutrients).length) return { nutrients, grams, label: `${trimNum(grams)}${m[2].toLowerCase()}` };
     }
     return null;
   }
@@ -340,33 +362,119 @@
     const next = { ...food };
     const src = data || food;
     if (next.basisNutrients && Number(next.basisGrams) > 0) return next;
-    const m = String(src.basis || src.serving || '100g').match(/^(\d+(?:\.\d+)?)\s*(g|ml)$/i);
-    const grams = m ? Number(m[1]) : 100;
-    const nutrients = {};
-    NUTRIENT_KEYS.forEach(key => { if (typeof src[key] === 'number') nutrients[key] = src[key]; });
-    if (Object.keys(nutrients).length) {
+    if (next.basisNutrients && Number(next.basisAmount) > 0 && next.basisUnit) return next;
+    const nutrients = pickNutrients(src);
+    if (!Object.keys(nutrients).length) return next;
+    const m = String(src.basis || src.serving || '').match(/^(\d+(?:\.\d+)?)\s*(g|ml)$/i);
+    if (m && Number(m[1]) > 0) {
       next.basisNutrients = nutrients;
-      next.basisGrams = grams;
-      next.basis = src.basis || `${grams}${m ? m[2].toLowerCase() : 'g'}`;
+      next.basisGrams = Number(m[1]);
+      next.basis = src.basis || `${trimNum(m[1])}${m[2].toLowerCase()}`;
+      return next;
+    }
+    if (Number(src.servingGrams) > 0) {
+      next.basisNutrients = nutrients;
+      next.basisGrams = Number(src.servingGrams);
+      next.basis = `${trimNum(src.servingGrams)}g`;
+      return next;
+    }
+    if (Number(src.servingAmount) > 0 && src.servingUnit) {
+      next.basisNutrients = nutrients;
+      next.basisAmount = Number(src.servingAmount);
+      next.basisUnit = src.servingUnit;
+      next.basis = src.serving || `${trimNum(src.servingAmount)}${src.servingUnit}`;
+      return next;
+    }
+    const parsed = parseServing(src.serving || src.quantityNote || '');
+    if (parsed && Number(parsed.value) > 0 && parsed.unit) {
+      next.basisNutrients = nutrients;
+      if (isMassUnit(parsed.unit)) {
+        const grams = parsed.grams != null ? parsed.grams : (parsed.unit === 'kg' || parsed.unit === 'l' ? parsed.value * 1000 : parsed.value);
+        next.basisGrams = grams;
+        next.basis = `${trimNum(grams)}${parsed.unit === 'ml' || parsed.unit === 'l' ? 'ml' : 'g'}`;
+      } else {
+        next.basisAmount = parsed.value;
+        next.basisUnit = parsed.unit;
+        next.basis = parsed.text || `${trimNum(parsed.value)}${parsed.unit}`;
+      }
     }
     return next;
   }
 
+  function scaleNutrients(target, nutrients, numerator, denominator) {
+    if (!(denominator > 0)) return;
+    NUTRIENT_KEYS.forEach(key => {
+      if (typeof nutrients[key] === 'number') {
+        // 먼저 나누면 355/100 같은 값이 3.55가 아니게 되어 10.65가 10.6으로 떨어짐
+        target[key] = Math.round(nutrients[key] * numerator * 10 / denominator) / 10;
+      }
+    });
+  }
+
   function applyAmount(food, amount, data) {
     const name = food?.baseFood || food?.name || '';
-    const next = attachBasis({ ...food }, data || food);
-    const resolved = resolveAmount(name, amount?.value, amount?.unit, data || food);
+    const src = data || food;
+    const next = attachBasis({ ...food }, src);
+    const resolved = resolveAmount(name, amount?.value, amount?.unit, src);
     if (!resolved) return next;
-    const basis = getBasis(next);
-    if (basis && resolved.grams != null && basis.grams > 0) {
-      NUTRIENT_KEYS.forEach(key => {
-        if (typeof basis.nutrients[key] === 'number') {
-          next[key] = Math.round(basis.nutrients[key] * resolved.grams * 10 / basis.grams) / 10;
-        }
-      });
-      next.basisNutrients = { ...basis.nutrients };
-      next.basisGrams = basis.grams;
-      next.basis = basis.label;
+    const currentNutrients = pickNutrients(food);
+    const fromGrams = Number(food?.servingGrams) > 0 ? Number(food.servingGrams) : null;
+    const fromAmount = Number(food?.servingAmount) > 0 ? Number(food.servingAmount) : null;
+    const fromUnit = food?.servingUnit;
+    let numerator = null;
+    let denominator = null;
+    let basisNutrients = null;
+    let storedGrams = null;
+    let storedAmount = null;
+    let storedUnit = null;
+    let storedLabel = null;
+
+    // 이미 기록된 먹은 양의 영양이 있으면 그걸 기준으로 비례(직접 고친 kcal·잘못된 100g 기준을 덮어씀).
+    if (Object.keys(currentNutrients).length && fromGrams && resolved.grams != null) {
+      numerator = resolved.grams;
+      denominator = fromGrams;
+      basisNutrients = currentNutrients;
+      storedGrams = fromGrams;
+      storedLabel = `${trimNum(fromGrams)}g`;
+    } else if (Object.keys(currentNutrients).length && fromAmount && fromUnit && fromUnit === resolved.unit) {
+      numerator = resolved.value;
+      denominator = fromAmount;
+      basisNutrients = currentNutrients;
+      storedAmount = fromAmount;
+      storedUnit = fromUnit;
+      storedLabel = food.serving || `${trimNum(fromAmount)}${fromUnit}`;
+      if (fromGrams) { storedGrams = fromGrams; storedLabel = `${trimNum(fromGrams)}g`; }
+    } else {
+      const basis = getBasis(next);
+      if (basis && resolved.grams != null && Number(basis.grams) > 0) {
+        numerator = resolved.grams;
+        denominator = Number(basis.grams);
+        basisNutrients = basis.nutrients;
+        storedGrams = Number(basis.grams);
+        storedLabel = basis.label;
+      } else if (basis && Number(basis.amount) > 0 && basis.unit === resolved.unit) {
+        numerator = resolved.value;
+        denominator = Number(basis.amount);
+        basisNutrients = basis.nutrients;
+        storedAmount = Number(basis.amount);
+        storedUnit = basis.unit;
+        storedLabel = basis.label;
+      }
+    }
+
+    if (numerator != null && denominator > 0 && Number.isFinite(numerator) && basisNutrients) {
+      scaleNutrients(next, basisNutrients, numerator, denominator);
+      next.basisNutrients = { ...basisNutrients };
+      next.basis = storedLabel;
+      if (storedGrams) {
+        next.basisGrams = storedGrams;
+        delete next.basisAmount;
+        delete next.basisUnit;
+      } else {
+        next.basisAmount = storedAmount;
+        next.basisUnit = storedUnit;
+        delete next.basisGrams;
+      }
     }
     next.servingAmount = resolved.value;
     next.servingUnit = resolved.unit;
@@ -374,9 +482,10 @@
     next.servingGramsEstimated = Boolean(resolved.estimated);
     next.serving = resolved.text;
     delete next.quantityNote;
-    const per = gramsForUnit(name, resolved.unit, data || food);
+    const per = gramsForUnit(name, resolved.unit, { ...src, ...next, servingAmount: resolved.value, servingUnit: resolved.unit, servingGrams: resolved.grams });
     if (per && !isMassUnit(resolved.unit)) {
       next.unitGrams = { ...(next.unitGrams || {}), [resolved.unit]: per.grams };
+      if (next.servingGrams == null) next.servingGrams = Math.round(resolved.value * per.grams * 10) / 10;
     }
     return next;
   }

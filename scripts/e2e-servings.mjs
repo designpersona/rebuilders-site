@@ -172,6 +172,81 @@ try {
   `);
   check("영양 찾는 중이면 줄에 회색 '찾는 중'이 보이고 탄단지는 없음", rPending.cal === '찾는 중' && rPending.pending && /찾는 중/.test(rPending.line || '') && !rPending.macros, JSON.stringify(rPending));
 
+  // 2c. 로투스처럼 검색·AI로 넣은 1개 기록: + 하면 kcal·양·탄단지 비례, − 하면 원래대로
+  const rLotus = await evaluate(`
+    for (const m of ['breakfast','lunch','dinner','snack']) meals[m].foods = [];
+    meals.breakfast.foods = [{
+      name: '로투스 비스코프 오리지널 쿠키',
+      cal: 30, carbs: 4.7, protein: 0.4, fat: 1.2,
+      serving: '1개', servingAmount: 1, servingUnit: '개', servingGrams: 8,
+      id: 'lotus-plain'
+    }];
+    renderAll(true);
+    const card = document.getElementById('breakfast-card');
+    if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+    ${W8(300)}
+    document.querySelector('#breakfast-items .food-amount-btn').click();
+    ${W8(200)}
+    document.querySelector('#food-amount-popover [data-dir="1"]').click();
+    ${W8(200)}
+    const f = meals.breakfast.foods[0];
+    const plus = {
+      cal: f.cal, carbs: f.carbs, protein: f.protein, fat: f.fat,
+      amount: f.servingAmount, grams: f.servingGrams, serving: f.serving,
+      shown: document.querySelector('#breakfast-items .food-amount-btn')?.textContent,
+      pop: document.querySelector('#food-amount-popover .food-amount-value')?.textContent,
+      popCal: document.querySelector('#food-amount-popover .food-amount-cals')?.textContent,
+    };
+    document.querySelector('#food-amount-popover [data-dir="-1"]').click();
+    ${W8(200)}
+    const back = meals.breakfast.foods[0];
+    return {
+      plus,
+      minus: {
+        cal: back.cal, amount: back.servingAmount, grams: back.servingGrams,
+        shown: document.querySelector('#breakfast-items .food-amount-btn')?.textContent,
+      },
+    };
+  `);
+  check('로투스 1개 30kcal(수정 없음) + → 2개 (16g) 60kcal·탄단지 두 배, − 하면 다시 1개 (8g) 30kcal',
+    rLotus.plus.cal === 60 && rLotus.plus.carbs === 9.4 && rLotus.plus.protein === 0.8 && rLotus.plus.fat === 2.4
+    && rLotus.plus.amount === 2 && rLotus.plus.grams === 16 && rLotus.plus.shown === '2개 (16g)'
+    && rLotus.plus.pop === '2개 (16g)' && rLotus.plus.popCal === '60kcal'
+    && rLotus.minus.cal === 30 && rLotus.minus.amount === 1 && rLotus.minus.grams === 8 && rLotus.minus.shown === '1개 (8g)',
+    JSON.stringify(rLotus));
+
+  // 2d. '이 기록 수정'으로 kcal만 고친 1개 기록(낡은 100g 기준이 남아 있어도) + 하면 고친 값이 비례
+  const rCustom = await evaluate(`
+    meals.breakfast.foods = [{
+      name: '수제 쿠키',
+      cal: 30, carbs: 4.7, protein: 0.4, fat: 1.2,
+      serving: '1개', servingAmount: 1, servingUnit: '개', servingGrams: 8,
+      nutritionCustom: true,
+      basis: '100g', basisGrams: 100,
+      basisNutrients: { cal: 120, carbs: 20, protein: 2, fat: 5 },
+      id: 'cookie-custom'
+    }];
+    renderAll(true);
+    const card = document.getElementById('breakfast-card');
+    if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+    ${W8(300)}
+    document.querySelector('#breakfast-items .food-amount-btn').click();
+    ${W8(200)}
+    document.querySelector('#food-amount-popover [data-dir="1"]').click();
+    ${W8(200)}
+    const f = meals.breakfast.foods[0];
+    return {
+      cal: f.cal, carbs: f.carbs, protein: f.protein, fat: f.fat,
+      amount: f.servingAmount, grams: f.servingGrams,
+      shown: document.querySelector('#breakfast-items .food-amount-btn')?.textContent,
+      popCal: document.querySelector('#food-amount-popover .food-amount-cals')?.textContent,
+    };
+  `);
+  check('kcal을 1개 30으로 직접 고친 기록 + → 2개 (16g) 60kcal, 낡은 100g 기준은 무시',
+    rCustom.cal === 60 && rCustom.carbs === 9.4 && rCustom.protein === 0.8 && rCustom.fat === 2.4
+    && rCustom.amount === 2 && rCustom.grams === 16 && rCustom.shown === '2개 (16g)' && rCustom.popCal === '60kcal',
+    JSON.stringify(rCustom));
+
   // 3. 예전 기록(양 없음)은 값을 그대로 두고 수정 가능
   const r3 = await evaluate(`
     meals.breakfast.foods = [{ name: '그릭요거트', cal: 24, carbs: 1, protein: 4, fat: 0.2, serving: '100g', id: 'old-yogurt' }];

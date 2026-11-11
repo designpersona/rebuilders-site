@@ -5155,6 +5155,30 @@ mealDetailSaveBtn.addEventListener('click', async () => {
   next.servingGrams = perUnit && !['g', 'ml', 'kg', 'l'].includes(servingUnit) ? Math.round(Number(servingAmount) * perUnit * 10) / 10 : undefined;
   if (editRescale?.edited) next.nutritionCustom = true; // 영양 칸을 직접 고침
   delete next.quantityNote;
+  // 지금 저장한 양의 영양을 −/+ 기준(g 또는 개)으로 두어, 다음 양 변경이 고친 값에서 비례하게 함
+  const savedNutrients = {};
+  EDIT_NUTRIENT_FIELDS.forEach(key => { if (typeof next[key] === 'number') savedNutrients[key] = next[key]; });
+  if (Object.keys(savedNutrients).length) {
+    next.basisNutrients = savedNutrients;
+    const massUnit = ['g', 'ml', 'kg', 'l'].includes(servingUnit);
+    if (massUnit && Number(servingAmount) > 0) {
+      const grams = (servingUnit === 'kg' || servingUnit === 'l') ? Number(servingAmount) * 1000 : Number(servingAmount);
+      next.basisGrams = grams;
+      next.basis = `${grams}${servingUnit === 'ml' || servingUnit === 'l' ? 'ml' : 'g'}`;
+      delete next.basisAmount;
+      delete next.basisUnit;
+    } else if (Number(next.servingGrams) > 0) {
+      next.basisGrams = Number(next.servingGrams);
+      next.basis = `${next.servingGrams}g`;
+      delete next.basisAmount;
+      delete next.basisUnit;
+    } else if (Number(next.servingAmount) > 0 && next.servingUnit) {
+      next.basisAmount = Number(next.servingAmount);
+      next.basisUnit = next.servingUnit;
+      next.basis = next.serving;
+      delete next.basisGrams;
+    }
+  }
   next.name = next.name || food.name;
   if (food.icon) next.icon = food.icon;
   const wasEstimateOrMissing = inferSourceLabel(food) === '추정' || inferSourceLabel(food) === '없음' || isNutritionMissing(food);

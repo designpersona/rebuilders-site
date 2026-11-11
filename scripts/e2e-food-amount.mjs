@@ -58,6 +58,34 @@ try {
   // 4. 예전 기록(100g 값 + '1개' 메모): 단위를 개, 양 1 로 바꾸면 DB 의 한 개 무게(50g)로 77.5kcal
   const r4 = await evaluate(`${vals} meals.breakfast.foods = [{ ...NILIRI_FOOD_CATALOG['삶은 달걀'], unitGrams: undefined, name: '삶은 달걀', serving: '100g', quantityNote: '1개', id: 'old-egg' }]; renderAll(true); openFoodEdit('breakfast', 0); ${W8(300)} const a = out(); setUnit('개'); setAmt(1); const b = out(); document.getElementById('meal-detail-save-btn').click(); ${W8(500)} const f = meals.breakfast.foods[0]; return { a, b, saved: { cal: f.cal, serving: f.serving, grams: f.servingGrams, note: f.quantityNote ?? null, shown: displayServing(f) } };`);
   check("예전 기록(100g·155kcal, 메모 '1개'): 1개로 고치면 77.5kcal, 저장 '1개 (50g)', 메모 없어짐", r4.a.amount === '100' && r4.a.unit === 'g' && r4.b.cal === '77.5' && r4.saved.cal === 77.5 && r4.saved.grams === 50 && r4.saved.shown === '1개 (50g)' && r4.saved.note === null, JSON.stringify(r4));
+  // 5. 수정 창에서 1개 kcal을 직접 고친 뒤, 홈 −/+ 도 고친 값에서 비례
+  const r5 = await evaluate(`${vals}
+    meals.breakfast.foods = [{
+      name: '수제 쿠키', cal: 45, carbs: 6, protein: 0.5, fat: 2,
+      serving: '1개', servingAmount: 1, servingUnit: '개', servingGrams: 8,
+      basis: '100g', basisGrams: 100,
+      basisNutrients: { cal: 562.5, carbs: 75, protein: 6.25, fat: 25 },
+      id: 'cookie-edit'
+    }];
+    renderAll(true); openFoodEdit('breakfast', 0); ${W8(300)}
+    setField('cal', 30); document.getElementById('meal-detail-save-btn').click(); ${W8(500)}
+    const saved = meals.breakfast.foods[0];
+    const card = document.getElementById('breakfast-card');
+    if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+    ${W8(300)}
+    document.querySelector('#breakfast-items .food-amount-btn').click();
+    ${W8(200)}
+    document.querySelector('#food-amount-popover [data-dir="1"]').click();
+    ${W8(200)}
+    const f = meals.breakfast.foods[0];
+    return {
+      saved: { cal: saved.cal, custom: saved.nutritionCustom === true, amount: saved.servingAmount, basisGrams: saved.basisGrams ?? null, basisAmount: saved.basisAmount ?? null },
+      plus: { cal: f.cal, carbs: f.carbs, amount: f.servingAmount, grams: f.servingGrams, shown: displayServing(f) },
+    };`);
+  check('수정 창에서 1개 30kcal로 고친 뒤 홈 + → 2개 (16g) 60kcal',
+    r5.saved.cal === 30 && r5.saved.custom && r5.saved.amount === 1
+    && r5.plus.cal === 60 && r5.plus.amount === 2 && r5.plus.grams === 16 && r5.plus.shown === '2개 (16g)',
+    JSON.stringify(r5));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (err) { results.push('ERROR ' + (err.stack || err.message)); failed++; }
 finally {
