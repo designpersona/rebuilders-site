@@ -11,7 +11,7 @@ vm.createContext(ctx);
 vm.runInContext(readFileSync(join(root, 'units.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'quick-entry.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'chat-intent.js'), 'utf8'), ctx);
-const { classifyChat, isQuestion, isInstructionOnly, parseEditIntent, parseClarifyReply, extractFoodHint, matchLocalInstant, matchLocalFood, exactCatalogHit, findCatalogMatches, parsePortionPhrase, parseInterpretResult, editFromInterpret, buildInterpretPayload } = ctx.RebuildersChatIntent;
+const { classifyChat, isQuestion, isInstructionOnly, parseEditIntent, parseClarifyReply, extractFoodHint, matchLocalInstant, matchLocalFood, exactCatalogHit, findCatalogMatches, parsePortionPhrase, parseInterpretResult, foodDataFromInterpretItem, editFromInterpret, buildInterpretPayload } = ctx.RebuildersChatIntent;
 
 let failed = 0;
 function check(name, cond, info) { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : ' — ' + JSON.stringify(info)}`); if (!cond) failed++; }
@@ -151,6 +151,26 @@ check('interpret edit amount 0.25',
     && editFromInterpret(parsedEdit.edits[0]).amount?.value === 0.25
     && editFromInterpret(parsedEdit.edits[0]).targetId === 'food-1',
   parsedEdit);
+
+
+const parsedNutrients = parseInterpretResult({
+  intent: 'log',
+  items: [{
+    name: '스타벅스 브륄레 쿠키 치즈케이크', brand: '스타벅스',
+    amount: 1, unit: '개', package_grams: 380, kcal: 1400, carbs_g: 103, protein_g: 13, fat_g: 104,
+    source_type: '공식', source_note: '포장지', meal: 'lunch',
+  }],
+  edits: [],
+});
+check('interpret log 에 제품 1개 중량·kcal·탄단지가 들어감',
+  parsedNutrients?.items?.[0]?.packageGrams === 380 && parsedNutrients.items[0].kcal === 1400
+    && parsedNutrients.items[0].carbs === 103 && parsedNutrients.items[0].sourceType === '공식',
+  parsedNutrients?.items?.[0]);
+const fromItem = foodDataFromInterpretItem(parsedNutrients.items[0]);
+check('interpret 영양은 1개 380g 1400kcal 기준으로 저장할 수 있음',
+  fromItem?.cal === 1400 && fromItem.packageGrams === 380 && fromItem.unitGrams?.['개'] === 380
+    && fromItem.sourceLabel === '공식' && fromItem.sourceTrust === 'reference' && fromItem.brand === '스타벅스',
+  fromItem);
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

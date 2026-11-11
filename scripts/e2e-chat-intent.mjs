@@ -152,7 +152,8 @@ try {
   `);
   r = await evaluate(chat('기존없는음식xyz테스트'));
   const unknownCalls = await evaluate(`return { calls: window.__bridgeCalls.slice(), interpret: window.__lastInterpretBody, searching: [...document.querySelectorAll('#agent-log .agent-message.is-agent')].pop()?.classList.contains('is-searching'), custom: Object.keys(CUSTOM_FOODS || {}), missing: (CUSTOM_FOODS['기존없는음식xyz테스트'] ? 'has' : 'none') };`);
-  check('기존에 없는 음식은 /interpret 로 보낸 뒤 저장되고 찾는 중이 보임', r.foods.some(f => f.name === '기존없는음식xyz테스트') && /저장했어요/.test(r.reply) && /기존 데이터에 없어서 찾는 중/.test(r.reply) && unknownCalls.calls.some(c => c === 'POST /interpret') && unknownCalls.interpret?.text === '기존없는음식xyz테스트', JSON.stringify({ r, unknownCalls }));
+  const unknownUi = await evaluate(`return { searching: [...document.querySelectorAll('#agent-log .agent-message.is-agent')].pop()?.classList.contains('is-searching'), inline: !!document.querySelector('.agent-inline-nutrients') };`);
+  check('기존에 없는 음식은 /interpret 로 보낸 뒤 저장되고, 영양이 없으면 kcal·중량 칸만 보이며 찾는 중·/jobs 는 없음', r.foods.some(f => f.name === '기존없는음식xyz테스트') && /저장했어요/.test(r.reply) && /kcal과 중량/.test(r.reply) && unknownCalls.calls.some(c => c === 'POST /interpret') && !unknownCalls.calls.some(c => c === 'POST /jobs') && unknownCalls.interpret?.text === '기존없는음식xyz테스트' && !unknownCalls.searching && !unknownUi.searching && unknownUi.inline, JSON.stringify({ r, unknownCalls, unknownUi }));
   const resolved = await evaluate(`
     const job = RebuildersBridge.getQueue()[0];
     const item = {
@@ -173,6 +174,44 @@ try {
   check('찾기가 다른 공식 이름으로 끝나면 빈 자리 이름은 내 음식에서 사라지고 공식 이름으로 합쳐짐',
     resolved.hasOfficial && !resolved.hasPlaceholder && resolved.foods.some(f => f.name === '공식테스트음식xyz' && f.cal === 200),
     JSON.stringify(resolved));
+
+  // 8c. interpret 가 제품 1개 기준 영양을 같이 주면 /jobs 없이 바로 기록
+  r = await evaluate(`
+    window.__bridgeCalls = [];
+    window.__lastInterpretBody = null;
+    window.__interpretReply = { intent: 'log', items: [{
+      name: '스타벅스 브륄레 쿠키 치즈케이크', brand: '스타벅스',
+      amount: 1, unit: '개', package_grams: 380, kcal: 1400, carbs_g: 103, protein_g: 13, fat_g: 104,
+      source_type: '공식', source_note: '포장지', meal: 'lunch',
+    }], edits: [] };
+    const prev = window.fetch;
+    window.fetch = async (url, opts = {}) => {
+      const path = '/' + String(url).split('/').slice(3).join('/');
+      const method = (opts.method || 'GET').toUpperCase();
+      window.__bridgeCalls.push(method + ' ' + path);
+      if (path === '/health') return new Response(JSON.stringify({ ok: true, interpret: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/interpret' && method === 'POST') {
+        window.__lastInterpretBody = JSON.parse(opts.body || '{}');
+        return new Response(JSON.stringify({ ok: true, job_id: 'c'.repeat(32), done: true, pending: [], ...window.__interpretReply }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return prev(url, opts);
+    };
+    return 1;
+  `);
+  r = await evaluate(chat('점심에 스벅 브륄레 치즈 케익 먹었어'));
+  const oneShot = await evaluate(`return {
+    calls: window.__bridgeCalls.slice(),
+    lunch: meals.lunch.foods.filter(f => /브륄레/.test(f.name)).map(f => ({ name: f.name, cal: f.cal, serving: f.serving, grams: f.servingGrams, pack: f.packageGrams, brand: f.brand, source: f.sourceLabel })),
+    custom: !!CUSTOM_FOODS['스타벅스 브륄레 쿠키 치즈케이크'],
+    searching: [...document.querySelectorAll('#agent-log .agent-message.is-agent')].pop()?.classList.contains('is-searching'),
+  };`);
+  check('interpret 가 영양을 같이 주면 1개 1400kcal로 바로 저장하고 /jobs·찾는 중은 없음',
+    r.foods.some(f => f.name === '스타벅스 브륄레 쿠키 치즈케이크' && f.cal === 1400)
+      && /1400kcal/.test(r.reply) && !/찾는 중/.test(r.reply)
+      && oneShot.calls.some(c => c === 'POST /interpret') && !oneShot.calls.some(c => c === 'POST /jobs')
+      && oneShot.lunch[0]?.cal === 1400 && oneShot.lunch[0]?.pack === 380 && oneShot.lunch[0]?.source === '공식'
+      && oneShot.custom && !oneShot.searching,
+    JSON.stringify({ r, oneShot }));
 
   // 9. 애매한 말은 원문 통째로 /interpret
   r = await evaluate(`
@@ -238,6 +277,7 @@ try {
       serving: '1개', servingAmount: 1, servingUnit: '개',
       brand: '스타벅스', sourceTrust: 'user', sourceLabel: '내 음식',
     });
+    meals.lunch.foods = (meals.lunch.foods || []).filter(f => !/브륄레/.test(f.name || ''));
     mealTimes = defaultMealTimes();
     return { lunch: mealTimes.lunch.value, calls: window.__bridgeCalls.slice() };
   `);

@@ -14092,3 +14092,28 @@ input.food-amount-value:focus {
   font-size: 10px;
   font-weight: 600;
 }
+
+.agent-inline-nutrients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.agent-inline-nutrients label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: inherit;
+}
+.agent-inline-nutrients input {
+  width: 88px;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}

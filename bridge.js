@@ -345,7 +345,7 @@
     return out;
   }
 
-  /** 문장 통째 해석: POST /interpret 로 맡기고 GET /jobs/<id> 로 결과를 받음. 영양 숫자는 받지 않음. */
+  /** 문장 통째 해석: POST /interpret 로 맡기고 GET /jobs/<id> 로 의도+제품 1개 기준 영양을 받음. */
   async function interpret({ text, date, meal, time, lastBatch, candidates, image, remoteId } = {}) {
     let data = null;
     if (JOB_ID_RE.test(String(remoteId || ''))) {
@@ -376,7 +376,7 @@
     };
   }
 
-  async function interpretAndWait(payload, { maxMs = 100000, intervalMs = 2500 } = {}) {
+  async function interpretAndWait(payload, { maxMs = 45000, intervalMs = 1500 } = {}) {
     const started = Date.now();
     const end = started + maxMs;
     let result = await interpret(payload);

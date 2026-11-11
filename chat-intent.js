@@ -570,10 +570,28 @@
       } else if (unit) {
         out.unit = unit;
       }
-      const grams = numOrNull(item.grams ?? item.package_grams ?? item.packageGrams, 20000);
+      const grams = numOrNull(item.grams, 20000);
       if (grams != null) out.grams = grams;
-      const pkg = numOrNull(item.package_grams ?? item.packageGrams, 20000);
+      const pkg = numOrNull(item.package_grams ?? item.packageGrams ?? item.package_ml ?? item.packageMl, 20000);
       if (pkg != null) out.packageGrams = pkg;
+      const kcal = numOrNull(item.kcal ?? item.cal ?? item.calories, 5000);
+      if (kcal != null) out.kcal = kcal;
+      const carbs = numOrNull(item.carbs_g ?? item.carbs, 1000);
+      if (carbs != null) out.carbs = carbs;
+      const protein = numOrNull(item.protein_g ?? item.protein, 1000);
+      if (protein != null) out.protein = protein;
+      const fat = numOrNull(item.fat_g ?? item.fat, 1000);
+      if (fat != null) out.fat = fat;
+      const sugar = numOrNull(item.sugar_g ?? item.sugar, 1000);
+      if (sugar != null) out.sugar = sugar;
+      const sodium = numOrNull(item.sodium_mg ?? item.sodium, 50000);
+      if (sodium != null) out.sodium = sodium;
+      const sourceType = normalize(item.source_type || item.sourceType).slice(0, 20);
+      if (sourceType) out.sourceType = sourceType;
+      const sourceUrl = String(item.source_url || item.sourceUrl || '').trim().slice(0, 200);
+      if (sourceUrl) out.sourceUrl = sourceUrl;
+      const sourceNote = normalize(item.source_note || item.sourceNote).slice(0, 120);
+      if (sourceNote) out.sourceNote = sourceNote;
       if (item.amount && typeof item.amount === 'number' && item.amount > 0 && item.amount < 1 && !out.amount) {
         out.amount = { value: item.amount, unit: unit || '개', text: String(item.amount) };
       }
@@ -608,6 +626,59 @@
     if (intent === 'edit' && !edits.length) return null;
     if (intent === 'clarify' && !question && !options.length) return null;
     return result;
+  }
+
+  function sourceFromInterpret(item) {
+    const raw = normalize(item?.sourceType || item?.source_type || item?.source || '').replace(/\s+/g, '');
+    const note = normalize(item?.sourceNote || item?.source_note);
+    if (['공식', '포장지', '라벨', '제품라벨', '영양표', '공식값'].includes(raw) || /포장지|라벨|공식/.test(note)) {
+      return { sourceType: '공식', sourceLabel: '공식', sourceTrust: 'reference', estimate: false, aiEstimate: false };
+    }
+    if (['공공DB', '식약처', '공공'].includes(raw) || /식약처/.test(note)) {
+      return { sourceType: '공공DB', sourceLabel: '공공DB', sourceTrust: 'reference', estimate: false, aiEstimate: false };
+    }
+    if (raw || item?.sourceUrl || item?.source_url || item?.kcal != null || item?.cal != null) {
+      return { sourceType: '추정', sourceLabel: '추정', sourceTrust: 'estimate', estimate: true, aiEstimate: true };
+    }
+    return null;
+  }
+
+  /** interpret 항목의 제품 1개 기준 영양. 없으면 null. */
+  function foodDataFromInterpretItem(item) {
+    if (!item || typeof item !== 'object') return null;
+    const kcal = numOrNull(item.kcal ?? item.cal ?? item.calories, 5000);
+    if (kcal == null) return null;
+    const out = { cal: kcal };
+    const carbs = numOrNull(item.carbs ?? item.carbs_g, 1000);
+    const protein = numOrNull(item.protein ?? item.protein_g, 1000);
+    const fat = numOrNull(item.fat ?? item.fat_g, 1000);
+    const sugar = numOrNull(item.sugar ?? item.sugar_g, 1000);
+    const sodium = numOrNull(item.sodium ?? item.sodium_mg, 50000);
+    if (carbs != null) out.carbs = carbs;
+    if (protein != null) out.protein = protein;
+    if (fat != null) out.fat = fat;
+    if (sugar != null) out.sugar = sugar;
+    if (sodium != null) out.sodium = sodium;
+    const brand = normalize(item.brand).slice(0, 40);
+    if (brand) out.brand = brand;
+    const pack = numOrNull(item.packageGrams ?? item.package_grams ?? item.packageMl ?? item.package_ml, 20000);
+    if (pack != null) {
+      const unitRaw = normalize(item.unit || item.servingUnit || '개') || '개';
+      const countUnit = ['g', 'ml', 'kg', 'l'].includes(unitRaw.toLowerCase()) ? '개' : unitRaw;
+      out.packageGrams = pack;
+      out.servingGrams = pack;
+      out.unitGrams = { [countUnit]: pack };
+      out.serving = `1${countUnit}`;
+      out.servingAmount = 1;
+      out.servingUnit = countUnit;
+    }
+    const src = sourceFromInterpret(item);
+    if (src) Object.assign(out, src);
+    const sourceUrl = String(item.sourceUrl || item.source_url || '').trim().slice(0, 200);
+    if (sourceUrl) out.sourceUrl = sourceUrl;
+    const sourceNote = normalize(item.sourceNote || item.source_note).slice(0, 120);
+    if (sourceNote) out.sourceNote = sourceNote;
+    return out;
   }
 
   function editFromInterpret(edit) {
@@ -653,6 +724,7 @@
     isPortionOnlyFollowUp,
     buildInterpretPayload,
     parseInterpretResult,
+    foodDataFromInterpretItem,
     editFromInterpret,
   };
   global.RebuildersChatIntent = api;

@@ -7605,6 +7605,86 @@ function withKoreanObjectParticle(text) {
   return `${value}${hasFinalConsonant ? '을' : '를'}`;
 }
 
+function appendInlineNutritionInputs(message, mealId, idx) {
+  if (!message || !meals[mealId]?.foods[idx]) return;
+  const en = ACTIVE_LOCALE === 'en';
+  const wrap = document.createElement('div');
+  wrap.className = 'agent-inline-nutrients';
+  const kcalInput = document.createElement('input');
+  kcalInput.type = 'number';
+  kcalInput.inputMode = 'decimal';
+  kcalInput.min = '0';
+  kcalInput.step = '1';
+  kcalInput.placeholder = 'kcal';
+  kcalInput.setAttribute('aria-label', 'kcal');
+  const gramsInput = document.createElement('input');
+  gramsInput.type = 'number';
+  gramsInput.inputMode = 'decimal';
+  gramsInput.min = '0';
+  gramsInput.step = '1';
+  gramsInput.placeholder = en ? 'Weight (g)' : '중량(g)';
+  gramsInput.setAttribute('aria-label', en ? 'Weight in grams' : '중량 그램');
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'agent-confirm';
+  save.textContent = en ? 'Save' : '저장';
+  const kcalLabel = document.createElement('label');
+  kcalLabel.append('kcal ', kcalInput);
+  const gramsLabel = document.createElement('label');
+  gramsLabel.append(en ? 'g ' : '중량(g) ', gramsInput);
+  wrap.append(kcalLabel, gramsLabel, save);
+  save.addEventListener('click', async () => {
+    if (save.disabled) return;
+    const food = meals[mealId]?.foods[idx];
+    if (!food) return;
+    const kcal = Number(kcalInput.value);
+    const grams = Number(gramsInput.value);
+    if (!Number.isFinite(kcal) || kcal < 0 || kcal > 5000) {
+      kcalInput.focus();
+      return;
+    }
+    save.disabled = true;
+    try {
+      const before = snapshotMeals();
+      const U = globalThis.RebuildersUnits;
+      let next = { ...food, cal: Math.round(kcal * 10) / 10, sourceTrust: 'user', nutritionCustom: true, aiEstimate: false, estimate: false };
+      if (Number.isFinite(grams) && grams > 0) {
+        if (U?.applyPackageWeight) next = U.applyPackageWeight({ ...next, servingAmount: next.servingAmount || 1, servingUnit: next.servingUnit || '개' }, grams);
+        else {
+          next.packageGrams = grams;
+          next.servingGrams = grams;
+          next.unitGrams = { ...(next.unitGrams || {}), [next.servingUnit || '개']: grams };
+        }
+        // 입력값은 한 개(한 팩) 기준. 지금 먹은 양이 1개가 아니면 비율로 맞춤.
+        const amount = Number(next.servingAmount);
+        if (amount > 0 && amount !== 1 && typeof next.cal === 'number') {
+          const factor = amount;
+          ['cal', 'carbs', 'protein', 'fat', 'sugar', 'sodium'].forEach(key => {
+            if (typeof food[key] === 'number') next[key] = Math.round(food[key] * factor * 10) / 10;
+          });
+          next.cal = Math.round(kcal * factor * 10) / 10;
+          if (next.packageGrams && next.servingUnit && !['g', 'ml'].includes(String(next.servingUnit).toLowerCase())) {
+            next.servingGrams = Math.round(amount * grams * 10) / 10;
+          }
+        }
+      }
+      meals[mealId].foods[idx] = applySourceLabel(next);
+      const saved = meals[mealId].foods[idx];
+      try { await saveCustomFood(saved.name, { ...saved, sourceLabel: '내 음식', sourceTrust: 'user' }); } catch { /* ignore */ }
+      await persistMealsOrRestore(before);
+      renderAll(true);
+      setAgentMessageText(message, en
+        ? `Saved to ${mealLabel(mealId)}: ${formatFoodChange(saved)}.`
+        : `${mealLabel(mealId)}에 저장했어요: ${formatFoodChange(saved)}.`);
+      wrap.remove();
+    } catch (error) {
+      save.disabled = false;
+      showStorageFailure(error);
+    }
+  });
+  appendToAgentMessage(message, wrap);
+}
+
 function appendFillNutritionButton(message, mealId, idx) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -7783,35 +7863,19 @@ async function applyChatFoods(parsed) {
   rememberChatBatch(parsed, mealId, foods, indexes);
   await registerLoggedFoods(foods);
   const missing = foods.map((food, i) => ({ food, idx: indexes[i] })).filter(({ food }) => isNutritionMissing(food));
-  const queued = queueBridgeLookup(mealId, foods);
   const summary = foods.map(food => {
     if (!isNutritionMissing(food)) return formatFoodChange(food);
-    if (!queued) return quickItemSummary(food);
-    const visible = displayFoodName(food);
-    const amount = food.serving && food.serving !== visible ? ` ${food.serving}` : '';
-    return `${visible}${amount}`;
+    return quickItemSummary(food);
   }).join(', ');
-  const later = !missing.length ? '' : queued
-    ? (ACTIVE_LOCALE === 'en' ? ' Not in the existing data — looking it up' : ' 기존 데이터에 없어서 찾는 중')
-    : (ACTIVE_LOCALE === 'en' ? ' You can fill in nutrition later.' : ' 영양정보는 나중에 채워도 돼요.');
+  const later = !missing.length ? ''
+    : (ACTIVE_LOCALE === 'en' ? ' Enter kcal and weight.' : ' kcal과 중량을 적어 주세요.');
   const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
     ? `Saved to ${mealLabel(mealId)}: ${summary}.${later}`
     : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.${later}`);
-  if (queued) {
-    setAgentSearching(message, true);
-    pendingFillChats.push({
-      chatId: message.dataset.chatId,
-      date: dateKey(currentDate),
-      mealId,
-      ids: indexes.map(idx => meals[mealId].foods[idx]?.id).filter(Boolean),
-      names: foods.map(food => food.name),
-    });
-  }
+  setAgentSearching(message, false);
   appendUndoSaveButton(message, undoSnapshot);
-  if (missing.length) {
-    appendFillNutritionButton(message, mealId, missing[0].idx);
-    appendToAgentMessage(message, buildAskAiButton(mealId, missing.map(({ food }) => ({ name: food.name, serving: food.serving || '' })), 'agent-confirm'));
-  }
+  missing.forEach(({ idx }) => appendInlineNutritionInputs(message, mealId, idx));
+  if (missing.length) appendFillNutritionButton(message, mealId, missing[0].idx);
 }
 
 async function applyClarifyChoice(choice) {
@@ -8416,14 +8480,17 @@ function interpretItemsToParsed(result, catalogs, text) {
     const amount = item.amount && (item.amount.value != null || item.amount.text)
       ? item.amount
       : (typeof item.amount === 'number' ? { value: item.amount, unit: item.unit || '개', text: String(item.amount) } : null);
+    const interpretData = Intent?.foodDataFromInterpretItem?.(item) || null;
+    const hitData = hit?.data && typeof hit.data.cal === 'number' ? hit.data : null;
+    const data = hitData || interpretData || hit?.data || null;
     let entry = {
       name: hit?.name || item.name,
       baseName: hit?.baseName || hit?.name || item.name,
-      data: hit?.data || null,
-      known: Boolean(hit?.data),
+      data,
+      known: Boolean(data && (typeof data.cal === 'number')),
       amount,
-      origin: hit?.origin,
-      packageGrams: item.packageGrams || item.grams || null,
+      origin: hit?.origin || (interpretData ? 'interpret' : undefined),
+      packageGrams: (data && data.packageGrams) || item.packageGrams || null,
     };
     if (!entry.amount && hit) {
       const rec = (catalogs?.recent || []).find(row => Intent.compactName(row.name) === Intent.compactName(entry.name));
@@ -8581,13 +8648,17 @@ async function interpretOrFallback(text, { candidates, catalogs } = {}) {
   setAgentSearching(message, true);
   const payload = Intent.buildInterpretPayload(text, interpretContextFor(text, catalogs, candidates));
   try {
-    const raw = await RebuildersBridge.interpretAndWait(payload);
+    const raw = await RebuildersBridge.interpretAndWait(payload, { maxMs: 45000, intervalMs: 1500 });
     lastInterpretMs = raw.elapsedMs || lastInterpretMs;
     const result = Intent.parseInterpretResult(raw);
     if (!result) throw new RebuildersBridge.BridgeError('bad_request');
+    setAgentSearching(message, false);
     await applyInterpretResult(result, { message, text, catalogs: catalogs || localMatchCatalogs() });
   } catch (error) {
+    setAgentSearching(message, false);
     await handleAgentCommandFallback(text, { message, reason: error, silent: false });
+  } finally {
+    if (message?.classList.contains('is-searching')) setAgentSearching(message, false);
   }
 }
 
