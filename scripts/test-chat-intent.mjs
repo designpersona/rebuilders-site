@@ -8,8 +8,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ctx = { globalThis: null };
 ctx.globalThis = ctx;
 vm.createContext(ctx);
+vm.runInContext(readFileSync(join(root, 'units.js'), 'utf8'), ctx);
+vm.runInContext(readFileSync(join(root, 'quick-entry.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'chat-intent.js'), 'utf8'), ctx);
-const { classifyChat, isQuestion, isInstructionOnly, parseEditIntent, parseClarifyReply, extractFoodHint } = ctx.RebuildersChatIntent;
+const { classifyChat, isQuestion, isInstructionOnly, parseEditIntent, parseClarifyReply, extractFoodHint, matchLocalInstant, exactCatalogHit, parseInterpretResult, editFromInterpret, buildInterpretPayload } = ctx.RebuildersChatIntent;
 
 let failed = 0;
 function check(name, cond, info) { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : ' — ' + JSON.stringify(info)}`); if (!cond) failed++; }
@@ -42,6 +44,38 @@ check('한 제품이에요 → one', parseClarifyReply('한 제품이에요') ==
 check('두 개예요 → two', parseClarifyReply('두 개예요') === 'two', parseClarifyReply('두 개예요'));
 check('clarify 상태에서 한 제품', classifyChat('한 제품', { pendingClarify: true }).type === 'clarify-reply' && classifyChat('한 제품', { pendingClarify: true }).choice === 'one');
 check('hint strips instruction words', extractFoodHint('아까 너트 99kcal로 바꿔줘') === '너트', extractFoodHint('아까 너트 99kcal로 바꿔줘'));
+
+const catalogs = {
+  mine: [{ name: '너트한줌 럭셔리', data: { cal: 99, carbs: 4, protein: 3, fat: 8, serving: '20g', sourceTrust: 'user' }, aliases: ['너트한줌럭셔리'], lastServing: '20g' }],
+  recent: [{ name: '그릭요거트', data: { cal: 68, carbs: 3, protein: 10, fat: 0.4, serving: '40g' }, aliases: ['그릭 요거트'], lastServing: '40g', lastAmount: 40, lastUnit: 'g' }],
+  db: [{ name: '바나나', data: { cal: 89, carbs: 23, protein: 1.1, fat: 0.3, serving: '100g' }, aliases: [] }],
+};
+
+let local = matchLocalInstant('너트한줌 럭셔리', catalogs);
+check('내 음식 너트한줌 럭셔리는 한 항목으로 바로 매칭', local.ok && local.items.length === 1 && local.items[0].name === '너트한줌 럭셔리' && local.items[0].food?.cal === 99, local);
+local = matchLocalInstant('그릭요거트', catalogs);
+check('최근 그릭요거트는 마지막 양 40g을 기본으로 씀', local.ok && local.items.length === 1 && /40/.test(String(local.items[0].food?.serving || local.items[0].amount?.text || '')) && local.items[0].food?.cal === 68, local.items?.[0]);
+local = matchLocalInstant('바나나 100g', catalogs);
+check('공식 DB 바나나는 바로 매칭', local.ok && local.items[0].name === '바나나' && local.items[0].food?.cal === 89, local.items?.[0]);
+local = matchLocalInstant('신제품블루베리주스xyz', catalogs);
+check('처음 보는 말은 바로 매칭하지 않음', !local.ok, local);
+local = matchLocalInstant('아까 너트 99kcal로 바꿔줘', catalogs);
+check('수정 말은 바로 기록 경로가 아님', !local.ok && local.instruction, local);
+
+const parsed = parseInterpretResult({
+  intent: 'log',
+  items: [{ name: '블루베리 토마토 사과 주스', amount: 1, unit: '컵', meal: 'breakfast' }, { name: '너트한줌 럭셔리' }],
+  edits: [],
+});
+check('interpret log: 혼합 주스와 제품이 두 항목', parsed?.intent === 'log' && parsed.items.length === 2 && parsed.items[0].name === '블루베리 토마토 사과 주스' && parsed.items[1].name === '너트한줌 럭셔리', parsed);
+check('interpret edit kcal', editFromInterpret({ field: 'kcal', value: 99, targetName: '너트' })?.action === 'set-kcal' && editFromInterpret({ field: 'kcal', value: 99, targetName: '너트' }).kcal === 99);
+const payload = buildInterpretPayload('스벅 브륄레 쿠키', { meal: 'snack', candidates: ['브륄레'], date: '2026-11-11' });
+check('interpret 요청에 원문 전체가 들어감', payload.text === '스벅 브륄레 쿠키' && payload.meal === 'snack' && payload.candidates[0] === '브륄레', payload);
+check('image 자리는 요청에 없을 때 안 붙임', !('image' in payload), payload);
+const withImage = buildInterpretPayload('영양표', { image: 'reserved' });
+check('image 필드를 넘기면 그대로 자리를 연다', withImage.image === 'reserved', withImage);
+
+check('exact catalog hit prefers mine', exactCatalogHit('너트한줌럭셔리', catalogs)?.origin === 'mine' && exactCatalogHit('너트한줌럭셔리', catalogs).data.cal === 99);
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

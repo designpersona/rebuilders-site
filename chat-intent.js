@@ -1,4 +1,5 @@
-/* 채팅 의도: 질문·수정·확인 답을 음식 이름과 구분합니다. DOM·저장소에 의존하지 않는 순수 함수입니다. */
+/* 채팅 의도: 질문·수정·확인 답을 음식 이름과 구분합니다. 등록·최근·공식과 딱 맞으면
+ * 바로 기록하고, 그 외는 문장 통째로 AI에 맡길지 결정합니다. DOM·저장소에 의존하지 않습니다. */
 (function rebuildersChatIntent(global) {
   'use strict';
 
@@ -16,9 +17,15 @@
     + `^(한\\s*제품|두\\s*개|따로|하나로)`,
     'u',
   );
+  const INTERPRET_INTENTS = ['log', 'edit', 'question', 'clarify'];
+  const EDIT_FIELDS = ['kcal', 'amount', 'unit', 'meal', 'delete', 'merge', 'split'];
 
   function normalize(text) {
     return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function compactName(value) {
+    return String(value || '').toLowerCase().normalize('NFC').replace(/[\s·.,()\[\]\-_/]+/g, '');
   }
 
   function isQuestion(text) {
@@ -127,6 +134,233 @@
     return { type: 'food' };
   }
 
+  function catalogList(catalogs) {
+    if (!catalogs) return [];
+    return ['mine', 'recent', 'db'].flatMap(origin =>
+      (catalogs[origin] || []).map(entry => ({ ...entry, origin: entry.origin || origin })));
+  }
+
+  function exactCatalogHit(name, catalogs) {
+    const q = compactName(name);
+    if (!q) return null;
+    const groups = [
+      ['mine', catalogs?.mine],
+      ['recent', catalogs?.recent],
+      ['db', catalogs?.db],
+    ];
+    for (const [origin, list] of groups) {
+      for (const entry of list || []) {
+        const keys = [entry.name, ...(entry.aliases || [])].map(compactName).filter(Boolean);
+        if (keys.includes(q)) return { ...entry, origin: entry.origin || origin };
+      }
+    }
+    return null;
+  }
+
+  function withLastServing(hit, catalogs) {
+    if (!hit) return hit;
+    const q = compactName(hit.name);
+    const rec = (catalogs?.recent || []).find(entry => compactName(entry.name) === q || (entry.aliases || []).some(a => compactName(a) === q));
+    if (!rec) return hit;
+    return {
+      ...hit,
+      lastServing: rec.lastServing || rec.data?.serving || hit.lastServing,
+      lastAmount: rec.lastAmount ?? hit.lastAmount,
+      lastUnit: rec.lastUnit || hit.lastUnit,
+    };
+  }
+
+  function parseServingAmount(text) {
+    if (!text) return null;
+    const fromQuick = global.RebuildersQuickEntry?.parseAmountAt;
+    if (fromQuick) {
+      const tokens = String(text).trim().split(/\s+/).filter(Boolean);
+      const parsed = fromQuick(tokens, 0);
+      if (parsed?.amount) return parsed.amount;
+    }
+    return parseAmountPhrase(` ${text}`) || parseAmountPhrase(String(text));
+  }
+
+  function applyDefaultAmount(item, hit) {
+    if (item.amount || !hit) return item;
+    const serving = hit.lastServing || (hit.lastAmount && hit.lastUnit ? `${hit.lastAmount}${hit.lastUnit}` : '');
+    const amount = serving ? parseServingAmount(serving) : null;
+    if (!amount && hit.lastAmount && hit.lastUnit) {
+      return { ...item, amount: { value: Number(hit.lastAmount), unit: hit.lastUnit, text: `${hit.lastAmount}${hit.lastUnit}` } };
+    }
+    return amount ? { ...item, amount } : item;
+  }
+
+  function candidateNames(text, catalogs, limit = 8) {
+    const q = compactName(text);
+    if (!q) return [];
+    const scored = [];
+    catalogList(catalogs).forEach(entry => {
+      const keys = [entry.name, ...(entry.aliases || [])].map(compactName).filter(Boolean);
+      if (keys.some(key => key && (q.includes(key) || key.includes(q) || q.slice(0, 8) && key.startsWith(q.slice(0, Math.min(8, q.length)))))) {
+        if (!scored.some(item => compactName(item) === compactName(entry.name))) scored.push(entry.name);
+      }
+    });
+    return scored.slice(0, limit);
+  }
+
+  function catalogsToFoods(catalogs) {
+    const seen = new Set();
+    const out = [];
+    catalogList(catalogs).forEach(entry => {
+      const name = entry?.name;
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      out.push([name, entry.data || {}, entry.aliases || []]);
+    });
+    return out;
+  }
+
+  /**
+   * 문장 전체, 또는 쉼표·그리고 등으로 나눈 각 부분이 내 음식·최근·공식 DB와
+   * 이름(또는 별칭)이 딱 맞을 때만 바로 기록합니다. 하나라도 확신이 없으면 ok: false.
+   */
+  function matchLocalInstant(text, catalogs, options = {}) {
+    const QE = global.RebuildersQuickEntry;
+    const candidates = candidateNames(text, catalogs);
+    const empty = { ok: false, candidates, parsed: null };
+    const raw = normalize(text);
+    if (!raw) return { ...empty, type: 'empty' };
+    if (QE?.isInstructionText ? QE.isInstructionText(raw) : isInstructionOnly(raw)) {
+      return { ...empty, instruction: true };
+    }
+    if (!QE?.parseQuickEntry) return empty;
+    const parsed = QE.parseQuickEntry(raw, { foods: catalogsToFoods(catalogs), now: options.now || new Date() });
+    if (!parsed?.items?.length || parsed.ambiguous) return { ...empty, parsed };
+    const resolved = [];
+    for (const item of parsed.items) {
+      const hit = withLastServing(exactCatalogHit(item.name, catalogs) || (item.known && item.data ? { name: item.name, data: item.data, origin: 'parsed' } : null), catalogs);
+      if (!hit || !hit.data) return { ...empty, parsed };
+      // 파서가 공식 별칭으로만 맞춘 경우도 data 가 있으면 허용(계란→삶은 달걀). 부분 일치로 새로 지어낸 이름은 거절.
+      const exact = exactCatalogHit(item.name, catalogs) || exactCatalogHit(hit.name, catalogs);
+      if (!exact && !item.known) return { ...empty, parsed };
+      const next = applyDefaultAmount({ ...item, name: hit.name, baseName: hit.baseName || hit.name, data: hit.data, known: true, origin: hit.origin || exact?.origin }, hit);
+      if (QE.scaleFood) next.food = QE.scaleFood(next);
+      resolved.push(next);
+    }
+    return {
+      ok: true,
+      items: resolved,
+      parsed: { ...parsed, items: resolved },
+      candidates,
+    };
+  }
+
+  function buildInterpretPayload(text, context = {}) {
+    const payload = {
+      text: String(text || '').trim().slice(0, 500),
+      date: context.date || null,
+      meal: context.meal || null,
+      time: context.time || null,
+      lastBatch: context.lastBatch || null,
+      candidates: Array.isArray(context.candidates) ? context.candidates.slice(0, 12) : [],
+    };
+    // 영양표 사진 등록은 이 작업에 넣지 않음. 나중에 image 필드를 채워 같은 길로 보낼 수 있게 자리만 둠.
+    if (context.image) payload.image = context.image;
+    return payload;
+  }
+
+  function numOrNull(value, max) {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) && n >= 0 && n <= max ? n : null;
+  }
+
+  function parseInterpretAmount(raw) {
+    if (raw == null || raw === '') return null;
+    if (typeof raw === 'object') {
+      const value = numOrNull(raw.value ?? raw.amount, 20000);
+      const unit = String(raw.unit || '').trim().slice(0, 20);
+      if (value == null) return null;
+      return { value, unit, text: raw.text || `${value}${unit}` };
+    }
+    if (typeof raw === 'number') return { value: raw, unit: '', text: String(raw) };
+    return parseServingAmount(raw) || { value: null, unit: '', text: String(raw).trim().slice(0, 40) };
+  }
+
+  function parseInterpretResult(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const intent = String(raw.intent || '').trim();
+    if (!INTERPRET_INTENTS.includes(intent)) return null;
+    const items = [];
+    (Array.isArray(raw.items) ? raw.items : []).slice(0, 8).forEach(item => {
+      if (!item || typeof item !== 'object') return;
+      const name = normalize(item.name).slice(0, 80);
+      if (!name) return;
+      const out = { name };
+      const brand = normalize(item.brand).slice(0, 40);
+      if (brand) out.brand = brand;
+      const amount = parseInterpretAmount(item.amount);
+      const unit = normalize(item.unit).slice(0, 20);
+      if (amount && (amount.value != null || amount.text)) {
+        if (unit && !amount.unit) amount.unit = unit;
+        if (!amount.text) amount.text = `${amount.value || ''}${amount.unit || ''}`.trim();
+        out.amount = amount;
+      } else if (unit) {
+        out.unit = unit;
+      }
+      const grams = numOrNull(item.grams, 20000);
+      if (grams != null) out.grams = grams;
+      if (item.meal && MEAL_WORD[item.meal] || ['breakfast', 'lunch', 'dinner', 'snack'].includes(item.meal)) {
+        out.meal = MEAL_WORD[item.meal] || item.meal;
+      }
+      const time = normalize(item.time).slice(0, 16);
+      if (time) out.time = time;
+      items.push(out);
+    });
+    const edits = [];
+    (Array.isArray(raw.edits) ? raw.edits : []).slice(0, 8).forEach(edit => {
+      if (!edit || typeof edit !== 'object') return;
+      const field = String(edit.field || '').trim();
+      if (!EDIT_FIELDS.includes(field)) return;
+      const out = { field, value: edit.value };
+      const targetId = String(edit.targetId || '').trim();
+      const targetName = normalize(edit.targetName || '').slice(0, 80);
+      if (targetId) out.targetId = targetId;
+      if (targetName) out.targetName = targetName;
+      edits.push(out);
+    });
+    const result = { intent, items, edits };
+    const answer = normalize(raw.answer).slice(0, 500);
+    if (answer) result.answer = answer;
+    const question = normalize(raw.clarifyQuestion).slice(0, 200);
+    if (question) result.clarifyQuestion = question;
+    const options = (Array.isArray(raw.clarifyOptions) ? raw.clarifyOptions : [])
+      .map(opt => normalize(opt).slice(0, 40)).filter(Boolean).slice(0, 4);
+    if (options.length) result.clarifyOptions = options;
+    if (intent === 'log' && !items.length) return null;
+    if (intent === 'edit' && !edits.length) return null;
+    if (intent === 'clarify' && !question && !options.length) return null;
+    return result;
+  }
+
+  function editFromInterpret(edit) {
+    if (!edit) return null;
+    const foodHint = edit.targetName || '';
+    if (edit.field === 'delete') return { action: 'delete', foodHint, targetId: edit.targetId };
+    if (edit.field === 'merge') return { action: 'merge', foodHint, targetId: edit.targetId };
+    if (edit.field === 'split') return { action: 'split', foodHint, targetId: edit.targetId };
+    if (edit.field === 'meal') {
+      const mealId = MEAL_WORD[edit.value] || (['breakfast', 'lunch', 'dinner', 'snack'].includes(edit.value) ? edit.value : null);
+      return mealId ? { action: 'move', mealId, foodHint, targetId: edit.targetId } : null;
+    }
+    if (edit.field === 'kcal') {
+      const kcal = numOrNull(edit.value, 5000);
+      return kcal != null ? { action: 'set-kcal', kcal, foodHint, targetId: edit.targetId } : null;
+    }
+    if (edit.field === 'amount' || edit.field === 'unit') {
+      const amount = parseInterpretAmount(edit.value);
+      if (!amount) return null;
+      if (edit.field === 'unit' && !amount.unit) amount.unit = String(edit.value || '').trim();
+      return { action: 'set-amount', amount, foodHint, targetId: edit.targetId };
+    }
+    return null;
+  }
+
   const api = {
     classifyChat,
     isQuestion,
@@ -135,6 +369,13 @@
     parseClarifyReply,
     extractFoodHint,
     mealIdFrom,
+    compactName,
+    exactCatalogHit,
+    candidateNames,
+    matchLocalInstant,
+    buildInterpretPayload,
+    parseInterpretResult,
+    editFromInterpret,
   };
   global.RebuildersChatIntent = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

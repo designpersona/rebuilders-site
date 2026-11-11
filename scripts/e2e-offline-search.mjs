@@ -92,16 +92,26 @@ try {
   await evaluate(`window.fetch = window.__realFetch; FoodSearch.externalProvider = null; FoodSearch.externalOfflineUntil = 0; ${type('')} return 1;`);
   const r8 = await evaluate(`const t0 = performance.now(); ${type('햇반')} for (let k = 0; k < 100 && !MfdsDB.ready; k++) ${W8(50)} ${W8(200)} const firstMs = Math.round(performance.now() - t0);
     const sec = document.querySelector('#foodex-results [data-section="db"]');
-    const rows = sec ? [...sec.querySelectorAll('.fs-row')].map(b => ({ name: b.querySelector('.fs-name').textContent, src: b.querySelector('.fs-src').textContent })) : [];
+    const rows = sec ? [...sec.querySelectorAll('.fs-row')].map(b => ({ name: b.querySelector('.fs-name').textContent, src: b.querySelector('.fs-maker')?.textContent || b.dataset.maker || '' })) : [];
     const lat = []; for (const q of ['햇', '햇반', '닭가슴살', '라면', '김치']) { FoodSearch.search(q); lat.push(FoodSearch.stats.lastSearchMs); }
     return { firstMs, loadMs: MfdsDB.state.loadMs, parseMs: MfdsDB.state.parseMs, total: FoodSearch.stats.mfdsTotal, rows, lat };`);
   const req8 = netLog.slice();
-  check("'햇반': 영양 DB 묶음에 CJ 제품, 검색하는 동안 바깥 요청 0, 앱 안 data/mfds.json 은 첫 검색 때 한 번(그 밖엔 화면 아이콘뿐)", !mfdsBefore && r8.rows.some(r => /햇반/.test(r.name) && /씨제이|CJ/i.test(r.src)) && req8.filter(u => /\/data\/mfds\.json$/.test(u)).length === 1 && req8.every(u => u.startsWith(new globalThis.URL(URL).origin + '/') && !/\.(json|php)$|\/(log|health|photo)$/.test(u.replace(/\/data\/mfds\.json$/, ''))), JSON.stringify({ ...r8, rows: r8.rows.slice(0, 3), req8 }));
+  // 앱이 준비되면 300ms 뒤에 MFDS를 미리 읽으므로, 여기 도달했을 때 이미 ready인 경우가 많다(기존 전제 !mfdsBefore는 그 경우 항상 실패).
+  const origin = new globalThis.URL(URL).origin + '/';
+  const mfdsReqs = req8.filter(u => /\/data\/mfds\.json(\?|$)/.test(u));
+  const mfdsLoadOk = mfdsBefore ? mfdsReqs.length === 0 : mfdsReqs.length === 1;
+  const localOnly = req8.every(u => u.startsWith(origin) && !/\.(json|php)$|\/(log|health|photo)$/.test(u.replace(/\/data\/mfds\.json(\?.*)?$/, '')));
+  check("'햇반': 영양 DB 묶음에 CJ 제품, 검색하는 동안 바깥 요청 0, 앱 안 data/mfds.json 은 아직이면 첫 검색 때 한 번(이미 읽어 둔 경우 다시 안 받음, 그 밖엔 화면 아이콘뿐)", r8.rows.some(r => /햇반/.test(r.name) && /씨제이|CJ/i.test(r.src)) && mfdsLoadOk && localOnly, JSON.stringify({ ...r8, rows: r8.rows.slice(0, 3), req8, mfdsBefore }));
   console.log(`MFDS 첫 검색 ${r8.firstMs}ms (파일 읽기 ${r8.loadMs}ms + 색인 ${r8.parseMs}ms), 검색 ${JSON.stringify(r8.lat)}ms`);
   netLog.length = 0;
   const r9 = await evaluate(`${type('김치찌개')} ${W8(300)} const sec = document.querySelector('#foodex-results [data-section="db"]');
-    return { rows: sec ? [...sec.querySelectorAll('.fs-row')].map(b => ({ name: b.querySelector('.fs-name').textContent, src: b.querySelector('.fs-src').textContent })) : [] };`);
-  check("'김치찌개': 영양 DB 묶음에 식약처 음식, 두 번째 검색부터는 요청 0", r9.rows.length > 0 && r9.rows.every(r => /김치찌개/.test(r.name)) && r9.rows.some(r => /식약처/.test(r.src)) && netLog.length === 0, JSON.stringify({ rows: r9.rows.slice(0, 3), net: netLog }));
+    const rows = sec ? [...sec.querySelectorAll('.fs-row')].map(b => ({ name: b.querySelector('.fs-name').textContent, maker: b.querySelector('.fs-maker')?.textContent || '' })) : [];
+    sec?.querySelector('.fs-row')?.click(); ${W8(400)}
+    const src = document.getElementById('food-dex-source')?.textContent || '';
+    const srcKey = document.getElementById('food-dex-source')?.dataset.source || '';
+    document.getElementById('food-dex-close')?.click(); ${W8(200)}
+    return { rows, src, srcKey };`);
+  check("'김치찌개': 영양 DB 묶음에 식약처 음식, 출처는 상세에만, 두 번째 검색부터는 요청 0", r9.rows.length > 0 && r9.rows.every(r => /김치찌개/.test(r.name)) && /공공DB/.test(r9.src + r9.srcKey) && netLog.length === 0, JSON.stringify({ rows: r9.rows.slice(0, 3), src: r9.src, srcKey: r9.srcKey, net: netLog }));
   // 10. 고른 식약처 음식을 끼니에 넣고 수정 창에서 g 을 바꾸면 kcal 이 비례
   const r10 = await evaluate(`const item = MfdsDB.search('김치찌개', 5)[0].data; setActiveView('home'); Object.keys(meals).forEach(k => { meals[k].foods = []; }); renderAll(true);
     await addFood('lunch', item); ${W8(300)} openFoodEdit('lunch', 0); ${W8(300)}
@@ -122,7 +132,7 @@ try {
     const before = meals.snack.foods.length; document.getElementById('food-tray-save').click(); ${W8(900)} const logged = meals.snack.foods[before] || {};
     const bap = FoodSearch.search('밥').sections.find(s => s.key === 'db').items.slice(0, 5).map(x => x.name);
     closeModal(); return { first: db[0]?.name, firstOrig: db[0]?.data?.nutritionSource?.name, firstSim: db[0]?.similar?.length || 0, top5Kinds: db.slice(0, 5).map(x => x.data?.mfdsKind || 'app'), egg: [egg?.name, egg?.data?.serving, egg?.data?.servingGrams, egg?.data?.cal], names: names.slice(0, 6), sub, src, logged: [logged.name, logged.cal, logged.serving, logged.nutritionSource?.name, 'genericHint' in logged], bap, dbRows: rows.length, sim, attrib };`);
-  check("'귤' 검색: 첫 줄은 그냥 '귤'(온주밀감 생것 기준 힌트), 상세에 원래 이름, 기록 이름 '귤'·39kcal·원래 이름 보관·힌트는 기록 안 됨, 위 5개 가공식품 없음, 비슷한 항목 더 보기, 식약처 작게 · '계란' → '계란' 1개 50g 68kcal · '밥' 위 5개에 밥 옥광 없음", gq.first === '귤' && gq.firstOrig === '귤 온주밀감 생것' && gq.firstSim >= 5 && !gq.top5Kinds.includes('가공식품') && gq.names[0] === '귤' && gq.sub === '온주밀감 생것 기준 · 100g · 39kcal' && /귤 온주밀감 생것/.test(gq.src) && JSON.stringify(gq.logged) === JSON.stringify(['귤', 39, '100g', '귤 온주밀감 생것', false]) && /^비슷한 항목 \d+개 더 보기$/.test(gq.sim) && gq.attrib === '식약처' && JSON.stringify(gq.egg) === JSON.stringify(['계란', '1개', 50, 68]) && !gq.bap.some(n => /옥광/.test(n)) && gq.dbRows <= 6, JSON.stringify(gq));
+  check("'귤' 검색: 첫 줄은 그냥 '귤'(목록은 양·kcal만), 상세에 원래 이름, 기록 이름 '귤'·39kcal·원래 이름 보관·힌트는 기록 안 됨, 위 5개 가공식품 없음, 비슷한 항목 더 보기, 식약처 작게 · '계란' → '계란' 1개 50g 68kcal · '밥' 위 5개에 밥 옥광 없음", gq.first === '귤' && gq.firstOrig === '귤 온주밀감 생것' && gq.firstSim >= 5 && !gq.top5Kinds.includes('가공식품') && gq.names[0] === '귤' && gq.sub === '100g · 39kcal' && /귤 온주밀감 생것/.test(gq.src) && JSON.stringify(gq.logged) === JSON.stringify(['귤', 39, '100g', '귤 온주밀감 생것', false]) && /^비슷한 항목 \d+개 더 보기$/.test(gq.sim) && gq.attrib === '식약처' && JSON.stringify(gq.egg) === JSON.stringify(['계란', '1개', 50, 68]) && !gq.bap.some(n => /옥광/.test(n)) && gq.dbRows <= 6, JSON.stringify(gq));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (error) {
   failed++; results.push('ERROR ' + error.message); results.push('page errors: ' + errors.slice(0, 5).join(' | '));

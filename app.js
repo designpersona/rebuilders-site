@@ -640,7 +640,7 @@ function sourceLabelTag(food) {
 
 
 /* =====================================================================
-   통합 음식 검색(아이폰 검색처럼): 최근 먹은 → 내 식도감 → 영양 DB 순 묶음
+   통합 음식 검색: 내 음식 → 최근 → 공식 DB(일반 이름 먼저, 그다음 브랜드) → AI 추정 순 묶음. 같은 이름+브랜드는 한 줄로 합침
    - 이름 색인은 저장소(IndexedDB)에서 한 번만 만들고, 하루 기록 저장·내 음식 추가/삭제 때 그 부분만 고침
    - 로컬 결과는 바로, 바깥 조회(있을 때만)는 2글자 이상·200ms 멈춘 뒤·이전 요청은 취소
    ===================================================================== */
@@ -802,6 +802,7 @@ const FoodSearch = (() => {
     const t0 = performance.now();
     const nq = norm(query);
     if (!nq) return null;
+    const aliasOf = name => (typeof FOOD_NAME_ALIASES !== 'undefined' && FOOD_NAME_ALIASES[name]) || [];
     const rank = h => { const i = h.indexOf(nq); return i < 0 ? -1 : (i === 0 || h[i - 1] === '\u0001' ? 0 : 1); };
     const seen = new Set();
     const recent = [];
@@ -812,7 +813,7 @@ const FoodSearch = (() => {
       const data = CUSTOM_FOODS[name] || FOOD_DB[name] || e.food || {};
       const r = rank(hay(name, data));
       if (r < 0) continue;
-      recent.push({ name, data, count: e.count, last: e.last, r, ri: 99 });
+      recent.push({ name, data, count: e.count, last: e.last, r, ri: 99, aliases: aliasOf(name), lastServing: data.serving || e.food?.serving });
       seen.add(name);
     }
     (RECENT_FOODS || []).forEach((food, i) => {
@@ -820,7 +821,7 @@ const FoodSearch = (() => {
       const data = CUSTOM_FOODS[food.name] || FOOD_DB[food.name] || food;
       const r = rank(hay(food.name, data));
       if (r < 0) return;
-      recent.push({ name: food.name, data, count: 0, last: '', r, ri: i });
+      recent.push({ name: food.name, data, count: 0, last: '', r, ri: i, aliases: aliasOf(food.name), lastServing: food.serving || data.serving, lastAmount: food.servingAmount, lastUnit: food.servingUnit });
       seen.add(food.name);
     });
     recent.sort((a, b) => b.count - a.count || (a.last < b.last ? 1 : a.last > b.last ? -1 : 0) || a.ri - b.ri || a.r - b.r);
@@ -830,14 +831,26 @@ const FoodSearch = (() => {
         if (seen.has(name)) continue;
         const r = rank(hay(name, source[name]));
         if (r < 0) continue;
-        out.push({ name, data: source[name], r });
+        out.push({ name, data: source[name], r, aliases: aliasOf(name) });
       }
       out.sort((a, b) => a.r - b.r || a.name.length - b.name.length || a.name.localeCompare(b.name, 'ko'));
       out.forEach(item => seen.add(item.name));
       return out;
     };
-    const mine = collect(CUSTOM_FOODS);
+    const Rank = globalThis.RebuildersFoodSearchRank;
+    const userFoods = {};
+    const estimateFoods = {};
+    const customOfficial = {};
+    for (const name in (CUSTOM_FOODS || {})) {
+      const data = CUSTOM_FOODS[name];
+      if (Rank?.isUserFood(data)) userFoods[name] = data;
+      else if (Rank?.isEstimateFood(data)) estimateFoods[name] = data;
+      else customOfficial[name] = data;
+    }
+    const mine = collect(userFoods);
+    const estimate = collect(estimateFoods);
     let db = collect(FOOD_DB);
+    if (Object.keys(customOfficial).length) db = db.concat(collect(customOfficial));
     // 식약처 내장 DB(첫 검색 때 앱 안 파일을 한 번 읽음 → 다 읽으면 결과를 다시 그림). 한글 검색어면 식약처 먼저
     const Mfds = globalThis.MfdsDB;
     if (Mfds && !Mfds.ready) Mfds.load().then(ok => { if (ok) globalThis.rerenderFoodSearchAfterMfds?.(); });
@@ -852,7 +865,9 @@ const FoodSearch = (() => {
     }
     db = rankAndGroupDb(db, nq, (SEARCH_ALIASES[query.trim()] || []).map(norm), query);
     stats.lastSearchMs = Math.round((performance.now() - t0) * 100) / 100;
-    return { query, sections: [{ key: 'recent', items: recent }, { key: 'mine', items: mine }, { key: 'db', items: db }], ms: stats.lastSearchMs };
+    const sections = Rank?.organizeSearchSections({ mine, recent, db, estimate })
+      || [{ key: 'mine', items: mine }, { key: 'recent', items: recent }, { key: 'db', items: db }, { key: 'estimate', items: estimate }];
+    return { query, sections, ms: stats.lastSearchMs };
   }
   // 바깥 조회: 로컬 서버(개발용)에서만. 앱 번들은 없음 → 호출 안 함. 테스트에서 바꿔 끼울 수 있음
   let externalOfflineUntil = 0; // 바깥 조회 실패 뒤 쉬는 시각(바꿔 끼우면 초기화)
@@ -876,7 +891,7 @@ globalThis.FoodSearch = FoodSearch;
 const FOOD_SEARCH_PAGE = 5;
 function foodSearchSectionLabel(key) {
   const en = ACTIVE_LOCALE === 'en';
-  return { recent: en ? 'Recently eaten' : '최근 먹은', mine: en ? 'My Foodpedia' : '내 식도감', db: en ? 'Nutrition DB' : '영양 DB' }[key] || key;
+  return { mine: en ? 'My foods' : '내 음식', recent: en ? 'Recent' : '최근', db: en ? 'Nutrition DB' : '영양 DB', estimate: en ? 'AI estimate' : 'AI 추정' }[key] || key;
 }
 function foodMacroLine(data) {
   const en = ACTIVE_LOCALE === 'en';
@@ -888,20 +903,19 @@ function foodSearchRow(item, onPick) {
   const data = item.data || {};
   const food = { ...data, name };
   const en = ACTIVE_LOCALE === 'en';
-  const src = item.external
-    ? { label: escapeHtml(data.source || (en ? 'Lookup' : '조회')) }
-    : foodSourceMeta(data, name);
-  const tag = data.aiEstimate ? (en ? 'AI estimate' : 'AI 추정') : src.label;
+  const maker = data.maker || data.brand || '';
+  const amount = data.serving ? escapeHtml(displayServing(food, data.serving)) : '';
+  const kcal = isNutritionMissing(data)
+    ? escapeHtml(nutritionMissingLabel())
+    : `${Math.round(Number(data.cal) || 0)}kcal`;
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'fs-row';
   button.dataset.name = name;
+  if (maker) button.dataset.maker = maker;
   button.innerHTML = `
-    <span class="fs-main"><span class="fs-name">${escapeHtml(displayFoodName(food))}</span>
-      <span class="fs-sub">${data.serving ? `<span class="fs-amount">${escapeHtml(displayServing(food, data.serving))}</span>` : ''}<span class="fs-src">${tag}</span></span></span>
-    <span class="fs-nut">${isNutritionMissing(data)
-      ? `<span class="fs-missing">${escapeHtml(nutritionMissingLabel())}</span>`
-      : `<span class="fs-kcal">${Math.round(Number(data.cal) || 0)}kcal</span><span class="fs-macros">${foodMacroLine(data)}</span>`}</span>`;
+    <span class="fs-main"><span class="fs-name">${escapeHtml(displayFoodName(food))}</span>${maker ? `<span class="fs-maker">${escapeHtml(maker)}</span>` : ''}
+      <span class="fs-sub">${amount ? `<span class="fs-amount">${amount}</span> · ` : ''}<span class="${isNutritionMissing(data) ? 'fs-missing' : 'fs-kcal'}">${kcal}</span></span></span>`;
   button.addEventListener('click', () => onPick(food, item));
   return button;
 }
@@ -3907,7 +3921,7 @@ function renderFoodRows(container, entries, allowCustomActions = true) {
     btn.innerHTML = `
       <span class="chip-body">
         <span class="chip-title"><span class="chip-name">${escapeHtml(visibleName)}</span>${badge ? `<span class="chip-badge">${escapeHtml(badge)}</span>` : ''}</span>
-        <span class="chip-sub${isNutritionMissing(data) ? ' is-missing' : ''}">${data?.genericHint ? `<span class="chip-hint">${escapeHtml(data.genericHint)}</span> · ` : ''}${escapeHtml(sheetFoodSubline(food))}</span>
+        <span class="chip-sub${isNutritionMissing(data) ? ' is-missing' : ''}">${escapeHtml(sheetFoodSubline(food))}</span>
       </span>`;
     btn.addEventListener('click', () => openSheetFoodDetail(name, data));
     const add = document.createElement('button');
@@ -3952,7 +3966,7 @@ function openSheetFoodDetail(name, data) {
   const badge = sheetFoodBadge(name, data);
   pane.innerHTML = `
     <div class="fpd-head"><button type="button" class="fpd-back" id="fpd-back" aria-label="${en ? 'Back' : '뒤로'}">‹</button><strong class="fpd-name">${escapeHtml(displayFoodName({ name, ...data }))}</strong>${badge ? `<span class="chip-badge">${escapeHtml(badge)}</span>` : ''}</div>
-    ${data.nutritionSource?.name && data.nutritionSource.name !== name ? `<p class="fpd-source">${escapeHtml(en ? 'Nutrition from' : '영양 출처')}: ${escapeHtml(data.nutritionSource.provider || '식약처')} · ${escapeHtml(data.nutritionSource.name)}</p>` : ''}
+    ${(() => { const src = sourceLabelText({ name, ...data }); const orig = data.nutritionSource?.name && data.nutritionSource.name !== name ? `${data.nutritionSource.provider || (en ? 'MFDS' : '식약처')} · ${data.nutritionSource.name}` : ''; const hint = data.genericHint || ''; const bits = [src && src !== '없음' ? src : '', orig, hint].filter(Boolean); return bits.length ? `<p class="fpd-source">${escapeHtml(en ? 'Source' : '출처')} · ${escapeHtml(bits.join(' · '))}</p>` : ''; })()}
     ${canScale ? `<label class="fpd-amount"><span>${en ? 'Amount' : '먹은 양'}</span><input id="fpd-amount" type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(String(base.amount))}" /><small>${escapeHtml(base.unit)}</small></label>` : `<p class="fpd-serving">${escapeHtml(sheetServingText({ name, ...data }) || '')}</p>`}
     <div class="fpd-nutri" id="fpd-nutri"></div>
     <div class="fpd-actions">
@@ -3995,7 +4009,7 @@ function closeSheetFoodDetail() {
 }
 
 
-// 음식 추가 시트 검색도 같은 묶음(최근 먹은 → 내 식도감 → 영양 DB, 5개씩 + 더 보기). 누르면 바로 이 끼니에 추가(기존 동작)
+// 음식 추가 시트 검색도 같은 묶음(내 음식 → 최근 → 공식 DB → AI 추정, 5개씩 + 더 보기). 누르면 바로 이 끼니에 추가(기존 동작)
 const sheetSearchMore = { q: '', more: {} };
 function renderGroupedQuickFoods(container, q) {
   if (sheetSearchMore.q !== q) { sheetSearchMore.q = q; sheetSearchMore.more = {}; sheetSearchMore.similar = {}; }
@@ -7262,7 +7276,13 @@ function foodMatchHint(food, hint) {
   return (n && (n.includes(h) || h.includes(n))) || (input && (input.includes(h) || h.includes(input)));
 }
 
-function findTargetFoods(hint) {
+function findTargetFoods(hint, targetId) {
+  if (targetId) {
+    for (const mealId of ['breakfast', 'lunch', 'dinner', 'snack']) {
+      const idx = (meals[mealId]?.foods || []).findIndex(food => food?.id === targetId);
+      if (idx >= 0) return [{ mealId, idx, food: meals[mealId].foods[idx] }];
+    }
+  }
   const batch = loadLastChatBatch();
   if (batch && batch.date === dateKey(currentDate) && meals[batch.mealId]) {
     const list = meals[batch.mealId].foods || [];
@@ -7391,7 +7411,7 @@ async function applyClarifyChoice(choice) {
 
 async function applyEditIntent(edit) {
   const en = ACTIVE_LOCALE === 'en';
-  const targets = findTargetFoods(edit.foodHint);
+  const targets = findTargetFoods(edit.foodHint, edit.targetId);
   if (!targets.length) {
     appendAgentMessage(en
       ? 'I could not find a recent food to change. Tell me the name.'
@@ -7740,6 +7760,263 @@ async function findAndAddWithAi(query, button, resultHost) {
   }
 }
 
+
+function localMatchCatalogs() {
+  const aliasesOf = (name, data) => {
+    const extra = [];
+    try { if (typeof displayFoodName === 'function') extra.push(displayFoodName({ name, ...(data || {}) })); } catch { /* 이름만 */ }
+    if (data?.nameEn) extra.push(data.nameEn);
+    if (typeof FOOD_NAME_EN !== 'undefined' && FOOD_NAME_EN[name]) extra.push(FOOD_NAME_EN[name]);
+    if (typeof FOOD_NAME_ALIASES !== 'undefined' && Array.isArray(FOOD_NAME_ALIASES[name])) extra.push(...FOOD_NAME_ALIASES[name]);
+    return [...new Set(extra.filter(Boolean))];
+  };
+  const Rank = globalThis.RebuildersFoodSearchRank;
+  const mine = [];
+  const estimate = [];
+  Object.entries(CUSTOM_FOODS || {}).forEach(([name, data]) => {
+    const entry = { name, data, aliases: aliasesOf(name, data) };
+    if (Rank?.isEstimateFood(data) && !Rank?.isUserFood(data)) estimate.push(entry);
+    else mine.push(entry);
+  });
+  const recent = (RECENT_FOODS || []).filter(food => food?.name).map(food => {
+    const data = CUSTOM_FOODS[food.name] || FOOD_DB[food.name] || food;
+    return {
+      name: food.name,
+      data,
+      aliases: aliasesOf(food.name, data),
+      lastServing: food.serving || data.serving,
+      lastAmount: food.servingAmount,
+      lastUnit: food.servingUnit,
+    };
+  });
+  const db = Object.entries(FOOD_DB || {}).map(([name, data]) => ({ name, data, aliases: aliasesOf(name, data) }));
+  return { mine, recent, db, estimate };
+}
+
+function addExactOfficialHits(catalogs, text) {
+  const Mfds = globalThis.MfdsDB;
+  const Intent = globalThis.RebuildersChatIntent;
+  const compact = Intent?.compactName || (value => String(value || '').toLowerCase().normalize('NFC').replace(/[\s·.,()\[\]\-_/]+/g, ''));
+  if (!Mfds?.ready || typeof Mfds.search !== 'function') return catalogs;
+  const seen = new Set((catalogs.db || []).map(entry => compact(entry.name)));
+  const queries = [text];
+  if (globalThis.RebuildersQuickEntry?.splitFoodChunks) {
+    try { queries.push(...RebuildersQuickEntry.splitFoodChunks(String(text || ''))); } catch { /* 원문만 */ }
+  }
+  queries.forEach(query => {
+    const q = String(query || '').trim();
+    if (q.length < 2) return;
+    (Mfds.search(q, 20) || []).forEach(item => {
+      if (!item?.name || seen.has(compact(item.name))) return;
+      if (compact(item.name) !== compact(q) && compact(item.name) !== compact(item.data?.name || '')) return;
+      if (compact(item.name) === compact(q)) {
+        catalogs.db.push({ name: item.name, data: item.data || item, aliases: [] });
+        seen.add(compact(item.name));
+      }
+    });
+  });
+  return catalogs;
+}
+
+function lastChatBatchContext() {
+  const batch = loadLastChatBatch();
+  if (!batch) return null;
+  const list = batch.date === dateKey(currentDate) ? (meals[batch.mealId]?.foods || []) : [];
+  const foods = (batch.ids || []).map(id => list.find(food => food?.id === id)).filter(Boolean);
+  const used = foods.length ? foods : (batch.names || []).map(name => list.find(food => sourceNorm(food?.name) === sourceNorm(name))).filter(Boolean);
+  return {
+    ids: (batch.ids || []).slice(0, 8),
+    names: (batch.names || used.map(food => food.name)).slice(0, 8),
+    amounts: used.map(food => food.serving || '').slice(0, 8),
+    kcal: used.map(food => (typeof food.cal === 'number' ? food.cal : null)).slice(0, 8),
+  };
+}
+
+function interpretItemsToParsed(result, catalogs, text) {
+  const Intent = globalThis.RebuildersChatIntent;
+  const QE = globalThis.RebuildersQuickEntry;
+  const mealDefault = result.items.find(item => item.meal)?.meal
+    || QE?.mealForTime?.(new Date())
+    || 'snack';
+  const items = result.items.map(item => {
+    const hit = Intent?.exactCatalogHit(item.name, catalogs)
+      || (item.brand ? Intent.exactCatalogHit(`${item.brand} ${item.name}`, catalogs) : null);
+    const amount = item.amount && (item.amount.value != null || item.amount.text)
+      ? item.amount
+      : null;
+    let entry = {
+      name: hit?.name || item.name,
+      baseName: hit?.baseName || hit?.name || item.name,
+      data: hit?.data || null,
+      known: Boolean(hit?.data),
+      amount,
+      origin: hit?.origin,
+    };
+    if (!entry.amount && hit) {
+      const rec = (catalogs?.recent || []).find(row => Intent.compactName(row.name) === Intent.compactName(entry.name));
+      const serving = rec?.lastServing || rec?.data?.serving;
+      if (serving) {
+        const tokens = String(serving).trim().split(/\s+/).filter(Boolean);
+        const parsedAmt = QE?.parseAmountAt?.(tokens, 0)?.amount;
+        if (parsedAmt) entry.amount = parsedAmt;
+      }
+    }
+    entry.food = QE?.scaleFood ? QE.scaleFood(entry) : { name: entry.name, ...(entry.data || {}), ...(entry.amount ? { serving: entry.amount.text } : {}) };
+    return entry;
+  });
+  const time = result.items.find(item => item.time)?.time || null;
+  return {
+    mealId: mealDefault,
+    mealExplicit: result.items.some(item => item.meal),
+    date: dateKey(currentDate),
+    dateExplicit: false,
+    time,
+    timeExplicit: Boolean(time),
+    recordIntent: true,
+    items,
+    ambiguous: null,
+    phrase: text,
+  };
+}
+
+async function applyInterpretResult(result, { message, text, catalogs } = {}) {
+  const en = ACTIVE_LOCALE === 'en';
+  const Intent = globalThis.RebuildersChatIntent;
+  if (result.intent === 'clarify') {
+    const question = result.clarifyQuestion || (en ? 'Is that one product, or two foods?' : '한 제품이에요, 두 개예요?');
+    if (message) setAgentMessageText(message, question);
+    else message = appendAgentMessage(question);
+    const options = result.clarifyOptions?.length
+      ? result.clarifyOptions
+      : (en ? ['One product', 'Two foods'] : ['한 제품', '두 개']);
+    pendingClarify = { source: 'interpret', text, options, parsed: null };
+    appendChoiceButtons(message, options.map(label => ({
+      label,
+      onClick: async () => {
+        pendingClarify = null;
+        const input = document.getElementById('agent-input');
+        if (input) input.value = label;
+        await handleAgentCommand();
+      },
+    })));
+    return;
+  }
+  if (result.intent === 'question') {
+    const hint = result.items[0]?.name || Intent?.extractFoodHint(text) || '';
+    const hit = hint ? Intent.exactCatalogHit(hint, catalogs || localMatchCatalogs()) : null;
+    if (hit && typeof hit.data?.cal === 'number') {
+      const serving = hit.data.serving ? ` ${hit.data.serving}` : '';
+      const line = en
+        ? `${hit.name}${serving} is ${Math.round(hit.data.cal)}kcal.`
+        : `${hit.name}${serving} · ${Math.round(hit.data.cal)}kcal이에요.`;
+      if (message) setAgentMessageText(message, line);
+      else appendAgentMessage(line);
+      return;
+    }
+    const targets = findTargetFoods(hint);
+    if (targets[0] && typeof targets[0].food?.cal === 'number') {
+      const line = en ? `${formatFoodChange(targets[0].food)}.` : `${formatFoodChange(targets[0].food)}이에요.`;
+      if (message) setAgentMessageText(message, line);
+      else appendAgentMessage(line);
+      return;
+    }
+    if (result.answer) {
+      if (message) setAgentMessageText(message, result.answer);
+      else appendAgentMessage(result.answer);
+      return;
+    }
+    if (message) setAgentMessageText(message, en ? 'Looking it up…' : '찾아볼게요.');
+    await answerQuestion(text, { foodHint: hint, topic: 'kcal' });
+    return;
+  }
+  if (result.intent === 'edit') {
+    if (message?.parentNode) message.remove();
+    for (const edit of result.edits) {
+      const mapped = Intent?.editFromInterpret(edit);
+      if (mapped) await applyEditIntent(mapped);
+    }
+    return;
+  }
+  if (message?.parentNode) message.remove();
+  const parsed = interpretItemsToParsed(result, catalogs || localMatchCatalogs(), text);
+  if (!parsed.items.length) {
+    appendAgentMessage(en
+      ? 'Tell me the meal and food, such as “breakfast banana.”'
+      : '“아침 바나나”, “점심 햄치즈 토스트, 아아”처럼 끼니와 음식을 적어주세요.');
+    return;
+  }
+  await applyChatFoods(parsed);
+}
+
+async function handleAgentCommandFallback(text, { message, reason, silent } = {}) {
+  const en = ACTIVE_LOCALE === 'en';
+  const kind = typeof reason === 'string' ? reason : (reason?.kind || (reason ? 'error' : ''));
+  const mention = !silent && kind && kind !== 'not_configured';
+  const note = mention
+    ? (en ? 'I could not reach the Mac mini, so I used the on-phone rules.' : '맥 미니에 연결할 수 없어서, 휴대폰에 있는 규칙으로 넣었어요.')
+    : '';
+  if (message) {
+    if (note) setAgentMessageText(message, note);
+    else if (message.parentNode) message.remove();
+  } else if (note) {
+    appendAgentMessage(note);
+  }
+  const classified = globalThis.RebuildersChatIntent?.classifyChat(text, { pendingClarify }) || { type: 'food' };
+  if (classified.type === 'clarify-reply' && pendingClarify) {
+    await applyClarifyChoice(classified.choice);
+    return;
+  }
+  if (classified.type === 'edit') {
+    await applyEditIntent(classified);
+    return;
+  }
+  if (classified.type === 'question') {
+    await answerQuestion(text, classified);
+    return;
+  }
+  const parsed = parseQuickFoodText(text);
+  if (parsed?.ambiguous && parsed.items.length) {
+    pendingClarify = { parsed, text };
+    const phrase = parsed.ambiguous.phrase || parsed.items.map(item => item.name).join(' ');
+    const reply = appendAgentMessage(ACTIVE_LOCALE === 'en'
+      ? `Is “${phrase}” one product, or two foods?`
+      : `'${phrase}' 한 제품이에요, 두 개예요?`);
+    appendChoiceButtons(reply, [
+      { label: ACTIVE_LOCALE === 'en' ? 'One product' : '한 제품', onClick: () => applyClarifyChoice('one') },
+      { label: ACTIVE_LOCALE === 'en' ? 'Two foods' : '두 개', onClick: () => applyClarifyChoice('two') },
+    ]);
+    return;
+  }
+  if (!parsed || !parsed.items.length) {
+    appendAgentMessage(ACTIVE_LOCALE === 'en'
+      ? 'Tell me the meal and food, such as “breakfast banana” or “lunch toast, iced americano.”'
+      : '“아침 바나나”, “점심 햄치즈 토스트, 아아”처럼 끼니와 음식을 적어주세요.');
+    return;
+  }
+  await applyChatFoods(parsed);
+}
+
+async function interpretOrFallback(text, { candidates, catalogs } = {}) {
+  const en = ACTIVE_LOCALE === 'en';
+  const Intent = globalThis.RebuildersChatIntent;
+  const message = appendAgentMessage(en ? 'Figuring that out…' : '알아보는 중…');
+  const payload = Intent.buildInterpretPayload(text, {
+    date: dateKey(currentDate),
+    meal: currentMeal || globalThis.RebuildersQuickEntry?.mealForTime?.(new Date()) || 'snack',
+    time: `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`,
+    lastBatch: lastChatBatchContext(),
+    candidates: candidates || Intent.candidateNames?.(text, catalogs || localMatchCatalogs()) || [],
+  });
+  try {
+    const raw = await RebuildersBridge.interpretAndWait(payload);
+    const result = Intent.parseInterpretResult(raw);
+    if (!result) throw new RebuildersBridge.BridgeError('bad_request');
+    await applyInterpretResult(result, { message, text, catalogs: catalogs || localMatchCatalogs() });
+  } catch (error) {
+    await handleAgentCommandFallback(text, { message, reason: error, silent: false });
+  }
+}
+
 async function handleAgentCommand() {
   const input = document.getElementById('agent-input');
   const text = input?.value.trim();
@@ -7747,40 +8024,34 @@ async function handleAgentCommand() {
   appendAgentMessage(text, 'user');
   input.value = '';
   refreshAiDockSend();
-  const classified = globalThis.RebuildersChatIntent?.classifyChat(text, { pendingClarify }) || { type: 'food' };
+  const Intent = globalThis.RebuildersChatIntent;
   try {
-    if (classified.type === 'clarify-reply' && pendingClarify) {
-      await applyClarifyChoice(classified.choice);
+    if (pendingClarify) {
+      const classified = Intent?.classifyChat(text, { pendingClarify }) || { type: 'food' };
+      if (classified.type === 'clarify-reply') {
+        if (pendingClarify.source === 'interpret') {
+          const original = pendingClarify.text;
+          pendingClarify = null;
+          const catalogs = addExactOfficialHits(localMatchCatalogs(), original);
+          await interpretOrFallback(`${original}\n(사용자 답: ${text})`, { catalogs, candidates: Intent?.candidateNames?.(original, catalogs) });
+          return;
+        }
+        await applyClarifyChoice(classified.choice);
+        return;
+      }
+      pendingClarify = null;
+    }
+    const catalogs = addExactOfficialHits(localMatchCatalogs(), text);
+    const local = Intent?.matchLocalInstant(text, catalogs, { now: new Date() }) || { ok: false, candidates: [] };
+    if (local.ok && local.parsed?.items?.length) {
+      await applyChatFoods(local.parsed);
       return;
     }
-    if (classified.type === 'edit') {
-      await applyEditIntent(classified);
+    if (globalThis.RebuildersBridge?.isConfigured()) {
+      await interpretOrFallback(text, { candidates: local.candidates, catalogs });
       return;
     }
-    if (classified.type === 'question') {
-      await answerQuestion(text, classified);
-      return;
-    }
-    const parsed = parseQuickFoodText(text);
-    if (parsed?.ambiguous && parsed.items.length) {
-      pendingClarify = { parsed, text };
-      const phrase = parsed.ambiguous.phrase || parsed.items.map(item => item.name).join(' ');
-      const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
-        ? `Is “${phrase}” one product, or two foods?`
-        : `'${phrase}' 한 제품이에요, 두 개예요?`);
-      appendChoiceButtons(message, [
-        { label: ACTIVE_LOCALE === 'en' ? 'One product' : '한 제품', onClick: () => applyClarifyChoice('one') },
-        { label: ACTIVE_LOCALE === 'en' ? 'Two foods' : '두 개', onClick: () => applyClarifyChoice('two') },
-      ]);
-      return;
-    }
-    if (!parsed || !parsed.items.length) {
-      appendAgentMessage(ACTIVE_LOCALE === 'en'
-        ? 'Tell me the meal and food, such as “breakfast banana” or “lunch toast, iced americano.”'
-        : '“아침 바나나”, “점심 햄치즈 토스트, 아아”처럼 끼니와 음식을 적어주세요.');
-      return;
-    }
-    await applyChatFoods(parsed);
+    await handleAgentCommandFallback(text, { reason: 'not_configured', silent: true });
   } catch (error) {
     showStorageFailure(error);
     appendAgentMessage(ACTIVE_LOCALE === 'en'

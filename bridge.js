@@ -268,7 +268,70 @@
     return { ...result, items, failed: [...result.failed, ...(Date.now() >= end ? result.pending : [])] };
   }
 
-  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
+  function interpretBody(payload) {
+    const text = String(payload?.text || '').trim().slice(0, 500);
+    const out = { text };
+    if (payload?.date) out.date = payload.date;
+    if (payload?.meal) out.meal = payload.meal;
+    if (payload?.time) out.time = payload.time;
+    if (payload?.lastBatch && typeof payload.lastBatch === 'object') {
+      const batch = payload.lastBatch;
+      out.lastBatch = {
+        ids: Array.isArray(batch.ids) ? batch.ids.slice(0, 8).map(id => String(id || '').slice(0, 40)).filter(Boolean) : [],
+        names: Array.isArray(batch.names) ? batch.names.slice(0, 8).map(n => String(n || '').trim().slice(0, 80)).filter(Boolean) : [],
+        amounts: Array.isArray(batch.amounts) ? batch.amounts.slice(0, 8).map(n => String(n || '').trim().slice(0, 40)) : [],
+        kcal: Array.isArray(batch.kcal) ? batch.kcal.slice(0, 8) : [],
+      };
+    }
+    if (Array.isArray(payload?.candidates)) out.candidates = payload.candidates.map(n => String(n || '').trim().slice(0, 80)).filter(Boolean).slice(0, 12);
+    // 영양표 사진(image)은 이 버전에서 보내지 않음. 필드 자리만 열어 둠.
+    if (payload?.image) out.image = payload.image;
+    return out;
+  }
+
+  /** 문장 통째 해석: POST /interpret 로 맡기고 GET /jobs/<id> 로 결과를 받음. 영양 숫자는 받지 않음. */
+  async function interpret({ text, date, meal, time, lastBatch, candidates, image, remoteId } = {}) {
+    let data = null;
+    if (JOB_ID_RE.test(String(remoteId || ''))) {
+      try { data = await request(`/jobs/${remoteId}`, { timeoutMs: POLL_TIMEOUT_MS }); } catch (error) {
+        if (error?.kind !== 'not_found') throw error;
+      }
+    }
+    if (!data) {
+      data = await request('/interpret', {
+        method: 'POST',
+        body: interpretBody({ text, date, meal, time, lastBatch, candidates, image }),
+        timeoutMs: SUBMIT_TIMEOUT_MS,
+      });
+    }
+    const pending = Array.isArray(data.pending) ? data.pending.filter(name => typeof name === 'string') : [];
+    const done = data.done === true || (!pending.length && data.intent);
+    return {
+      intent: data.intent || null,
+      items: Array.isArray(data.items) ? data.items : [],
+      edits: Array.isArray(data.edits) ? data.edits : [],
+      answer: typeof data.answer === 'string' ? data.answer : '',
+      clarifyQuestion: typeof data.clarifyQuestion === 'string' ? data.clarifyQuestion : '',
+      clarifyOptions: Array.isArray(data.clarifyOptions) ? data.clarifyOptions : [],
+      pending,
+      remoteId: (!done && JOB_ID_RE.test(String(data.job_id || ''))) ? data.job_id : (done ? '' : (JOB_ID_RE.test(String(data.job_id || '')) ? data.job_id : '')),
+      done,
+      raw: data,
+    };
+  }
+
+  async function interpretAndWait(payload, { maxMs = 100000, intervalMs = 2500 } = {}) {
+    const end = Date.now() + maxMs;
+    let result = await interpret(payload);
+    while (!result.done && result.remoteId && Date.now() < end) {
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      result = await interpret({ ...payload, remoteId: result.remoteId });
+    }
+    if (!result.done && result.remoteId) throw new BridgeError('timeout');
+    return result;
+  }
+
+  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
   global.RebuildersBridge = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

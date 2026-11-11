@@ -13044,6 +13044,7 @@ body.foodex-page.keyboard-open .toast-host { bottom: 70px; }
 .fs-name { font: var(--rb-type-body-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fs-sub { display: flex; align-items: center; gap: 6px; min-width: 0; font: var(--rb-type-caption); color: var(--rb-label); white-space: nowrap; }
 .fs-src { font: var(--rb-type-micro); color: #9AA0AA; min-width: 0; overflow: hidden; text-overflow: ellipsis; } /* 긴 업체명은 말줄임 */
+.fs-maker { font: var(--rb-type-micro); color: #9AA0AA; min-width: 0; overflow: hidden; text-overflow: ellipsis; margin-left: 6px; }
 .fs-sub { overflow: hidden; }
 .fs-main { overflow: hidden; }
 .fs-nut { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: 0 0 auto; }
