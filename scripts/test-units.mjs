@@ -95,6 +95,16 @@ const noGrams2 = U.applyAmount(noGrams, { value: 2, unit: '개' }, noGrams);
 check('한 개 무게를 몰라도 1개 30kcal + → 2개 60kcal',
   noGrams2.cal === 60 && noGrams2.servingAmount === 2 && noGrams2.serving === '2개', noGrams2);
 
+const lotusNoGrams = {
+  name: 'Lotus Biscoff', cal: 30, carbs: 4.7, protein: 0.4, fat: 1.2,
+  serving: '1개', servingAmount: 1, servingUnit: '개',
+  nutritionCustom: true,
+};
+const lotusNoGrams2 = U.applyAmount(lotusNoGrams, { value: 2, unit: '개' }, lotusNoGrams);
+check('Lotus Biscoff 1개 30kcal(한 개 무게 없음, 직접 수정) + → 2개 60kcal, 개수로 비례',
+  lotusNoGrams2.cal === 60 && lotusNoGrams2.carbs === 9.4 && lotusNoGrams2.protein === 0.8 && lotusNoGrams2.fat === 2.4
+  && lotusNoGrams2.servingAmount === 2 && lotusNoGrams2.serving === '2개' && (lotusNoGrams2.servingGrams == null), lotusNoGrams2);
+
 const attached = U.attachBasis({ name: '수제 쿠키', cal: 30, serving: '1개', servingAmount: 1, servingUnit: '개' });
 check('1개 기록의 기준을 100g으로 두지 않음',
   attached.basisGrams == null && attached.basisAmount === 1 && attached.basisUnit === '개' && attached.basisNutrients.cal === 30, attached);

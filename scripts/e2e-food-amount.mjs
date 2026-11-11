@@ -86,6 +86,38 @@ try {
     r5.saved.cal === 30 && r5.saved.custom && r5.saved.amount === 1
     && r5.plus.cal === 60 && r5.plus.amount === 2 && r5.plus.grams === 16 && r5.plus.shown === '2개 (16g)',
     JSON.stringify(r5));
+  // 6. 한 개 무게 없는 Lotus Biscoff: 수정 창에서 30kcal로 고친 뒤 홈 + → 줄·끼니 카드·하루 합계 60
+  const r6 = await evaluate(`${vals}
+    meals.breakfast.foods = [{
+      name: 'Lotus Biscoff', cal: 45, carbs: 6, protein: 0.5, fat: 2,
+      serving: '1개', servingAmount: 1, servingUnit: '개',
+      id: 'lotus-edit-nograms'
+    }];
+    renderAll(true); openFoodEdit('breakfast', 0); ${W8(300)}
+    setField('cal', 30); document.getElementById('meal-detail-save-btn').click(); ${W8(500)}
+    const saved = meals.breakfast.foods[0];
+    const card = document.getElementById('breakfast-card');
+    if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+    ${W8(300)}
+    document.querySelector('#breakfast-items .food-amount-btn').click();
+    ${W8(200)}
+    document.querySelector('#food-amount-popover [data-dir="1"]').click();
+    ${W8(200)}
+    const f = meals.breakfast.foods[0];
+    return {
+      saved: { cal: saved.cal, custom: saved.nutritionCustom === true, amount: saved.servingAmount, grams: saved.servingGrams ?? null },
+      plus: {
+        cal: f.cal, amount: f.servingAmount, grams: f.servingGrams ?? null, shown: displayServing(f),
+        rowCal: document.querySelector('#breakfast-items .food-cal')?.textContent,
+        mealCard: document.getElementById('breakfast-kcal')?.textContent,
+        day: document.getElementById('kcal-gauge-value')?.textContent,
+      },
+    };`);
+  check('수정 창에서 Lotus Biscoff 1개 30kcal(한 개 무게 없음)로 고친 뒤 홈 + → 2개 60kcal, 줄·끼니 카드·하루 합계',
+    r6.saved.cal === 30 && r6.saved.custom && r6.saved.amount === 1
+    && r6.plus.cal === 60 && r6.plus.amount === 2
+    && /60/.test(r6.plus.rowCal || '') && r6.plus.mealCard === '60kcal' && String(r6.plus.day) === '60',
+    JSON.stringify(r6));
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (err) { results.push('ERROR ' + (err.stack || err.message)); failed++; }
 finally {

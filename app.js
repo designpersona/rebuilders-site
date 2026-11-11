@@ -2352,15 +2352,17 @@ function commitAmountEdit(nextAmount) {
     next.source = 'user-entry';
   }
   list[state.idx] = next;
-  const row = document.querySelector(`.food-item[data-food-id="${CSS.escape(next.id || '')}"]`);
-  if (row) {
-    const btn = row.querySelector('.food-amount-btn');
-    if (btn) btn.textContent = foodAmountLabel(next);
-    const calEl = row.querySelector('.food-cal');
-    if (calEl) {
-      calEl.textContent = foodCalText(next);
-      calEl.classList.toggle('is-pending', isFoodNutritionPending(next));
-    }
+  // 홈 카드와 끼니 상세에 같은 기록이 둘 다 있으므로, 첫 줄만 고치면 보이는 쪽 양·kcal이 그대로 남음
+  if (next.id) {
+    document.querySelectorAll(`.food-item[data-food-id="${CSS.escape(next.id)}"]`).forEach(row => {
+      const btn = row.querySelector('.food-amount-btn');
+      if (btn) btn.textContent = foodAmountLabel(next);
+      const calEl = row.querySelector('.food-cal');
+      if (calEl) {
+        calEl.textContent = foodCalText(next);
+        calEl.classList.toggle('is-pending', isFoodNutritionPending(next));
+      }
+    });
   }
   const totals = getTotals();
   updateRing(totals, false);
@@ -2375,9 +2377,12 @@ function commitAmountEdit(nextAmount) {
     const kcal = snackFoodsForSlot(slot).reduce((s, { food }) => s + (food.cal || 0), 0);
     el.textContent = kcal ? `${Math.round(kcal)}kcal` : '';
   });
-  if (activeMealPageContext) {
+  if (activeMealPageContext && activeMealPageContext.mealId === state.mealId) {
     const pageCal = document.getElementById('meal-page-kcal');
-    if (pageCal && activeMealPageContext.mealId === state.mealId) pageCal.textContent = `${Math.round(getMealCal(state.mealId))}kcal`;
+    if (pageCal) {
+      const total = mealPageEntries().reduce((sum, { food }) => sum + (food.cal || 0), 0);
+      pageCal.textContent = `${Math.round(total)}kcal`;
+    }
   }
   paintAmountEditor();
 }

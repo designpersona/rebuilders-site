@@ -247,6 +247,117 @@ try {
     && rCustom.amount === 2 && rCustom.grams === 16 && rCustom.shown === '2개 (16g)' && rCustom.popCal === '60kcal',
     JSON.stringify(rCustom));
 
+  // 2e. Lotus Biscoff: 한 개 무게 없이 kcal만 직접 고친 1개 기록. 홈 + → 줄·끼니 카드·하루 합계 60
+  const rLotusNoG = await evaluate(`
+    for (const m of ['breakfast','lunch','dinner','snack']) meals[m].foods = [];
+    meals.breakfast.foods = [{
+      name: 'Lotus Biscoff',
+      cal: 30, carbs: 4.7, protein: 0.4, fat: 1.2,
+      serving: '1개', servingAmount: 1, servingUnit: '개',
+      nutritionCustom: true,
+      id: 'lotus-nograms'
+    }];
+    renderAll(true);
+    const card = document.getElementById('breakfast-card');
+    if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+    ${W8(300)}
+    document.querySelector('#breakfast-items .food-amount-btn').click();
+    ${W8(200)}
+    document.querySelector('#food-amount-popover [data-dir="1"]').click();
+    ${W8(200)}
+    const f = meals.breakfast.foods[0];
+    return {
+      cal: f.cal, amount: f.servingAmount, serving: f.serving, grams: f.servingGrams ?? null,
+      rowAmt: document.querySelector('#breakfast-items .food-amount-btn')?.textContent,
+      rowCal: document.querySelector('#breakfast-items .food-cal')?.textContent,
+      popCal: document.querySelector('#food-amount-popover .food-amount-cals')?.textContent,
+      mealCard: document.getElementById('breakfast-kcal')?.textContent,
+      day: document.getElementById('kcal-gauge-value')?.textContent,
+    };
+  `);
+  check('Lotus Biscoff 1개 30kcal(한 개 무게 없음, 직접 수정) 홈 + → 2개 60kcal, 줄·끼니 카드·하루 합계',
+    rLotusNoG.cal === 60 && rLotusNoG.amount === 2 && rLotusNoG.serving === '2개'
+    && /2개/.test(rLotusNoG.rowAmt || '') && /60/.test(rLotusNoG.rowCal || '')
+    && rLotusNoG.popCal === '60kcal' && rLotusNoG.mealCard === '60kcal' && String(rLotusNoG.day) === '60',
+    JSON.stringify(rLotusNoG));
+
+  // 2f. 같은 기록을 끼니 상세에서 + : 상세 줄과 홈 줄, 끼니 합계·하루 합계가 모두 60
+  const rLotusPage = await evaluate(`
+    closeMealPage?.();
+    meals.breakfast.foods = [{
+      name: 'Lotus Biscoff',
+      cal: 30, carbs: 4.7, protein: 0.4, fat: 1.2,
+      serving: '1개', servingAmount: 1, servingUnit: '개',
+      nutritionCustom: true,
+      id: 'lotus-page'
+    }];
+    renderAll(true);
+    openMealPage('breakfast');
+    ${W8(300)}
+    document.querySelector('#meal-page-items .food-amount-btn').click();
+    ${W8(200)}
+    document.querySelector('#food-amount-popover [data-dir="1"]').click();
+    ${W8(200)}
+    const f = meals.breakfast.foods[0];
+    return {
+      cal: f.cal, amount: f.servingAmount,
+      pageAmt: document.querySelector('#meal-page-items .food-amount-btn')?.textContent,
+      pageCal: document.querySelector('#meal-page-items .food-cal')?.textContent,
+      homeAmt: document.querySelector('#breakfast-items .food-amount-btn')?.textContent,
+      homeCal: document.querySelector('#breakfast-items .food-cal')?.textContent,
+      pageTotal: document.getElementById('meal-page-kcal')?.textContent,
+      mealCard: document.getElementById('breakfast-kcal')?.textContent,
+      day: document.getElementById('kcal-gauge-value')?.textContent,
+      popCal: document.querySelector('#food-amount-popover .food-amount-cals')?.textContent,
+    };
+  `);
+  check('끼니 상세에서 Lotus Biscoff 1개 30kcal + → 상세 줄·홈 줄·끼니 합계·하루 합계 모두 2개 60kcal',
+    rLotusPage.cal === 60 && rLotusPage.amount === 2
+    && /2개/.test(rLotusPage.pageAmt || '') && /60/.test(rLotusPage.pageCal || '')
+    && /2개/.test(rLotusPage.homeAmt || '') && /60/.test(rLotusPage.homeCal || '')
+    && rLotusPage.pageTotal === '60kcal' && rLotusPage.mealCard === '60kcal' && String(rLotusPage.day) === '60'
+    && rLotusPage.popCal === '60kcal',
+    JSON.stringify(rLotusPage));
+  await evaluate(`closeMealPage(); return 1;`);
+
+  // 2g. 채팅으로 넣은 내 음식(한 개 무게 없음, 1개 30kcal)도 홈 + 하면 60
+  const rLotusChat = await evaluate(`
+    closeMealPage?.();
+    setActiveView('home');
+    for (const m of ['breakfast','lunch','dinner','snack']) meals[m].foods = [];
+    CUSTOM_FOODS['로투스 비스코프'] = {
+      cal: 30, carbs: 4.7, protein: 0.4, fat: 1.2,
+      serving: '1개', servingAmount: 1, servingUnit: '개',
+      sourceLabel: '내 음식', sourceTrust: 'user', nutritionCustom: true,
+    };
+    const parsed = parseQuickFoodText('아침 로투스 비스코프 1개');
+    await applyChatFoods(parsed);
+    ${W8(400)}
+    const logged = meals.breakfast.foods[0] || {};
+    const card = document.getElementById('breakfast-card');
+    if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+    ${W8(300)}
+    document.querySelector('#breakfast-items .food-amount-btn')?.click();
+    ${W8(200)}
+    document.querySelector('#food-amount-popover [data-dir="1"]')?.click();
+    ${W8(200)}
+    const f = meals.breakfast.foods[0] || {};
+    return {
+      logged: { name: logged.name, cal: logged.cal, amount: logged.servingAmount, grams: logged.servingGrams ?? null },
+      plus: {
+        cal: f.cal, amount: f.servingAmount,
+        rowCal: document.querySelector('#breakfast-items .food-cal')?.textContent,
+        mealCard: document.getElementById('breakfast-kcal')?.textContent,
+        day: document.getElementById('kcal-gauge-value')?.textContent,
+      },
+    };
+  `);
+  check('채팅으로 넣은 로투스 비스코프 1개 30kcal(한 개 무게 없음) + → 2개 60kcal, 줄·끼니 카드·하루 합계',
+    rLotusChat.logged?.cal === 30 && rLotusChat.logged?.amount === 1
+    && rLotusChat.plus.cal === 60 && rLotusChat.plus.amount === 2
+    && /60/.test(rLotusChat.plus.rowCal || '') && rLotusChat.plus.mealCard === '60kcal' && String(rLotusChat.plus.day) === '60',
+    JSON.stringify(rLotusChat));
+
   // 3. 예전 기록(양 없음)은 값을 그대로 두고 수정 가능
   const r3 = await evaluate(`
     meals.breakfast.foods = [{ name: '그릭요거트', cal: 24, carbs: 1, protein: 4, fat: 0.2, serving: '100g', id: 'old-yogurt' }];
