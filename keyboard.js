@@ -18,11 +18,24 @@
 
   /* 앱: 키보드 높이만큼 화면(.phone-frame)을 키보드와 같은 시간·곡선으로 줄임(style.css 의 --kb-h).
      resize:'none' 이라 iOS 가 웹뷰를 늦게 줄이지 않음 → 입력창이 키보드에 딱 붙어 같이 올라감 */
+  function isAndroid() {
+    try { return global.Capacitor?.getPlatform?.() === 'android'; } catch { return false; }
+  }
+
   let lastKbH = 0;
   function setKeyboardHeight(height) {
     const h = Math.max(0, Math.round(Number(height) || 0));
     lastKbH = h;
     const overlay = h > 0 && isOverlay();
+    // 안드로이드는 창(웹뷰)이 이미 키보드 높이만큼 줄어듦. iOS용 --kb-h 로 .phone-frame 을
+    // 한 번 더 줄이면 내용이 접히고 아래가 긴 회색 빈칸이 됨. 높이 조절은 iOS만.
+    if (isAndroid()) {
+      doc.documentElement.style.setProperty('--kb-h', '0px');
+      doc.documentElement.style.setProperty('--kb-overlay-h', '0px');
+      doc.documentElement.classList.toggle('kb-native', false);
+      doc.documentElement.classList.toggle('kb-up', h > 0 && !overlay);
+      return;
+    }
     doc.documentElement.style.setProperty('--kb-h', `${overlay ? 0 : h}px`);
     doc.documentElement.style.setProperty('--kb-overlay-h', `${overlay ? h : 0}px`);
     doc.documentElement.classList.toggle('kb-native', true);
@@ -33,6 +46,8 @@
   // 음식 검색 화면(#view-search) 입력칸도 같음: 포커스 때 WebKit 이 화면을 통째로 밀어 올려 창이 '확' 올라가던 문제
   const inDock = el => Boolean(el?.closest?.('.home-ai-dock, #view-search, .modal-food-search'));
   function resetPan() {
+    // iOS(WebKit)가 화면을 밀어 올리는 것을 되돌리는 처리. 안드로이드는 해당 없음.
+    if (isAndroid()) return;
     const frame = doc.querySelector('.phone-frame');
     const list = [doc.scrollingElement, doc.documentElement, doc.body, frame];
     const active = doc.activeElement;
@@ -55,7 +70,7 @@
   doc.addEventListener('focusin', event => {
     if (inDock(event.target)) holdPan();
     // 키보드가 떠 있는 채로 다른 칸으로 옮기면(덮기 ↔ 줄이기) 다시 맞춤
-    if (lastKbH && doc.documentElement.classList.contains('kb-native')) { setKeyboardHeight(lastKbH); setOpen(true); }
+    if (lastKbH && (isAndroid() || doc.documentElement.classList.contains('kb-native'))) { setKeyboardHeight(lastKbH); setOpen(true); }
   });
   global.addEventListener('scroll', () => { if (inDock(doc.activeElement) || doc.body?.classList.contains(CLASS)) resetPan(); }, { passive: true });
   global.visualViewport?.addEventListener('scroll', () => { if (inDock(doc.activeElement)) resetPan(); });

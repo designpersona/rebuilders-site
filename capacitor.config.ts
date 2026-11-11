@@ -14,6 +14,8 @@ const config: CapacitorConfig = {
   plugins: {
     // 키보드가 올라올 때 웹뷰 크기를 iOS가 늦게(애니메이션 뒤) 바꾸면 입력창이 늦게 따라옴.
     // 크기 조절은 keyboard.js 가 keyboardWillShow 높이로 키보드와 같은 시간에 직접 함.
+    // resize 는 iOS에만 적용됨. 안드로이드 플러그인은 이 값을 쓰지 않고 창을 직접 줄이며,
+    // keyboard.js 도 안드로이드에서는 --kb-h 로 높이를 다시 빼지 않음.
     Keyboard: {
       resize: 'none',
     },
