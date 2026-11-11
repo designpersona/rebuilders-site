@@ -917,7 +917,7 @@
             <span class="data-action-icon" aria-hidden="true">＋</span>
             <span><strong>백업 파일 선택</strong><small>선택 후 내용을 확인하고 가져와요</small></span>
           </button>
-          <input id="import-file" type="file" accept=".json,application/json" hidden />
+          <input id="import-file" type="file" accept=".json,application/json,text/plain,application/octet-stream" hidden />
 
           <div class="import-preview" id="import-preview" hidden>
             <p class="import-preview-title" id="import-preview-title"></p>
@@ -934,7 +934,7 @@
           <span class="data-action-icon" aria-hidden="true">＋</span>
           <span><strong>샘플 식단 불러오기</strong><small>가상의 4일치 식단을 추가해 앱을 둘러봐요</small></span>
         </button>
-        <p class="data-transfer-note" id="data-transfer-note">백업 파일은 직접 보관해 주세요(예: iCloud Drive, 파일 앱). 앱을 삭제하거나 기기를 바꾸면 이 기기의 기록은 사라져요.</p>
+        <p class="data-transfer-note" id="data-transfer-note">백업 파일은 직접 보관해 주세요(예: 파일 앱, iCloud Drive, Google 드라이브). 앱을 삭제하거나 기기를 바꾸면 이 기기의 기록은 사라져요.</p>
       </section>
 
       <footer class="profile-product-meta" aria-label="서비스 정보">
@@ -1347,7 +1347,7 @@
   <script src="units.js?v=1"></script>
   <script src="mfds.js?v=1"></script>
   <script src="storage.js?v=7"></script>
-  <script src="backup.js?v=2"></script>
+  <script src="backup.js?v=3"></script>
   <script src="notifications.js?v=1"></script>
   <script src="keyboard.js?v=4"></script>
   <script src="demo-seed.js?v=3"></script>
@@ -1355,7 +1355,7 @@
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=5"></script>
-  <script src="app.js?v=f42"></script>
+  <script src="app.js?v=f43"></script>
 </body>
 
 </html>

@@ -1506,7 +1506,7 @@ function applyExtendedStaticCopy() {
   set('#cancel-import', '취소', 'Cancel');
   set('#load-sample strong', '샘플 식단 불러오기', 'Load sample meals');
   set('#load-sample small', '가상의 4일치 식단을 추가해 앱을 둘러봐요', 'Add four fictional days of meals to look around');
-  set('#data-transfer-note', '백업 파일은 직접 보관해 주세요(예: iCloud Drive, 파일 앱). 앱을 삭제하거나 기기를 바꾸면 이 기기의 기록은 사라져요.', 'Keep your backup file somewhere safe (for example iCloud Drive or the Files app). Deleting the app or changing devices removes the records on this device.');
+  set('#data-transfer-note', '백업 파일은 직접 보관해 주세요(예: 파일 앱, iCloud Drive, Google 드라이브). 앱을 삭제하거나 기기를 바꾸면 이 기기의 기록은 사라져요.', 'Keep your backup file somewhere safe (for example the Files app, iCloud Drive, or Google Drive). Deleting the app or changing devices removes the records on this device.');
   set('#data-source-note', '내장 음식의 영양 정보는 USDA FoodData Central(fdc.nal.usda.gov)을 참고했고, 일부는 추정값이에요. 직접 등록한 음식은 입력한 값 그대로 사용돼요. 영양 정보는 참고용이며 의학적 조언이 아니에요.', 'Built-in nutrition information is based on USDA FoodData Central (fdc.nal.usda.gov); some values are estimates. Foods you add use the values you enter. Nutrition information is for reference only and is not medical advice.');
   set('#mfds-source-note', '영양 정보 출처: 식품의약품안전처 식품영양성분 DB (기준일 2026-09-29)', 'Nutrition source: MFDS Korean Food Nutrition Database (as of 2026-09-29)');
   set('#privacy-link', '개인정보 처리방침', 'Privacy policy');

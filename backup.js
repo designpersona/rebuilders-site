@@ -220,19 +220,49 @@
     setTimeout(() => global.URL.revokeObjectURL(url), 10000);
   }
 
+  function isNativeApp() {
+    return Boolean(global.Capacitor?.isNativePlatform?.());
+  }
+
   function nativePlugins() {
     const cap = global.Capacitor;
-    if (!cap?.isNativePlatform?.()) return null;
+    if (!isNativeApp()) return null;
     const get = name => cap.Plugins?.[name] || cap.registerPlugin?.(name);
     const Filesystem = get('Filesystem');
     const Share = get('Share');
     return Filesystem && Share ? { Filesystem, Share } : null;
   }
 
+  /** Share 플러그인은 로컬 파일을 file:// URL로 받습니다. 경로만 오면 앞에 file:// 을 붙입니다. */
+  function asShareUrl(uri) {
+    if (!uri || typeof uri !== 'string') return '';
+    if (uri.startsWith('file:') || uri.startsWith('content:')) return uri;
+    if (uri.startsWith('/')) return 'file://' + uri;
+    return uri;
+  }
+
+  async function shareNatively(native, fileName, text) {
+    const written = await native.Filesystem.writeFile({
+      path: fileName, data: text, directory: 'CACHE', encoding: 'utf8',
+    });
+    let uri = asShareUrl(written?.uri);
+    if (!uri && native.Filesystem.getUri) {
+      const got = await native.Filesystem.getUri({ path: fileName, directory: 'CACHE' });
+      uri = asShareUrl(got?.uri);
+    }
+    if (!uri) throw new Error('백업 파일 위치를 만들지 못했어요.');
+    // files 는 공식 로컬 파일 경로(file://). content:// 등은 url 로 넘깁니다.
+    // url 과 files 를 함께 넣으면 안드로이드에서 파일이 두 번 첨부됩니다.
+    const payload = { title: '리빌더스 백업', dialogTitle: '백업 파일 저장' };
+    if (uri.startsWith('file:')) payload.files = [uri];
+    else payload.url = uri;
+    await native.Share.share(payload);
+  }
+
   /**
    * 파일을 사용자에게 건넵니다. 우선순위:
-   * 1) 앱(Capacitor): 임시 파일로 쓴 뒤 iOS 공유 시트(파일 앱·iCloud Drive 저장 가능)
-   * 2) Web Share API(files)  3) 다운로드 폴백
+   * 1) 앱(Capacitor): 임시 파일로 쓴 뒤 공유 시트(파일 앱·iCloud Drive·Drive 저장 가능)
+   * 2) Web Share API(files)  3) 다운로드 폴백(웹만 — 안드로이드 웹뷰에서는 저장되지 않음)
    * 반환: { method: 'native-share'|'share'|'download'|'cancelled', fileName }
    */
   async function exportBackup(state, options = {}) {
@@ -240,15 +270,16 @@
     const fileName = backupFileName(now);
     const text = JSON.stringify(buildBackup(state, now), null, 2);
 
-    const native = nativePlugins();
-    if (native) {
+    if (isNativeApp()) {
+      const native = nativePlugins();
+      if (!native) throw new Error('이 기기에서 파일을 공유할 수 없어요.');
       try {
-        const written = await native.Filesystem.writeFile({ path: fileName, data: text, directory: 'CACHE', encoding: 'utf8' });
-        await native.Share.share({ title: '리빌더스 백업', url: written.uri, dialogTitle: '백업 파일 저장' });
+        await shareNatively(native, fileName, text);
         return { method: 'native-share', fileName };
       } catch (error) {
         if (/cancel/i.test(`${error?.message || ''} ${error?.name || ''}`)) return { method: 'cancelled', fileName };
-        // 네이티브 공유 실패 시 아래 웹 방식으로 계속 시도
+        // 네이티브 앱에서는 a[download] 폴백이 파일을 저장하지 못하므로 여기서 멈춥니다.
+        throw error;
       }
     }
 
