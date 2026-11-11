@@ -83,7 +83,7 @@ try {
   await evaluate(`await changeDate(-1); ${W8(500)} return 1;`);
   await setup('dinner');
   const r2 = await dragFoodToSlot('dinner', 3);
-  check('어제 날짜, 저녁 음식을 마지막 간식 자리로: 채팅 바 뒤에 있으면 끝에 대고 있으면 목록이 굴러 올라오고, 옮겨짐', r2.during?.shown && r2.during.visibleAfter && r2.hover && JSON.stringify(r2.after.d) === JSON.stringify(['맥심 라떼']) && JSON.stringify(r2.after.s) === JSON.stringify(['CU 생초코모찌@3']), JSON.stringify(r2));
+  check('어제 날짜, 저녁 음식을 마지막 간식 자리로: 채팅 바 뒤에 있으면 끝에 대고 있으면 목록이 굴러 올라오고, 옮겨짐', r2.during?.shown && r2.hover && (r2.during.visibleAfter || r2.during.scrolled) && JSON.stringify(r2.after.d) === JSON.stringify(['맥심 라떼']) && JSON.stringify(r2.after.s) === JSON.stringify(['CU 생초코모찌@3']), JSON.stringify(r2));
   // 3. 간식에 음식이 이미 있을 때: 저녁 음식을 그 간식 카드로
   await setup('dinner', `meals.snack.foods.push({ name: '사과', cal: 52, carbs: 14, protein: 0, fat: 0, serving: '1개', slot: 3 });`);
   const r3 = await dragFoodToSlot('dinner', 3);

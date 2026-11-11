@@ -1868,7 +1868,17 @@ function nutritionMissingLabel(count = 1) {
   if (ACTIVE_LOCALE === 'en') return count > 1 ? `${count} foods missing nutrition` : 'Nutrition not entered';
   return count > 1 ? `영양정보 미입력 ${count}개` : '영양정보 미입력';
 }
+function isFoodNutritionPending(food) {
+  if (!food?.name || !isNutritionMissing(food) || !globalThis.RebuildersBridge?.getQueue) return false;
+  const key = String(food.name || '').toLowerCase().replace(/\s+/g, '');
+  try {
+    return RebuildersBridge.getQueue().some(job => (job.items || []).some(item => String(item?.name || item || '').toLowerCase().replace(/\s+/g, '') === key));
+  } catch {
+    return false;
+  }
+}
 function foodCalText(food) {
+  if (isFoodNutritionPending(food)) return ACTIVE_LOCALE === 'en' ? 'Searching' : '찾는 중';
   return isBlankNutrient(food?.cal) ? (ACTIVE_LOCALE === 'en' ? '— kcal' : '— kcal') : `${Math.round(Number(food.cal) * 10) / 10}kcal`;
 }
 function updateNutritionMissingNote() {
@@ -2333,9 +2343,10 @@ function commitAmountEdit(nextAmount) {
     const btn = row.querySelector('.food-amount-btn');
     if (btn) btn.textContent = foodAmountLabel(next);
     const calEl = row.querySelector('.food-cal');
-    if (calEl) calEl.textContent = foodCalText(next);
-    const macros = row.querySelector('.food-macros');
-    if (macros) macros.innerHTML = `${isNutritionMissing(next) ? `<span class="macro-tag nutrition-missing-tag">${escapeHtml(nutritionMissingLabel())}</span>` : ''}${aiEstimateTag(next)}${sourceLabelTag(next)}${nutritionTags(next)}`;
+    if (calEl) {
+      calEl.textContent = foodCalText(next);
+      calEl.classList.toggle('is-pending', isFoodNutritionPending(next));
+    }
   }
   const totals = getTotals();
   updateRing(totals, false);
@@ -2468,11 +2479,11 @@ function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
     <div class="food-main">
       <div class="food-title-row">
         <span class="food-name">${escapeHtml(visibleName)}</span>
-        <button type="button" class="food-amount-btn" aria-label="${escapeHtml(ACTIVE_LOCALE === 'en' ? `${visibleName} amount` : `${visibleName} 양 수정`)}">${escapeHtml(foodAmountLabel(food))}</button>
       </div>
       <div class="food-detail-line">
-        <span class="food-cal">${foodCalText(food)}</span>
-        <div class="food-macros">${isNutritionMissing(food) ? `<span class="macro-tag nutrition-missing-tag">${escapeHtml(nutritionMissingLabel())}</span>` : ''}${aiEstimateTag(food)}${sourceLabelTag(food)}${nutritionTags(food)}</div>
+        <button type="button" class="food-amount-btn" aria-label="${escapeHtml(ACTIVE_LOCALE === 'en' ? `${visibleName} amount` : `${visibleName} 양 수정`)}">${escapeHtml(foodAmountLabel(food))}</button>
+        <span class="food-meta-sep" aria-hidden="true">·</span>
+        <span class="food-cal${isFoodNutritionPending(food) ? ' is-pending' : ''}">${escapeHtml(foodCalText(food))}</span>
       </div>
     </div>
     <div class="food-actions">
@@ -4613,11 +4624,21 @@ function openFoodDex(food) {
   document.getElementById('food-dex-number').textContent = foodDexNumber(referenceFood);
   const category = foodCategoryMeta(referenceFood.name);
   const hero = document.getElementById('food-dex-icon');
+  const heroWrap = hero?.closest('.food-dex-hero-wrap');
   const imagePath = FOOD_IMAGE_BY_NAME[referenceFood.name];
   hero.replaceChildren();
-  void imagePath;
-  hero.classList.remove('has-food-image');
-  hero.innerHTML = '<span class="food-dex-placeholder" aria-hidden="true"></span>';
+  if (imagePath) {
+    hero.classList.add('has-food-image');
+    heroWrap?.classList.remove('is-empty');
+    const img = document.createElement('img');
+    img.className = 'food-dex-image';
+    img.src = imagePath;
+    img.alt = '';
+    hero.appendChild(img);
+  } else {
+    hero.classList.remove('has-food-image');
+    heroWrap?.classList.add('is-empty');
+  }
   const categoryLabel = document.getElementById('food-dex-category');
   if (categoryLabel) {
     categoryLabel.hidden = mode === 'meal';
@@ -4637,9 +4658,13 @@ function openFoodDex(food) {
   sourceEl.dataset.source = srcKey;
   const servingText = referenceFood.serving || (ACTIVE_LOCALE === 'en' ? 'Serving not set' : '섭취량 미설정');
   const visibleServing = displayServing(referenceFood, servingText);
-  document.getElementById('food-dex-serving').textContent = mode === 'meal'
-    ? `${ACTIVE_LOCALE === 'en' ? 'Amount eaten' : '먹은 양'} ${visibleServing}`
-    : visibleServing;
+  const servingEl = document.getElementById('food-dex-serving');
+  if (servingEl) {
+    servingEl.textContent = mode === 'meal'
+      ? `${ACTIVE_LOCALE === 'en' ? 'Amount eaten' : '먹은 양'} ${visibleServing}`
+      : visibleServing;
+  }
+  syncFoodDexAmount(mode, referenceFood);
   const description = document.getElementById('food-dex-description');
   if (description) {
     const aiSource = mode === 'meal' ? aiSourceText(referenceFood) : '';
@@ -4650,10 +4675,7 @@ function openFoodDex(food) {
       : (referenceFood.description || ''));
     if (aiSource) appendAiSourceLink(description, referenceFood);
   }
-  const nutritionBasis = referenceFood.basis || visibleServing || (ACTIVE_LOCALE === 'en' ? 'not set' : '1회 제공량');
-  document.getElementById('food-dex-nutrition-basis').textContent = ACTIVE_LOCALE === 'en'
-    ? `Per serving: ${nutritionBasis}`
-    : `${nutritionBasis} 기준`;
+  renderFoodDexNutrition(referenceFood, mode, visibleServing);
 
   const indexLink = document.getElementById('food-dex-index-link');
   if (indexLink) {
@@ -4684,29 +4706,153 @@ function openFoodDex(food) {
     editRecord.textContent = ACTIVE_LOCALE === 'en' ? 'Edit this log' : '이 기록 수정';
   }
 
-  const grid = document.getElementById('food-dex-nutrition-grid');
-  grid.innerHTML = '';
-  const isBuiltInFood = Boolean(FOOD_DB[referenceFood.name]);
-  FOOD_NUTRITION_FIELDS.forEach(([field, label, unit]) => {
-    const value = referenceFood[field];
-    const row = document.createElement('div');
-    const hasValue = value !== undefined && value !== null && value !== '';
-    row.classList.toggle('is-empty', !hasValue);
-    const displayedValue = hasValue
-      ? `${escapeHtml(value)}<small>${escapeHtml(unit)}</small>`
-      : (isBuiltInFood
-        ? '<span class="nutrition-not-reported">—</span>'
-        : (NUTRITION_CORE_FIELDS.includes(field) ? `<span class="nutrition-not-reported">${ACTIVE_LOCALE === 'en' ? 'Not entered' : '미입력'}</span>` : ''));
-    row.innerHTML = `<span>${escapeHtml(detailFieldLabel(field, label))}</span><strong>${displayedValue}</strong>`;
-    grid.appendChild(row);
-  });
-
   foodDex.hidden = false;
   document.body.classList.add('food-dex-open');
   const content = foodDex.querySelector('.food-dex-content');
   if (content) content.scrollTop = 0;
   requestAnimationFrame(() => foodDex.classList.add('open'));
   document.getElementById('food-dex-close')?.focus();
+}
+
+function per100Nutrients(food) {
+  const U = globalThis.RebuildersUnits;
+  const basis = U?.getBasis?.(food);
+  if (!basis || !(basis.grams > 0) || !basis.nutrients) return null;
+  const scale = 100 / basis.grams;
+  const out = {};
+  let any = false;
+  FOOD_NUTRITION_FIELDS.forEach(([field]) => {
+    const src = basis.nutrients[field];
+    if (typeof src === 'number') {
+      out[field] = Math.round(src * scale * 10) / 10;
+      any = true;
+    }
+  });
+  return any ? out : null;
+}
+
+function formatDexNutrient(value, unit, hasValue, isBuiltIn, field) {
+  if (hasValue) return `${escapeHtml(value)}<small>${escapeHtml(unit)}</small>`;
+  if (isBuiltIn) return '<span class="nutrition-not-reported">—</span>';
+  if (NUTRITION_CORE_FIELDS.includes(field)) return `<span class="nutrition-not-reported">${ACTIVE_LOCALE === 'en' ? 'Not entered' : '미입력'}</span>`;
+  return '';
+}
+
+function renderFoodDexNutrition(food, mode, visibleServing) {
+  const basisEl = document.getElementById('food-dex-nutrition-basis');
+  const per100Head = document.getElementById('food-dex-per100-head');
+  const grid = document.getElementById('food-dex-nutrition-grid');
+  if (!grid) return;
+  const eatenLabel = visibleServing || displayServing(food) || (ACTIVE_LOCALE === 'en' ? 'amount eaten' : '먹은 양');
+  const nutritionBasis = mode === 'meal'
+    ? (ACTIVE_LOCALE === 'en' ? `Amount eaten: ${eatenLabel}` : `먹은 양 ${eatenLabel} 기준`)
+    : (ACTIVE_LOCALE === 'en'
+      ? `Per serving: ${food.basis || visibleServing || 'not set'}`
+      : `${food.basis || visibleServing || '1회 제공량'} 기준`);
+  if (basisEl) basisEl.textContent = nutritionBasis;
+
+  const grams = (function eatenGrams(food) {
+    if (Number(food.servingGrams) > 0) return Number(food.servingGrams);
+    if ((food.servingUnit === 'g' || food.servingUnit === 'ml') && Number(food.servingAmount) > 0) return Number(food.servingAmount);
+    const m = String(food.serving || '').match(/^(\d+(?:\.\d+)?)\s*(g|ml)$/i);
+    return m ? Number(m[1]) : 0;
+  }(food));
+  const per100 = (mode === 'meal' && grams > 0 && Math.abs(grams - 100) > 0.05) ? per100Nutrients(food) : null;
+  if (per100Head) {
+    per100Head.hidden = !per100;
+    per100Head.textContent = per100 ? (ACTIVE_LOCALE === 'en' ? 'per 100g' : '100g 기준') : '';
+  }
+  grid.classList.toggle('has-per100', Boolean(per100));
+  grid.innerHTML = '';
+  const isBuiltInFood = Boolean(FOOD_DB[food.name]);
+  FOOD_NUTRITION_FIELDS.forEach(([field, label, unit]) => {
+    const value = food[field];
+    const row = document.createElement('div');
+    const hasValue = value !== undefined && value !== null && value !== '';
+    row.classList.toggle('is-empty', !hasValue && !per100?.[field]);
+    const displayedValue = formatDexNutrient(value, unit, hasValue, isBuiltInFood, field);
+    const perVal = per100 && typeof per100[field] === 'number'
+      ? `${escapeHtml(per100[field])}<small>${escapeHtml(unit)}</small>`
+      : (per100 ? '<span class="nutrition-not-reported">—</span>' : '');
+    row.innerHTML = `<span>${escapeHtml(detailFieldLabel(field, label))}</span><strong class="food-dex-eaten">${displayedValue}</strong>${per100 ? `<strong class="food-dex-ref">${typeof per100[field] === 'number' ? perVal : ''}</strong>` : ''}`;
+    if (hasValue || typeof per100?.[field] === 'number') grid.appendChild(row);
+  });
+}
+
+function syncFoodDexAmount(mode, food) {
+  const wrap = document.getElementById('food-dex-amount');
+  const servingEl = document.getElementById('food-dex-serving');
+  if (!wrap) return;
+  const mealMode = mode === 'meal' && foodDexEditContext;
+  wrap.hidden = !mealMode;
+  if (servingEl) servingEl.hidden = Boolean(mealMode);
+  if (!mealMode) return;
+  const ctx = foodDexEditContext;
+  const live = meals[ctx.mealId]?.foods[ctx.idx] || food;
+  const valueEl = wrap.querySelector('.food-dex-amount-value');
+  const calEl = wrap.querySelector('.food-dex-amount-cals');
+  const unitBtn = wrap.querySelector('.food-dex-amount-unit');
+  const labelEl = wrap.querySelector('.food-dex-amount-label');
+  if (labelEl) labelEl.textContent = ACTIVE_LOCALE === 'en' ? 'Amount eaten' : '먹은 양';
+  if (valueEl) valueEl.textContent = foodAmountLabel(live);
+  if (calEl) {
+    calEl.textContent = isNutritionMissing(live)
+      ? (isFoodNutritionPending(live)
+        ? (ACTIVE_LOCALE === 'en' ? 'Searching' : '찾는 중')
+        : (ACTIVE_LOCALE === 'en' ? 'No nutrition yet' : '영양정보 미입력'))
+      : `${Math.round(live.cal || 0)}kcal`;
+    calEl.classList.toggle('is-pending', isFoodNutritionPending(live));
+  }
+  const U = globalThis.RebuildersUnits;
+  const unit = live.servingUnit || '';
+  if (unitBtn) {
+    unitBtn.hidden = !U || !toggleAmountUnit(live, Number(live.servingAmount) || 0, unit || '개');
+    if (U && U.isMassUnit(unit)) unitBtn.textContent = ACTIVE_LOCALE === 'en' ? 'Use piece' : '개 단위';
+    else unitBtn.textContent = ACTIVE_LOCALE === 'en' ? 'Use g' : 'g으로';
+    if (U && U.GENERIC_UNITS[unit]?.kind === 'volume') {
+      unitBtn.textContent = U.isMassUnit(unit)
+        ? (ACTIVE_LOCALE === 'en' ? 'Use cup' : '잔·컵')
+        : (ACTIVE_LOCALE === 'en' ? 'Use ml' : 'ml로');
+    }
+  }
+}
+
+function currentFoodDexFood() {
+  const ctx = foodDexEditContext;
+  if (!ctx || foodDex?.dataset.mode !== 'meal') return null;
+  return meals[ctx.mealId]?.foods[ctx.idx] || null;
+}
+
+async function commitFoodDexAmount(nextAmount) {
+  const ctx = foodDexEditContext;
+  if (!ctx || !nextAmount) return;
+  const before = snapshotMeals();
+  const current = meals[ctx.mealId]?.foods[ctx.idx];
+  if (!current) return;
+  amountEditorState = { mealId: ctx.mealId, idx: ctx.idx, before };
+  commitAmountEdit(nextAmount);
+  amountEditorState = null;
+  const next = meals[ctx.mealId]?.foods[ctx.idx];
+  const visibleServing = displayServing(next);
+  const sourceEl = document.getElementById('food-dex-source');
+  if (sourceEl) {
+    const srcKey = inferSourceLabel(next);
+    sourceEl.textContent = ACTIVE_LOCALE === 'en' ? `Source · ${sourceLabelText(next)}` : `출처 · ${sourceLabelText(next)}`;
+    sourceEl.hidden = !srcKey;
+    sourceEl.dataset.source = srcKey;
+  }
+  syncFoodDexAmount('meal', next);
+  renderFoodDexNutrition(next, 'meal', visibleServing);
+  try {
+    await persistMealsOrRestore(before);
+    const label = inferSourceLabel(next);
+    if ((label === '추정' || label === '없음' || isNutritionMissing(next)) && next?.name && !FOOD_DB[next.name]) {
+      const { id, _isNew, slot, loggedVia, inputName, ...rest } = next;
+      void id; void _isNew; void slot; void loggedVia; void inputName;
+      try { await saveCustomFood(next.name, { ...rest, discoveryOrigin: rest.discoveryOrigin || 'confirmed', sourceLabel: '내 음식', sourceTrust: 'user' }); }
+      catch (error) { console.warn('remember food amount', error); }
+    }
+  } catch (error) { showStorageFailure(error); }
 }
 
 function closeFoodDex() {
@@ -4717,6 +4863,40 @@ function closeFoodDex() {
 }
 
 document.getElementById('food-dex-close')?.addEventListener('click', closeFoodDex);
+document.getElementById('food-dex-amount')?.addEventListener('click', event => {
+  const step = event.target.closest('.food-amount-step');
+  const unitBtn = event.target.closest('.food-dex-amount-unit');
+  const foodNow = currentFoodDexFood();
+  if (!foodNow) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (step) {
+    const U2 = globalThis.RebuildersUnits;
+    let current = foodNow;
+    if (U2 && (current.servingAmount == null || !current.servingUnit)) {
+      const typ = U2.typicalServing(current.baseFood || current.name, current) || U2.parseServing(current.serving || current.quantityNote || '');
+      if (typ) {
+        const attached = U2.applyAmount(U2.attachBasis(current, current), typ, current);
+        if (!U2.getBasis(current) && !current.basisNutrients) {
+          attached.cal = current.cal; attached.carbs = current.carbs; attached.protein = current.protein; attached.fat = current.fat;
+        }
+        meals[foodDexEditContext.mealId].foods[foodDexEditContext.idx] = current = attached;
+      }
+    }
+    const unit = current.servingUnit || U2?.typicalServing(current.baseFood || current.name, current)?.unit || '개';
+    const stepSize = U2 ? U2.stepFor(unit) : 1;
+    const dir = Number(step.dataset.dir) || 1;
+    const value = Math.max(stepSize, Math.round(((Number(current.servingAmount) || stepSize) + dir * stepSize) * 100) / 100);
+    void commitFoodDexAmount({ value, unit });
+    return;
+  }
+  if (unitBtn) {
+    const toggled = toggleAmountUnit(foodNow, Number(foodNow.servingAmount) || 0, foodNow.servingUnit || '개');
+    if (!toggled) return;
+    if (!globalThis.RebuildersUnits.isMassUnit(foodNow.servingUnit || '')) foodNow.servingUnitPreferred = foodNow.servingUnit;
+    void commitFoodDexAmount(toggled);
+  }
+});
 document.getElementById('food-dex-edit-record')?.addEventListener('click', () => {
   if (!foodDexEditContext) return;
   const { mealId, idx } = foodDexEditContext;

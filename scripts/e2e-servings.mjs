@@ -70,9 +70,15 @@ try {
     if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
     ${W8(400)}
     const row = document.querySelector('#breakfast-items .food-item');
-    return { amount: row?.querySelector('.food-amount-btn')?.textContent, cal: row?.querySelector('.food-cal')?.textContent, kcal: meals.breakfast.foods[0].cal };
+    return {
+      amount: row?.querySelector('.food-amount-btn')?.textContent,
+      cal: row?.querySelector('.food-cal')?.textContent,
+      kcal: meals.breakfast.foods[0].cal,
+      line: [row?.querySelector('.food-amount-btn')?.textContent, row?.querySelector('.food-cal')?.textContent].filter(Boolean).join(' · '),
+      macros: !!row?.querySelector('.source-label-tag, .macro-tag, .food-macros:not(:empty)'),
+    };
   `);
-  check('홈 목록에 바나나 1개 (118g)와 105kcal이 보임', r2setup.amount === '1개 (118g)' && r2setup.kcal === 105, JSON.stringify(r2setup));
+  check('홈 목록에 바나나 이름과 회색 줄 1개 (118g) · 105kcal만 보임(출처·탄단지 없음)', r2setup.amount === '1개 (118g)' && r2setup.cal === '105kcal' && r2setup.kcal === 105 && r2setup.line === '1개 (118g) · 105kcal' && !r2setup.macros, JSON.stringify(r2setup));
 
   const btn = await evaluate(`const b = document.querySelector('#breakfast-items .food-amount-btn')?.getBoundingClientRect(); return b && b.width ? [Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2)] : null;`);
   if (!btn) throw new Error('no amount button');
@@ -88,6 +94,83 @@ try {
   check('+ 한 번이면 2개 (236g) 210kcal로 바로 다시 계산', r2.cal === 210 && r2.amount === 2 && r2.unit === '개' && r2.grams === 236 && r2.shown === '2개 (236g)', JSON.stringify(r2));
   await shot('/tmp/rebuilders-servings-stepper.png');
   await evaluate(`closeAmountEditor(true); ${W8(200)} return 1;`);
+
+  // 2b. 음식 상세: 빈 사진 칸 없음, 이름·출처·먹은 양 −/+, 먹은 양 기준 영양 + 100g 참고
+  const rDex = await evaluate(`
+    const data = { ...NILIRI_FOOD_CATALOG['바나나'] };
+    const food = RebuildersUnits.applyAmount(RebuildersUnits.attachBasis({ name: '바나나', ...data }, data), { value: 1, unit: '개' }, data);
+    food.id = 'e2e-banana';
+    meals.breakfast.foods = [food];
+    renderAll(true);
+    const card = document.getElementById('breakfast-card');
+    if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+    ${W8(300)}
+    document.querySelector('#breakfast-items .food-item').click();
+    ${W8(400)}
+    const hero = document.getElementById('food-dex-icon');
+    const wrap = hero?.closest('.food-dex-hero-wrap');
+    const amount = document.getElementById('food-dex-amount');
+    const first = document.querySelector('#food-dex-nutrition-grid > div');
+    return {
+      open: document.getElementById('food-dex')?.classList.contains('open'),
+      name: document.getElementById('food-dex-name')?.textContent,
+      source: document.getElementById('food-dex-source')?.textContent,
+      placeholder: !!hero?.querySelector('.food-dex-placeholder'),
+      emptyHero: wrap?.classList.contains('is-empty'),
+      heroImg: hero?.querySelectorAll('img').length || 0,
+      amountHidden: amount?.hidden,
+      amountValue: amount?.querySelector('.food-dex-amount-value')?.textContent,
+      amountCal: amount?.querySelector('.food-dex-amount-cals')?.textContent,
+      hasStepper: !!(amount?.querySelector('[data-dir="-1"]') && amount?.querySelector('[data-dir="1"]')),
+      basis: document.getElementById('food-dex-nutrition-basis')?.textContent,
+      per100: document.getElementById('food-dex-per100-head')?.hidden === false && document.getElementById('food-dex-per100-head')?.textContent,
+      gridCols: first ? getComputedStyle(document.getElementById('food-dex-nutrition-grid')).gridTemplateColumns.split(' ').length : 0,
+      calRow: [...(first?.querySelectorAll('span, strong') || [])].map(el => el.textContent.trim()).filter(Boolean).join(' '),
+    };
+  `);
+  check('음식 상세: 바나나는 그림이 있고 빈 자리 없음, 이름·출처·먹은 양 −/+, 영양은 먹은 양 기준에 100g 참고', rDex.open && rDex.name === '바나나' && /출처/.test(rDex.source || '') && !rDex.placeholder && !rDex.emptyHero && rDex.heroImg === 1 && rDex.amountHidden === false && rDex.amountValue === '1개 (118g)' && rDex.amountCal === '105kcal' && rDex.hasStepper && /먹은 양/.test(rDex.basis || '') && rDex.per100 === '100g 기준' && /105/.test(rDex.calRow || ''), JSON.stringify(rDex));
+  const dexPlus = await evaluate(`const b = document.querySelector('#food-dex-amount [data-dir="1"]')?.getBoundingClientRect(); return b && b.width ? [Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2)] : null;`);
+  check('음식 상세 플러스 버튼이 보임', Boolean(dexPlus), JSON.stringify(dexPlus));
+  if (dexPlus) { await touch('touchStart', dexPlus[0], dexPlus[1]); await sleep(80); await touch('touchEnd'); await sleep(400); }
+  const rDex2 = await evaluate(`const f = meals.breakfast.foods[0]; const amount = document.getElementById('food-dex-amount'); return { cal: f.cal, grams: f.servingGrams, shown: amount?.querySelector('.food-dex-amount-value')?.textContent, amountCal: amount?.querySelector('.food-dex-amount-cals')?.textContent, row: document.querySelector('#breakfast-items .food-amount-btn')?.textContent };`);
+  check('상세에서 + 하면 2개 (236g) 210kcal로 다시 계산되고 홈 줄도 같음', rDex2.cal === 210 && rDex2.grams === 236 && rDex2.shown === '2개 (236g)' && rDex2.amountCal === '210kcal' && rDex2.row === '2개 (236g)', JSON.stringify(rDex2));
+  await evaluate(`closeFoodDex(); ${W8(250)} return 1;`);
+
+  const rNoImg = await evaluate(`
+    meals.breakfast.foods = [{ name: '플레인 그릭 요거트', cal: 24, carbs: 1.5, protein: 4.1, fat: 0.2, sugar: 1.3, serving: '40g', servingAmount: 40, servingUnit: 'g', id: 'plain-yogurt' }];
+    renderAll(true);
+    document.querySelector('#breakfast-items .food-item').click();
+    ${W8(400)}
+    const hero = document.getElementById('food-dex-icon');
+    const wrap = hero?.closest('.food-dex-hero-wrap');
+    const r = wrap?.getBoundingClientRect();
+    const first = document.querySelector('#food-dex-nutrition-grid > div');
+    return { placeholder: !!hero?.querySelector('.food-dex-placeholder'), emptyHero: wrap?.classList.contains('is-empty'), heroImg: hero?.querySelectorAll('img').length || 0, heroH: r ? Math.round(r.height) : null, name: document.getElementById('food-dex-name')?.textContent, per100: document.getElementById('food-dex-per100-head')?.hidden === false && document.getElementById('food-dex-per100-head')?.textContent, calRow: [...(first?.querySelectorAll('span, strong') || [])].map(el => el.textContent.trim()).filter(Boolean).join(' '), basis: document.getElementById('food-dex-nutrition-basis')?.textContent };
+  `);
+  check('그림 없는 음식 상세는 빈 사진 칸 없이 이름부터 보이고, 40g 기준에 100g 참고가 같이 보임', rNoImg.placeholder === false && rNoImg.emptyHero && rNoImg.heroImg === 0 && rNoImg.heroH === 0 && rNoImg.name === '플레인 그릭 요거트' && rNoImg.per100 === '100g 기준' && /24/.test(rNoImg.calRow || '') && /60/.test(rNoImg.calRow || '') && /먹은 양/.test(rNoImg.basis || ''), JSON.stringify(rNoImg));
+  await evaluate(`closeFoodDex(); ${W8(250)} return 1;`);
+
+  const rPending = await evaluate(`
+    const prev = globalThis.RebuildersBridge?.getQueue;
+    try {
+      if (!globalThis.RebuildersBridge) return { missing: true };
+      RebuildersBridge.getQueue = () => [{ items: [{ name: '수제청' }], remoteId: 'e2e' }];
+      meals.breakfast.foods = [{ name: '수제청', id: 'pending-tea' }];
+      renderAll(true);
+      const card = document.getElementById('breakfast-card');
+      if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+      ${W8(300)}
+      const row = document.querySelector('#breakfast-items .food-item');
+      const cal = row?.querySelector('.food-cal')?.textContent;
+      const pending = row?.querySelector('.food-cal')?.classList.contains('is-pending');
+      const line = [row?.querySelector('.food-amount-btn')?.textContent, row?.querySelector('.food-cal')?.textContent].filter(Boolean).join(' · ');
+      return { cal, pending, line, macros: !!row?.querySelector('.source-label-tag, .macro-tag') };
+    } finally {
+      if (prev) RebuildersBridge.getQueue = prev;
+      else if (globalThis.RebuildersBridge) delete RebuildersBridge.getQueue;
+    }
+  `);
+  check("영양 찾는 중이면 줄에 회색 '찾는 중'이 보이고 탄단지는 없음", rPending.cal === '찾는 중' && rPending.pending && /찾는 중/.test(rPending.line || '') && !rPending.macros, JSON.stringify(rPending));
 
   // 3. 예전 기록(양 없음)은 값을 그대로 두고 수정 가능
   const r3 = await evaluate(`

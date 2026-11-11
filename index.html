@@ -1194,11 +1194,26 @@
       <p class="food-dex-category" id="food-dex-category">오늘 먹은 음식</p>
       <h2 id="food-dex-name">음식</h2>
       <p class="food-dex-serving" id="food-dex-serving"></p>
+      <div class="food-dex-amount" id="food-dex-amount" hidden>
+        <span class="food-dex-amount-label">먹은 양</span>
+        <div class="food-dex-amount-row">
+          <button type="button" class="food-amount-step" data-dir="-1" aria-label="-">−</button>
+          <div class="food-dex-amount-copy">
+            <strong class="food-dex-amount-value"></strong>
+            <span class="food-dex-amount-cals"></span>
+          </div>
+          <button type="button" class="food-amount-step" data-dir="1" aria-label="+">+</button>
+          <button type="button" class="food-amount-unit food-dex-amount-unit"></button>
+        </div>
+      </div>
       <p class="food-dex-description" id="food-dex-description"></p>
       <section class="food-dex-nutrition" aria-labelledby="food-dex-nutrition-title">
         <div class="food-dex-section-head">
           <h3 id="food-dex-nutrition-title">영양성분</h3>
-          <span id="food-dex-nutrition-basis">1회 제공량 기준</span>
+          <div class="food-dex-basis-labels">
+            <span id="food-dex-nutrition-basis">1회 제공량 기준</span>
+            <span id="food-dex-per100-head" hidden>100g 기준</span>
+          </div>
         </div>
         <div class="food-dex-nutrition-grid" id="food-dex-nutrition-grid"></div>
       </section>

@@ -6394,8 +6394,8 @@ body,
 }
 
 .meal-page-items .food-item {
-  min-height: 78px;
-  padding: 14px;
+  min-height: 0;
+  padding: 12px 14px;
   border: 1.5px solid #18181b;
   border-radius: 14px;
   background: #fff;
@@ -8971,39 +8971,7 @@ body.meal-page-open .bottom-nav {
 
 @media (max-width: 380px) {
   #view-home .meal-items .food-item {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto;
-    align-items: center;
-    gap: 7px 8px;
-  }
-
-  #view-home .meal-items .food-main {
-    display: contents;
-  }
-
-  #view-home .meal-items .food-name {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  #view-home .meal-items .food-cal {
-    grid-column: 2;
-    grid-row: 1;
-    margin-left: 0;
-    justify-self: end;
-  }
-
-  #view-home .meal-items .food-macros {
-    grid-column: 1;
-    grid-row: 2;
-    min-width: 0;
-  }
-
-  #view-home .meal-items .food-actions {
-    grid-column: 2;
-    grid-row: 2;
-    justify-self: end;
+    align-items: flex-start;
   }
 }
 
@@ -13783,3 +13751,173 @@ body.ai-sheet-open .phone-frame > .bridge-pending {
   cursor: pointer;
 }
 .food-amount-unit[hidden] { display: none !important; }
+
+
+/* 홈·끼니 상세 음식 줄: 이름 + 회색 '양 · kcal'만. 출처·탄단지는 상세 시트에서. */
+.food-title-row {
+  display: block;
+}
+.food-detail-line,
+#view-home .food-detail-line,
+#view-meal-detail .food-detail-line {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  color: #6a6762;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  line-height: 1.3;
+}
+#view-home .food-detail-line .food-amount-btn,
+#view-meal-detail .food-detail-line .food-amount-btn,
+.food-detail-line .food-amount-btn {
+  flex: 0 1 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(106, 103, 98, 0.45);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.food-detail-line .food-meta-sep {
+  flex: 0 0 auto;
+  color: inherit;
+  opacity: 0.7;
+}
+#view-home .food-detail-line .food-cal,
+#view-meal-detail .food-detail-line .food-cal,
+.food-detail-line .food-cal,
+.meal-page-items .food-cal {
+  order: 0;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  letter-spacing: inherit;
+}
+.food-detail-line .food-cal.is-pending,
+.food-dex-amount-cals.is-pending {
+  font-style: italic;
+  color: #8a8782;
+}
+.food-macros { display: none; }
+
+/* 음식 상세: 빈 사진 칸은 없애고, 있을 때만 그림을 이름 위에 작게 */
+.food-dex-hero-wrap.is-empty {
+  position: static;
+  height: 0;
+  margin: 0;
+}
+.food-dex-hero-wrap.is-empty .food-dex-hero,
+.food-dex-hero-wrap.is-empty #food-dex-icon {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+}
+.food-dex-hero-wrap.is-empty .food-dex-index-link:not([hidden]) {
+  position: absolute;
+  top: 12px;
+  right: max(12px, var(--safe-right));
+}
+.food-dex-content { position: relative; }
+.food-dex-hero.has-food-image {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  padding: 8px 0 16px;
+  filter: none;
+  font-size: 0;
+}
+.food-dex-source {
+  margin: 2px 0 10px;
+  font: 500 12px/1.4 var(--font);
+  color: #6B7280;
+}
+
+/* 음식 상세: 먹은 양 −/+ 를 이름·출처 바로 아래 */
+.food-dex-amount {
+  margin: 14px 0 4px;
+}
+.food-dex-amount[hidden] { display: none !important; }
+.food-dex-amount-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #6a6762;
+  font: 600 11px/1.3 var(--font);
+  letter-spacing: 0.02em;
+}
+.food-dex-amount-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.food-dex-amount-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.food-dex-amount-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #18181b;
+  letter-spacing: -0.3px;
+}
+.food-dex-amount-cals {
+  font-size: 12px;
+  color: #6a6762;
+  font-weight: 500;
+}
+
+.food-dex-section-head {
+  align-items: flex-end;
+}
+.food-dex-basis-labels {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+.food-dex-nutrition-grid.has-per100 > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px 72px;
+  align-items: baseline;
+  gap: 8px;
+}
+.food-dex-nutrition-grid.has-per100 .food-dex-eaten,
+.food-dex-nutrition-grid.has-per100 .food-dex-ref {
+  justify-self: end;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.food-dex-nutrition-grid.has-per100 .food-dex-ref {
+  color: #6a6762;
+  font-size: 13px;
+  font-weight: 600;
+}
+#food-dex-per100-head[hidden] { display: none !important; }
+#food-dex-per100-head {
+  color: #6a6762;
+  font-size: 10px;
+  font-weight: 600;
+}

@@ -88,7 +88,7 @@ try {
     const noTitle = !document.querySelector('[data-foodex-panel="index"] h1, [data-foodex-panel="index"] h2, .search-index-intro'); return { noTitle, tabs, imgs, holes, heroImg, heroHole, old: /Foodex|푸덱스|푸드피디아/.test(visibleText), sortBg: bg('#search-index-sort'), toggleBg: bg('.search-index-view-toggle'), viewbarBg: bg('.search-index-viewbar') };`);
   const clear = v => v.startsWith('rgba(0, 0, 0, 0)|none');
   check('식도감 탭: 음식 / 레시피 / 뱃지, 페이지 제목(식도감) 없음', JSON.stringify(page.tabs) === JSON.stringify(['음식', '레시피', '뱃지']) && page.noTitle, JSON.stringify(page.tabs));
-  check('음식 그림 없음(목록·상세) — 같은 자리에 빈 자리만', page.imgs === 0 && page.holes > 0 && page.heroImg === 0 && page.heroHole, JSON.stringify(page));
+  check('식도감 목록은 그림 없이 빈 자리, 상세는 있는 음식만 그림(빈 자리 없음)', page.imgs === 0 && page.holes > 0 && page.heroImg === 1 && !page.heroHole, JSON.stringify(page));
   check("화면 글자에 'Foodex/푸덱스/푸드피디아' 없음", !page.old);
   check('정렬·보기 방식: 흰 상자 없이 글자만', clear(page.sortBg) && clear(page.toggleBg) && clear(page.viewbarBg), JSON.stringify([page.sortBg, page.toggleBg, page.viewbarBg]));
   // 4. 검색창: 홈 입력창과 같은 자리·같은 알약, 목록 밖(아래 고정), 다른 탭·페이지에선 숨김
