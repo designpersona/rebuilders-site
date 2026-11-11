@@ -12,6 +12,7 @@ vm.createContext(ctx);
 vm.runInContext(readFileSync(join(root, 'units.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'food-catalog.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'quick-entry.js'), 'utf8'), ctx);
+vm.runInContext(readFileSync(join(root, 'chat-intent.js'), 'utf8'), ctx);
 const { parseQuickEntry, detectTime, isNutritionMissing, countNutritionMissing } = ctx.RebuildersQuickEntry;
 const foods = Object.entries(ctx.NILIRI_FOOD_CATALOG).map(([n, d]) => [n, d, n === '그릭요거트' ? ['요거트'] : []]);
 const at = h => new Date(2026, 9, 20, h, 0, 0);
@@ -141,5 +142,29 @@ check('detectTime 14:30', detectTime('14:30 점심 김치') === '14:30');
 check('detectTime 오전 9시 15분', detectTime('오늘 오전 9시 15분 요거트') === '09:15');
 r = p('오후 3시에 라떼');
 check('말한 시각은 time으로, 끼니는 점심(17시 전)', r.time === '15:00' && r.timeExplicit && r.mealId === 'lunch', r);
+
+
+// 제품 이름·혼합 주스는 나누지 않고, 찌개+밥은 그대로 나눔
+r = p('너트한줌 럭셔리');
+check('너트한줌 럭셔리 → 한 항목(제품 이름)', r.items.length === 1 && names(r).join() === '너트한줌 럭셔리' && r.ambiguous && r.ambiguous.phrase === '너트한줌 럭셔리' && r.ambiguous.two.length === 2, { names: names(r), ambiguous: r.ambiguous });
+r = p('토마토 블루베리 주스 200ml');
+check('토마토 블루베리 주스 200ml → 한 항목 200ml', r.items.length === 1 && names(r).join() === '토마토 블루베리 주스' && r.items[0].amount?.value === 200 && r.items[0].amount?.unit === 'ml' && !r.ambiguous, r.items[0]);
+r = p('블루베리 토마토 사과 주스');
+check('블루베리 토마토 사과 주스 → 한 항목', r.items.length === 1 && names(r).join() === '블루베리 토마토 사과 주스' && !r.ambiguous, names(r));
+r = p('토마토와 블루베리 주스');
+check('토마토와 블루베리 주스 → 한 항목(와를 나누지 않음)', r.items.length === 1 && names(r).join() === '토마토와 블루베리 주스', names(r));
+r = p('바나나와 요거트');
+check('바나나와 요거트 → 와로 두 항목', names(r).join('|') === '바나나|그릭요거트', names(r));
+r = p('사과 주스');
+check('사과 주스 → 한 항목(과의 음절을 조사로 보지 않음)', r.items.length === 1 && names(r).join() === '사과 주스', names(r));
+r = p('점심 참치김치찌개 백미밥');
+check('참치김치찌개 백미밥은 계속 두 항목', names(r).join('|') === '참치김치찌개|밥', names(r));
+r = p('99kcal로 적어줘');
+check('수정 말은 음식 이름이 되지 않음', r.items.length === 0, r);
+r = p('이거 몇 kcal야?');
+check('질문은 음식 이름이 되지 않음', r.items.length === 0, r);
+r = p('방금 거 지워줘');
+check('지우라는 말은 음식 이름이 되지 않음', r.items.length === 0, r);
+
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');

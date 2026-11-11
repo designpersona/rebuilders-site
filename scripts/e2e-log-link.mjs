@@ -108,10 +108,10 @@ try {
 
   // 8) 음식 추가 시트·수정 시트에서도 버튼
   await evaluate(`openModal('dinner'); const s = document.getElementById('food-search'); s.value = '저녁 엄마표 잡채'; s.dispatchEvent(new Event('input')); await new Promise(r => setTimeout(r, 300)); return true;`);
-  const quickAsk = await evaluate(`return document.querySelector('#quick-foods .ask-ai-btn')?.textContent || ''`);
-  check('음식 추가 시트: 모르는 음식이면 "AI에게 물어보기"', quickAsk === 'AI에게 물어보기', quickAsk);
-  const knownAsk = await evaluate(`const s = document.getElementById('food-search'); s.value = '저녁 바나나'; s.dispatchEvent(new Event('input')); await new Promise(r => setTimeout(r, 300)); return !!document.querySelector('#quick-foods .ask-ai-btn')`);
-  check('DB에 있는 음식만이면 버튼 없음', knownAsk === false);
+  const quickAsk = await evaluate(`return document.querySelector('#quick-foods .fs-ai-find')?.textContent || document.querySelector('#quick-foods .ask-ai-btn')?.textContent || ''`);
+  check('음식 추가 시트: 모르는 음식이면 "AI로 찾아서 넣기"', /AI로 찾아서 넣기/.test(quickAsk), quickAsk);
+  const knownAsk = await evaluate(`const s = document.getElementById('food-search'); s.value = '저녁 바나나'; s.dispatchEvent(new Event('input')); await new Promise(r => setTimeout(r, 300)); return { ai: !!document.querySelector('#quick-foods .fs-ai-find'), ask: !!document.querySelector('#quick-foods .ask-ai-btn') };`);
+  check('DB에 있는 음식만이면 AI 찾기·물어보기 버튼 없음', knownAsk.ai === false && knownAsk.ask === false, JSON.stringify(knownAsk));
   await evaluate(`closeModal(); await addFoods('dinner', [{ name: '엄마표 잡채', serving: '1접시' }]); openFoodEdit('dinner', meals.dinner.foods.length - 1); return true;`);
   const editAsk = await evaluate(`return document.querySelector('#meal-detail-edit-grid .ask-ai-btn')?.textContent || ''`);
   check('영양 미입력 기록 수정 시트에 "AI에게 물어보기"', editAsk === 'AI에게 물어보기', editAsk);

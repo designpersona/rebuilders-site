@@ -51,8 +51,8 @@ try {
   // 2) 홈 표시
   let note = await evaluate(`const n = document.getElementById('nutrition-missing-note'); return { hidden: n.hidden, text: n.textContent }`);
   check('홈에 "영양정보 미입력 1개" 표시', !note.hidden && note.text.includes('영양정보 미입력 1개'), JSON.stringify(note));
-  const tag = await evaluate(`return [...document.querySelectorAll('#lunch-items .food-item')].map(el => el.querySelector('.food-name').textContent + ':' + el.querySelector('.food-cal').textContent + ':' + (el.querySelector('.nutrition-missing-tag')?.textContent || ''))`);
-  check('기록 항목에 미입력 태그, kcal은 "— kcal"', tag[0] === '이삭 햄치즈:— kcal:영양정보 미입력' && !tag[1].endsWith('미입력'), JSON.stringify(tag));
+  const tag = await evaluate(`return [...document.querySelectorAll('#lunch-items .food-item')].map(el => el.querySelector('.food-name').textContent + ':' + (el.querySelector('.food-cal')?.textContent || ''))`);
+  check('기록 항목 kcal은 미입력이면 "— kcal"', tag[0] === '이삭 햄치즈:— kcal' && tag[1].startsWith('아이스 아메리카노:') && !tag[1].includes('— kcal'), JSON.stringify(tag));
   const kcal = await evaluate(`return getTotals().cal`);
   check('합계는 미입력을 0으로 계산(아아 10.7kcal)', kcal === 10.7, String(kcal));
 
@@ -113,6 +113,16 @@ try {
   reply = await evaluate(chat('저녁 밥 반 공기'));
   dinner = await evaluate(stored('dinner'));
   check('밥 반 공기 → 저녁에 밥 하나(반공기)', dinner.filter(f => f.name === '밥').length === riceN + 1 && dinner.filter(f => f.name === '밥').some(f => f.serving === '반공기') && !dinner.some(f => f.name === '공기'), JSON.stringify(dinner.filter(f => f.name === '밥' || f.name === '공기')));
+
+
+  // 9a) 검색 결과가 없을 때 AI 찾기가 우선, 바로 기록은 보조
+  await evaluate(`openModal('snack'); const s = document.getElementById('food-search'); s.value = '너트한줌럭셔리xyz테스트'; s.dispatchEvent(new Event('input')); return true;`);
+  const fallback = await evaluate(`const first = document.querySelector('#quick-foods > :first-child'); const second = document.querySelector('#quick-foods .quick-record-btn.is-secondary'); return { first: first?.textContent || '', cls: first?.className || '', bg: first && getComputedStyle(first).backgroundColor, second: second?.textContent || '' };`);
+  check('검색 실패 시 AI로 찾아서 넣기가 맨 위(어두운 버튼)', /AI로 찾아서 넣기/.test(fallback.first) && /fs-ai-find/.test(fallback.cls) && fallback.bg === 'rgb(24, 24, 27)', JSON.stringify(fallback));
+  check('바로 기록 (영양정보 미입력)이 보조', /바로 기록 \(영양정보 미입력\)/.test(fallback.second), JSON.stringify(fallback));
+  const looked = await evaluate(`document.querySelector('#quick-foods .fs-ai-find').click(); await new Promise(r => setTimeout(r, 300)); return { error: document.querySelector('#quick-foods .fs-lookup-error')?.textContent || '', kcal: !!document.querySelector('#quick-foods .fs-manual-kcal'), amount: !!document.querySelector('#quick-foods .fs-manual-amount'), btn: document.querySelector('#quick-foods .fs-ai-find')?.textContent || '' };`);
+  check('AI 찾기 실패 시 이유와 직접 입력 칸', looked.error === '맥 미니에 연결할 수 없어요' && looked.kcal && looked.amount && /AI로 찾아서 넣기/.test(looked.btn), JSON.stringify(looked));
+  await evaluate(`closeModal(); return true;`);
 
   // 9) 데모 제품 버튼 제거
   const demo = await evaluate(`CUSTOM_FOODS = {}; renderCollectionProducts(); return { btn: !!document.querySelector('.collection-demo-product'), text: document.getElementById('collection-products-list')?.textContent.includes('데모 제품') }`);

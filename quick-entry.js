@@ -266,9 +266,90 @@
     return name.replace(/\s+/g, ' ').trim().replace(/(을|를|에|는|은|이|가|도|만|요|와|과|랑|하고)$/u, '').trim();
   }
 
-  function parseChunk(chunk, index) {
+  const DRINK_TAILS = '주스|쥬스|스무디|에이드|쉐이크|셰이크|우유';
+  const DRINK_NAME_RE = new RegExp(`^(.+?)\\s*(${DRINK_TAILS})$`, 'u');
+  const JUNK_NAME_RE = /(?:(?:\d+(?:\.\d+)?)\s*(?:kcal|칼로리).*(바꿔|고쳐|적어|수정)|(?:하나로\s*합쳐|합쳐\s*(?:줘|주세요)|두\s*개\s*따로|따로\s*기록)|(?:방금|아까|그거|이거).*(지워|삭제)|(?:아침|점심|저녁|간식)(?:으로|에)\s*(옮겨|바꿔|넣어)|몇\s*(?:kcal|칼로리)|먹어도\s*(?:돼|되|괜찮)|(?:바꿔|고쳐|적어|합쳐|지워)\s*(?:줘|주세요)\s*$)/u;
+
+  function hasBatchim(char) {
+    const c = String(char || '').charCodeAt(0);
+    return c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 !== 0;
+  }
+
+  function isDrinkName(text) {
+    const raw = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return false;
+    const m = raw.match(DRINK_NAME_RE);
+    return Boolean(m && cleanUnknown(m[1]));
+  }
+
+  function isInstructionText(text) {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    if (global.RebuildersChatIntent?.isInstructionOnly) return RebuildersChatIntent.isInstructionOnly(t);
+    if (/[?？]\s*$/.test(t)) return true;
+    return JUNK_NAME_RE.test(t);
+  }
+
+  function isJunkFoodName(name) {
+    const n = String(name || '').trim();
+    if (!n) return true;
+    if (JUNK_NAME_RE.test(n)) return true;
+    if (/^(바꿔|고쳐|적어|합쳐|지워|삭제|옮겨)(?:\s*(줘|주세요))?$/u.test(n)) return true;
+    return false;
+  }
+
+  function looksLikeKnown(index, name) {
+    const raw = cleanUnknown(name);
+    if (!raw) return false;
+    if (lookup(index, raw.split(/\s+/)) || lookup(index, [raw])) return true;
+    if (unitsApi()?.isStapleName(raw)) return true;
+    return false;
+  }
+
+  /* 와/과 조사로만 나눔. '사과 주스'의 '과'는 음절이라 나누지 않음. 'A와 B 주스'는 한 덩어리. */
+  function splitFoodChunks(body) {
+    const s = String(body || '');
+    if (!s.trim()) return [];
+    const delimRe = /[,，、;\n+·]|(?:이랑|랑|하고)(?=\s|$)|(?<=\s)(?:그리고|및|and|with)\s/gu;
+    const particleRe = /와(?=\s|$)|과(?=\s|$)/gu;
+    const cuts = [];
+    const pushCut = (index, len) => { cuts.push({ index, len }); };
+    let m;
+    const delimCopy = new RegExp(delimRe.source, 'gu');
+    while ((m = delimCopy.exec(s))) pushCut(m.index, m[0].length);
+    while ((m = particleRe.exec(s))) {
+      const ch = m[0][0];
+      const prev = m.index > 0 ? s[m.index - 1] : '';
+      if (ch === '과' && !hasBatchim(prev)) continue;
+      const start = cuts.filter(c => c.index < m.index).reduce((acc, c) => Math.max(acc, c.index + c.len), 0);
+      const afterStart = m.index + m[0].length;
+      const rest = s.slice(afterStart);
+      const next = rest.search(new RegExp('(?:' + delimRe.source + ')|(?:' + particleRe.source + ')', 'u'));
+      const beforeChunk = s.slice(start, m.index);
+      const afterChunk = next < 0 ? rest : rest.slice(0, next);
+      const joined = `${beforeChunk}와 ${afterChunk}`.replace(/\s+/g, ' ').trim();
+      if (isDrinkName(joined) || isDrinkName(`${beforeChunk} ${afterChunk}`.replace(/\s+/g, ' ').trim())) continue;
+      pushCut(m.index, m[0].length);
+    }
+    cuts.sort((a, b) => a.index - b.index);
+    const parts = [];
+    let at = 0;
+    for (const cut of cuts) {
+      if (cut.index < at) continue;
+      const part = s.slice(at, cut.index).trim();
+      if (part) parts.push(part);
+      at = cut.index + cut.len;
+    }
+    const tail = s.slice(at).trim();
+    if (tail) parts.push(tail);
+    return parts.length ? parts : (s.trim() ? [s.trim()] : []);
+  }
+
+  function parseChunk(chunk, index, options = {}) {
+    const keepProduct = options.keepProduct !== false;
     const tokens = chunk.split(/\s+/).filter(Boolean).filter(tok => !FILLER_WORDS.has(tok.toLowerCase()));
     const items = [];
+    const flags = { skippedUnknownAmount: false };
     let pending = [];
     const pushUnknown = (name, amount = null) => {
       splitUnknownName(name).forEach((part, i, parts) => {
@@ -284,18 +365,23 @@
       pending = [];
       if (name) pushUnknown(name, amount);
     };
+    const restKnownOrAlias = (from) => {
+      if (from >= tokens.length) return false;
+      const slice = tokens.slice(from);
+      for (let len = Math.min(4, slice.length); len >= 1; len -= 1) {
+        const hit = lookup(index, slice.slice(0, len));
+        if (hit) return true;
+      }
+      return looksLikeKnown(index, slice[0]);
+    };
     let i = 0;
     while (i < tokens.length) {
-      // 가장 긴 음식 이름부터 맞춰보기(최대 4단어)
       let matched = null;
       for (let len = Math.min(4, tokens.length - i); len >= 1; len -= 1) {
         const hit = lookup(index, tokens.slice(i, i + len));
         if (hit) { matched = { hit, len }; break; }
       }
       if (matched) {
-        // 앞에 모르는 말이 남아 있으면, 별칭(아아 등)이 아닌 한 뒤 단어를 같은 음식 이름으로 봄
-        // ("루돌프 쿠키 치즈 케이크"를 케이크와 따로 나누지 않음. "토스트 아아"는 아아만 분리)
-        // 다만 밥·백미밥처럼 따로 먹는 주식은 앞 음식과 나눔("참치김치찌개 백미밥"). 김치볶음밥·비빔밥·김밥은 그대로.
         if (pending.length && isStapleHit(matched.hit) && !unitsApi()?.isCompoundDish(cleanUnknown([...pending, ...tokens.slice(i, i + matched.len)].join(' ')))) {
           flushPending();
         } else if (pending.length && !matched.hit.fromAlias) {
@@ -314,17 +400,33 @@
       const token = tokens[i];
       const found = parseAmountAt(tokens, i);
       if (found) {
+        const restExists = i + found.consumed < tokens.length;
+        const pendingName = cleanUnknown(pending.join(' '));
+        const pendingKnown = pending.length && looksLikeKnown(index, pendingName);
+        if (keepProduct && pending.length && restExists && !pendingKnown) {
+          pending.push(...tokens.slice(i, i + found.consumed));
+          flags.skippedUnknownAmount = true;
+          i += found.consumed;
+          continue;
+        }
         if (pending.length) flushPending(found.amount);
         else if (items.length && !items[items.length - 1].amount) items[items.length - 1].amount = found.amount;
         i += found.consumed;
         continue;
       }
-      // "바나나2개", "밥반공기", "라떼톨"처럼 붙여 쓴 양
       const suffix = token.match(AMOUNT_SUFFIX_RE);
       if (suffix) {
         const head = suffix[1];
         const amt = parseCupSize(suffix[2]) || parseAmount(suffix[2]);
         const hit = lookup(index, [...pending, head]) || (pending.length ? null : lookup(index, [head]));
+        const restExists = i + 1 < tokens.length;
+        const headKnown = Boolean(hit) || looksLikeKnown(index, cleanUnknown([...pending, head].join(' ')));
+        if (amt && keepProduct && restExists && !headKnown && !restKnownOrAlias(i + 1)) {
+          pending.push(token);
+          flags.skippedUnknownAmount = true;
+          i += 1;
+          continue;
+        }
         if (hit && amt) {
           pending = [];
           items.push({ name: hit.name, baseName: hit.baseName, data: hit.data, known: true, amount: amt });
@@ -342,7 +444,65 @@
       i += 1;
     }
     flushPending();
-    return items;
+    return { items, skippedUnknownAmount: flags.skippedUnknownAmount };
+  }
+
+
+  function itemsFromChunk(chunk, index) {
+    const raw = String(chunk || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return { items: [], ambiguous: null };
+    const tokens = raw.split(/\s+/).filter(Boolean);
+    let trailing = null;
+    let nameTokens = tokens.slice();
+    const endAmt2 = tokens.length >= 2 ? parseAmountAt(tokens, tokens.length - 2) : null;
+    const endAmt = parseAmountAt(tokens, tokens.length - 1);
+    if (endAmt2 && endAmt2.consumed === 2) {
+      trailing = endAmt2.amount;
+      nameTokens = tokens.slice(0, tokens.length - 2);
+    } else if (endAmt && endAmt.consumed === 1) {
+      trailing = endAmt.amount;
+      nameTokens = tokens.slice(0, tokens.length - 1);
+    } else if (tokens.length) {
+      const last = tokens[tokens.length - 1];
+      const suffix = last.match(AMOUNT_SUFFIX_RE);
+      if (suffix) {
+        const amt = parseCupSize(suffix[2]) || parseAmount(suffix[2]);
+        if (amt && suffix[1]) {
+          trailing = amt;
+          nameTokens = tokens.slice(0, -1).concat(suffix[1]);
+        }
+      }
+    }
+    const wholeName = cleanUnknown(nameTokens.join(' '));
+    if (!wholeName) return { items: [], ambiguous: null };
+
+    const wholeHit = lookup(index, nameTokens) || lookup(index, [wholeName]);
+    if (wholeHit) {
+      return { items: [{ name: wholeHit.name, baseName: wholeHit.baseName, data: wholeHit.data, known: true, amount: trailing }], ambiguous: null };
+    }
+    if (isDrinkName(wholeName)) {
+      return { items: [{ name: wholeName, known: false, amount: trailing }], ambiguous: null };
+    }
+    const stapleParts = splitUnknownName(wholeName);
+    if (stapleParts.length > 1) {
+      const items = stapleParts.map((part, i, list) => {
+        const amount = i === list.length - 1 ? trailing : null;
+        const hit = lookup(index, [part]);
+        if (hit) return { name: hit.name, baseName: hit.baseName, data: hit.data, known: true, amount };
+        return { name: part, known: false, amount };
+      });
+      return { items, ambiguous: null };
+    }
+
+    const conservative = parseChunk(raw, index, { keepProduct: true });
+    const aggressive = parseChunk(raw, index, { keepProduct: false });
+    if (conservative.skippedUnknownAmount && aggressive.items.length > 1 && conservative.items.length === 1) {
+      return {
+        items: conservative.items,
+        ambiguous: { phrase: wholeName, one: conservative.items, two: aggressive.items },
+      };
+    }
+    return { items: conservative.items, ambiguous: null };
   }
 
   // 기준(basis)량 g: "100g" → 100. 없으면 serving 이 "NNg" 이면 그 값
@@ -466,19 +626,7 @@
     const recordIntent = INTENT_RE.test(raw) || /\b(ate|had|log|record|add)\b/i.test(raw);
     const date = detectDate(raw, options.now || new Date());
     const time = detectTime(raw);
-    let body = stripTimeWords(stripDateWords(stripMealWords(raw)));
-    body = body
-      .replace(/(먹었어요|먹었어|먹었다|먹었음|먹었는데|먹었고|먹은\s*거|먹은것|먹음|마셨어요|마셨어|마셨다|마셨고|마심)/gu, ' ')
-      .replace(/(식단에?\s*)?(기록|등록|추가)(해\s*줘|해주세요|해줘|해|할게|할래)?/gu, ' ')
-      .replace(/[.!?~]+/g, ' ');
-    const chunks = body
-      .split(/[,，、;\n+·]|(?:이랑|랑|하고)(?=\s|$)|\s(?:그리고|및|and|with)\s/u)
-      .map(part => (part || '').trim())
-      .filter(Boolean);
-    const items = chunks.flatMap(chunk => parseChunk(chunk, index))
-      .filter(item => item.name && item.name.length <= 120)
-      .map(item => ({ ...item, food: scaleFood(item) }));
-    return {
+    const empty = {
       mealId: meal ? meal.mealId : mealForTime(options.now || new Date()),
       mealExplicit: Boolean(meal),
       date,
@@ -486,7 +634,31 @@
       time,
       timeExplicit: Boolean(time),
       recordIntent,
+      items: [],
+      ambiguous: null,
+    };
+    if (isInstructionText(raw)) return empty;
+    let body = stripTimeWords(stripDateWords(stripMealWords(raw)));
+    body = body
+      .replace(/(먹었어요|먹었어|먹었다|먹었음|먹었는데|먹었고|먹은\s*거|먹은것|먹음|마셨어요|마셨어|마셨다|마셨고|마심)/gu, ' ')
+      .replace(/(식단에?\s*)?(기록|등록|추가)(해\s*줘|해주세요|해줘|해|할게|할래)?/gu, ' ')
+      .replace(/[.!~]+/g, ' ');
+    // 물음표는 질문으로 보고 음식으로 나누지 않음(? 는 위에서 isInstructionText가 처리. 남아 있으면 공백)
+    body = body.replace(/[?？]/g, ' ');
+    const chunks = splitFoodChunks(body);
+    const ambiguous = [];
+    const items = chunks.flatMap(chunk => {
+      const parsed = itemsFromChunk(chunk, index);
+      if (parsed.ambiguous) ambiguous.push(parsed.ambiguous);
+      return parsed.items;
+    })
+      .filter(item => item.name && item.name.length <= 120 && !isJunkFoodName(item.name))
+      .map(item => ({ ...item, food: scaleFood(item) }));
+    return {
+      ...empty,
+      recordIntent,
       items,
+      ambiguous: ambiguous.length === 1 ? ambiguous[0] : (ambiguous.length ? ambiguous : null),
     };
   }
 
@@ -501,7 +673,7 @@
     return (foods || []).filter(isNutritionMissing).length;
   }
 
-  const api = { parseQuickEntry, detectDate, detectTime, isNutritionMissing, countNutritionMissing, mealForTime, parseAmountAt, parseCupSize, scaleFood, QUICK_ALIASES, CUP_SIZES, NUTRITION_CORE };
+  const api = { parseQuickEntry, detectDate, detectTime, isNutritionMissing, countNutritionMissing, mealForTime, parseAmountAt, parseCupSize, scaleFood, isDrinkName, isInstructionText, splitFoodChunks, QUICK_ALIASES, CUP_SIZES, NUTRITION_CORE };
   global.RebuildersQuickEntry = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

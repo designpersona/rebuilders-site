@@ -11716,6 +11716,45 @@ body.keyboard-open .bottom-nav {
   font: 500 12px/1.4 var(--font);
   color: #d4d4d8;
 }
+.quick-record-btn.is-secondary {
+  background: #fff;
+  color: #18181b;
+  box-shadow: inset 0 0 0 1px #18181b;
+}
+.quick-record-btn.is-secondary .quick-record-items { color: #52525b; }
+.fs-ai-find { margin-bottom: 8px; }
+.fs-manual {
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #e4e4e7;
+}
+.fs-lookup-error { margin: 0 0 10px; font: 600 13px/1.4 var(--font); color: #3f3f46; }
+.fs-manual-fields { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.fs-manual-fields input {
+  flex: 1;
+  min-width: 72px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  font: 500 14px/1.2 var(--font);
+  background: #fff;
+  color: #18181b;
+}
+.fs-manual-save {
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #18181b;
+  color: #fff;
+  font: 700 13px/1 var(--font);
+  cursor: pointer;
+}
+.agent-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
 
 /* 기록 수정 시트: 핵심 영양(칼로리·탄·단·지)은 한 줄 전체 폭으로 */
 .meal-detail-grid .meal-edit-section.meal-edit-nutrition,

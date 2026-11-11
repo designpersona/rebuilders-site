@@ -3039,7 +3039,7 @@ async function addFoods(mealId, foodList, clock) {
     ? !snackFoodsForSlot(currentSnackSlot).length
     : !meals[mealId].foods.length;
   const indexes = list.map(food => {
-    const data = { ...food, _isNew: true };
+    const data = { ...food, id: food.id || newFoodId(), _isNew: true };
     if (mealId === 'snack') data.slot = currentSnackSlot;
     meals[mealId].foods.push(data);
     return meals[mealId].foods.length - 1;
@@ -4068,6 +4068,27 @@ function renderQuickFoods(entries) {
   const q = foodSearchInput.value.trim();
 
   if (q && document.getElementById('custom-name')) document.getElementById('custom-name').value = q;
+
+  const searchResult = q && typeof FoodSearch?.search === 'function' ? FoodSearch.search(q) : null;
+  const noConfident = Boolean(q && !hasConfidentSearchHit(q, searchResult));
+  if (noConfident) {
+    const en = ACTIVE_LOCALE === 'en';
+    const ai = document.createElement('button');
+    ai.type = 'button';
+    ai.className = 'quick-record-btn fs-ai-find';
+    ai.innerHTML = `<span class="quick-record-title">${en ? 'Find with AI and log' : 'AI로 찾아서 넣기'}</span>`;
+    ai.addEventListener('click', () => runButtonAction(ai, () => findAndAddWithAi(q, ai, container)));
+    container.appendChild(ai);
+    const quickButton = buildQuickRecordButton(q);
+    if (quickButton) {
+      quickButton.classList.add('is-secondary');
+      const title = quickButton.querySelector('.quick-record-title');
+      if (title) title.textContent = en ? 'Log now (no nutrition yet)' : '바로 기록 (영양정보 미입력)';
+      container.appendChild(quickButton);
+    }
+    renderGroupedQuickFoods(container, q);
+    return;
+  }
 
   const quickButton = q ? buildQuickRecordButton(q) : null;
   // 검색 중인 한 단어(예: "바나")는 검색 결과를 먼저, 끼니·여러 음식이 들어간 입력은 바로 기록을 먼저 보여줍니다.
@@ -7180,21 +7201,108 @@ function appendUndoSaveButton(message, undoSnapshot) {
   appendToAgentMessage(message, button);
 }
 
-async function handleAgentCommand() {
-  const input = document.getElementById('agent-input');
-  const text = input?.value.trim();
-  if (!text) return;
-  appendAgentMessage(text, 'user');
-  input.value = '';
-  refreshAiDockSend();
-  const parsed = parseQuickFoodText(text);
-  if (!parsed || !parsed.items.length) {
-    appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? 'Tell me the meal and food, such as “breakfast banana” or “lunch toast, iced americano.”'
-      : '“아침 바나나”, “점심 햄치즈 토스트, 아아”처럼 끼니와 음식을 적어주세요.');
-    return;
-  }
+const LAST_CHAT_BATCH_KEY = 'rebuilders-last-chat-batch';
+let lastChatBatch = null;
+let pendingClarify = null;
+let pendingFillChats = [];
 
+function loadLastChatBatch() {
+  if (lastChatBatch) return lastChatBatch;
+  try {
+    const raw = sessionStorage.getItem(LAST_CHAT_BATCH_KEY);
+    lastChatBatch = raw ? JSON.parse(raw) : null;
+  } catch { lastChatBatch = null; }
+  return lastChatBatch;
+}
+function saveLastChatBatch(batch) {
+  lastChatBatch = batch;
+  try {
+    if (batch) sessionStorage.setItem(LAST_CHAT_BATCH_KEY, JSON.stringify(batch));
+    else sessionStorage.removeItem(LAST_CHAT_BATCH_KEY);
+  } catch { /* ignore */ }
+}
+
+function formatFoodChange(food) {
+  const name = displayFoodName(food);
+  const amount = food?.serving ? ` ${food.serving}` : '';
+  if (typeof food?.cal === 'number') return `${name}${amount} · ${Math.round(food.cal)}kcal`;
+  return `${name}${amount}`;
+}
+
+function foodMatchHint(food, hint) {
+  if (!hint) return true;
+  const h = sourceNorm(hint);
+  if (!h) return true;
+  const n = sourceNorm(food?.name);
+  const input = sourceNorm(food?.inputName);
+  return (n && (n.includes(h) || h.includes(n))) || (input && (input.includes(h) || h.includes(input)));
+}
+
+function findTargetFoods(hint) {
+  const batch = loadLastChatBatch();
+  if (batch && batch.date === dateKey(currentDate) && meals[batch.mealId]) {
+    const list = meals[batch.mealId].foods || [];
+    const used = new Set();
+    const hits = [];
+    (batch.ids || []).forEach(id => {
+      const idx = list.findIndex(food => food?.id === id);
+      if (idx >= 0 && !used.has(idx)) { used.add(idx); hits.push({ mealId: batch.mealId, idx, food: list[idx] }); }
+    });
+    (batch.names || []).forEach(name => {
+      const idx = list.findIndex((food, i) => !used.has(i) && (sourceNorm(food?.name) === sourceNorm(name) || sourceNorm(food?.inputName) === sourceNorm(name)));
+      if (idx >= 0) { used.add(idx); hits.push({ mealId: batch.mealId, idx, food: list[idx] }); }
+    });
+    if (!hits.length && Array.isArray(batch.indexes)) {
+      batch.indexes.forEach(idx => {
+        if (list[idx] && !used.has(idx)) { used.add(idx); hits.push({ mealId: batch.mealId, idx, food: list[idx] }); }
+      });
+    }
+    const filtered = hint ? hits.filter(item => foodMatchHint(item.food, hint)) : hits;
+    if (filtered.length) return filtered;
+  }
+  if (hint) {
+    const all = ['breakfast', 'lunch', 'dinner', 'snack'].flatMap(mealId =>
+      (meals[mealId]?.foods || []).map((food, idx) => ({ mealId, idx, food }))
+        .filter(item => foodMatchHint(item.food, hint)));
+    if (all.length === 1) return all;
+    if (all.length > 1) return [all[all.length - 1]];
+  }
+  return [];
+}
+
+function appendChoiceButtons(message, choices) {
+  if (!message || !choices?.length) return;
+  const row = document.createElement('div');
+  row.className = 'agent-choices';
+  choices.forEach(choice => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'agent-confirm agent-choice';
+    button.textContent = choice.label;
+    button.addEventListener('click', () => {
+      if (button.disabled) return;
+      row.querySelectorAll('button').forEach(btn => { btn.disabled = true; });
+      Promise.resolve(choice.onClick()).catch(error => { showStorageFailure(error); row.querySelectorAll('button').forEach(btn => { btn.disabled = false; }); });
+    });
+    row.appendChild(button);
+  });
+  appendToAgentMessage(message, row);
+}
+
+function rememberChatBatch(parsed, mealId, foods, indexes) {
+  const ids = indexes.map(idx => meals[mealId].foods[idx]?.id).filter(Boolean);
+  saveLastChatBatch({
+    date: dateKey(currentDate),
+    mealId,
+    indexes,
+    ids,
+    names: foods.map(food => food.name),
+    phrase: parsed?.ambiguous?.phrase || foods.map(food => food.name).join(' '),
+    ambiguous: parsed?.ambiguous || null,
+  });
+}
+
+async function applyChatFoods(parsed) {
   let foods = await foodsFromParsed(parsed);
   if (typeof LOCAL_MODE !== 'undefined' && LOCAL_MODE) {
     foods = await Promise.all(foods.map(async (food, i) => {
@@ -7213,24 +7321,442 @@ async function handleAgentCommand() {
   const mealId = parsed.mealId;
   await goToEntryDate(parsed);
   if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
-  try {
-    const undoSnapshot = snapshotMeals();
-    const indexes = await addFoods(mealId, foods, parsed.time);
-    await registerLoggedFoods(foods);
-    const missing = foods.map((food, i) => ({ food, idx: indexes[i] })).filter(({ food }) => isNutritionMissing(food));
-    const summary = foods.map(quickItemSummary).join(', ');
-    const queued = queueBridgeLookup(mealId, foods);
-    const later = queued
-      ? (ACTIVE_LOCALE === 'en' ? ' The Mac mini AI is finding nutrition and will fill it in.' : ' 맥 미니 AI가 영양성분을 찾아서 채워줄게요.')
-      : (ACTIVE_LOCALE === 'en' ? ' You can fill in nutrition later.' : ' 영양정보는 나중에 채워도 돼요.');
-    const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? `Saved to ${mealLabel(mealId)}: ${summary}.${missing.length ? later : ''}`
-      : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.${missing.length ? later : ''}`);
+  const undoSnapshot = snapshotMeals();
+  const indexes = await addFoods(mealId, foods, parsed.time);
+  rememberChatBatch(parsed, mealId, foods, indexes);
+  await registerLoggedFoods(foods);
+  const missing = foods.map((food, i) => ({ food, idx: indexes[i] })).filter(({ food }) => isNutritionMissing(food));
+  const summary = foods.map(quickItemSummary).join(', ');
+  const queued = queueBridgeLookup(mealId, foods);
+  const later = queued
+    ? (ACTIVE_LOCALE === 'en' ? ' The Mac mini AI is finding nutrition and will fill it in.' : ' 맥 미니 AI가 영양성분을 찾아서 채워줄게요.')
+    : (ACTIVE_LOCALE === 'en' ? ' You can fill in nutrition later.' : ' 영양정보는 나중에 채워도 돼요.');
+  const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
+    ? `Saved to ${mealLabel(mealId)}: ${summary}.${missing.length ? later : ''}`
+    : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.${missing.length ? later : ''}`);
+  if (queued) {
+    pendingFillChats.push({
+      chatId: message.dataset.chatId,
+      date: dateKey(currentDate),
+      mealId,
+      ids: indexes.map(idx => meals[mealId].foods[idx]?.id).filter(Boolean),
+      names: foods.map(food => food.name),
+    });
+  }
+  appendUndoSaveButton(message, undoSnapshot);
+  if (missing.length) {
+    appendFillNutritionButton(message, mealId, missing[0].idx);
+    appendToAgentMessage(message, buildAskAiButton(mealId, missing.map(({ food }) => ({ name: food.name, serving: food.serving || '' })), 'agent-confirm'));
+  }
+}
+
+async function applyClarifyChoice(choice) {
+  const pending = pendingClarify;
+  pendingClarify = null;
+  if (!pending?.parsed) return;
+  const parsed = { ...pending.parsed, ambiguous: pending.parsed.ambiguous };
+  const scale = globalThis.RebuildersQuickEntry?.scaleFood;
+  const toItems = list => (list || []).map(item => ({ ...item, food: item.food || (scale ? scale(item) : { name: item.name, ...(item.amount ? { serving: item.amount.text } : {}) }) }));
+  if (choice === 'two' && pending.parsed.ambiguous?.two) {
+    parsed.items = toItems(pending.parsed.ambiguous.two);
+  } else if (pending.parsed.ambiguous?.one) {
+    parsed.items = toItems(pending.parsed.ambiguous.one);
+  }
+  await applyChatFoods(parsed);
+}
+
+async function applyEditIntent(edit) {
+  const en = ACTIVE_LOCALE === 'en';
+  const targets = findTargetFoods(edit.foodHint);
+  if (!targets.length) {
+    appendAgentMessage(en
+      ? 'I could not find a recent food to change. Tell me the name.'
+      : '방금 넣은 기록을 찾지 못했어요. 음식 이름을 같이 적어 주세요.');
+    return;
+  }
+  const undoSnapshot = snapshotMeals();
+  const batch = loadLastChatBatch();
+  const describeTargets = () => targets.map(item => {
+    const food = meals[item.mealId]?.foods[item.idx] || item.food;
+    return formatFoodChange(food);
+  }).join(', ');
+
+  if (edit.action === 'delete') {
+    [...targets].sort((a, b) => (a.mealId === b.mealId ? b.idx - a.idx : 0)).forEach(item => {
+      meals[item.mealId].foods.splice(item.idx, 1);
+    });
+    renderAll(false);
+    await persistMealsOrRestore(undoSnapshot);
+    if (activeMealPageContext) renderMealPage();
+    const message = appendAgentMessage(en
+      ? `Removed ${targets.map(item => displayFoodName(item.food)).join(', ')}.`
+      : `${targets.map(item => displayFoodName(item.food)).join(', ')} 지웠어요.`);
     appendUndoSaveButton(message, undoSnapshot);
-    if (missing.length) {
-      appendFillNutritionButton(message, mealId, missing[0].idx);
-      appendToAgentMessage(message, buildAskAiButton(mealId, missing.map(({ food }) => ({ name: food.name, serving: food.serving || '' })), 'agent-confirm'));
+    saveLastChatBatch(null);
+    return;
+  }
+
+  if (edit.action === 'move' && edit.mealId) {
+    const dest = edit.mealId;
+    if (dest === 'snack') currentSnackSlot = getDefaultSnackSlot();
+    const moving = [];
+    [...targets].sort((a, b) => (a.mealId === b.mealId ? b.idx - a.idx : 0)).forEach(item => {
+      if (item.mealId === dest) return;
+      const [food] = meals[item.mealId].foods.splice(item.idx, 1);
+      if (!food) return;
+      if (dest === 'snack') food.slot = currentSnackSlot;
+      else delete food.slot;
+      moving.push(food);
+    });
+    moving.reverse().forEach(food => { meals[dest].foods.push(food); });
+    renderAll(false);
+    await persistMealsOrRestore(undoSnapshot);
+    if (activeMealPageContext) renderMealPage();
+    const names = (moving.length ? moving : targets.map(item => item.food)).map(displayFoodName).join(', ');
+    const message = appendAgentMessage(en
+      ? `Moved ${names} to ${mealLabel(dest)}.`
+      : `${names} ${mealLabel(dest)}(으)로 옮겼어요.`);
+    appendUndoSaveButton(message, undoSnapshot);
+    if (batch) saveLastChatBatch({ ...batch, mealId: dest });
+    return;
+  }
+
+  if (edit.action === 'merge') {
+    const mealId = targets[0].mealId;
+    const same = targets.filter(item => item.mealId === mealId).sort((a, b) => a.idx - b.idx);
+    if (same.length < 2) {
+      appendAgentMessage(en ? 'I need two recent foods to merge.' : '합칠 기록이 두 개가 아니에요.');
+      return;
     }
+    const foods = same.map(item => meals[mealId].foods[item.idx]);
+    const phrase = batch?.phrase || foods.map(food => food.name).join(' ');
+    const merged = { ...foods[0], name: phrase, userEdited: true, id: foods[0].id || newFoodId() };
+    if (foods.every(food => typeof food.cal === 'number')) {
+      merged.cal = Math.round(foods.reduce((sum, food) => sum + Number(food.cal), 0) * 10) / 10;
+    }
+    const firstIdx = same[0].idx;
+    [...same].sort((a, b) => b.idx - a.idx).forEach(item => { meals[mealId].foods.splice(item.idx, 1); });
+    meals[mealId].foods.splice(firstIdx, 0, merged);
+    renderAll(false);
+    await persistMealsOrRestore(undoSnapshot);
+    if (activeMealPageContext) renderMealPage();
+    const message = appendAgentMessage(en
+      ? `Merged into ${formatFoodChange(merged)}.`
+      : `${formatFoodChange(merged)}로 합쳤어요.`);
+    appendUndoSaveButton(message, undoSnapshot);
+    saveLastChatBatch({
+      date: dateKey(currentDate), mealId, indexes: [firstIdx], ids: [merged.id], names: [merged.name],
+      phrase, ambiguous: { phrase, one: [{ name: phrase }], two: foods.map(food => ({ name: food.name })) },
+    });
+    return;
+  }
+
+  if (edit.action === 'split') {
+    const parts = batch?.ambiguous?.two;
+    if (!(targets.length === 1 && parts?.length > 1)) {
+      appendAgentMessage(en ? 'I do not have two foods to split this into.' : '나눌 기록이 없어요.');
+      return;
+    }
+    const target = targets[0];
+    const original = meals[target.mealId].foods[target.idx];
+    const scale = globalThis.RebuildersQuickEntry?.scaleFood;
+    const splitFoods = parts.map(item => {
+      const food = { ...(item.food || (scale ? scale(item) : { name: item.name })), id: newFoodId(), _isNew: true };
+      if (original?.slot !== undefined) food.slot = original.slot;
+      return food;
+    });
+    meals[target.mealId].foods.splice(target.idx, 1, ...splitFoods);
+    renderAll(false);
+    await persistMealsOrRestore(undoSnapshot);
+    if (activeMealPageContext) renderMealPage();
+    const message = appendAgentMessage(en
+      ? `Split into ${splitFoods.map(formatFoodChange).join(', ')}.`
+      : `${splitFoods.map(formatFoodChange).join(', ')}로 나눠 기록했어요.`);
+    appendUndoSaveButton(message, undoSnapshot);
+    rememberChatBatch({ ambiguous: batch.ambiguous }, target.mealId, splitFoods, splitFoods.map((_, i) => target.idx + i));
+    return;
+  }
+
+  if (edit.action === 'set-kcal') {
+    targets.forEach(item => {
+      const food = meals[item.mealId].foods[item.idx];
+      if (!food) return;
+      food.cal = edit.kcal;
+      food.userCalOverride = true;
+      food.userEdited = true;
+    });
+  } else if (edit.action === 'set-amount') {
+    const U = globalThis.RebuildersUnits;
+    targets.forEach(item => {
+      const food = meals[item.mealId].foods[item.idx];
+      if (!food) return;
+      if (U) Object.assign(food, U.applyAmount(food, edit.amount, food));
+      else {
+        food.serving = edit.amount.text;
+        food.servingAmount = edit.amount.value;
+        food.servingUnit = edit.amount.unit;
+      }
+      food.userEdited = true;
+    });
+  } else {
+    appendAgentMessage(en ? 'I could not apply that change.' : '그 수정은 적용하지 못했어요.');
+    return;
+  }
+
+  renderAll(false);
+  await persistMealsOrRestore(undoSnapshot);
+  if (activeMealPageContext) renderMealPage();
+  const message = appendAgentMessage(en
+    ? `Updated: ${describeTargets()}.`
+    : `${describeTargets()}로 바꿨어요.`);
+  appendUndoSaveButton(message, undoSnapshot);
+}
+
+async function answerQuestion(text, classified) {
+  const en = ACTIVE_LOCALE === 'en';
+  const hint = classified?.foodHint || '';
+  const deictic = /^(이거|그거|그건|방금|아까)/u.test(String(text || '').trim()) || !hint;
+  let food = null;
+  if (deictic) {
+    const targets = findTargetFoods(hint);
+    if (targets.length) food = targets[targets.length - 1].food;
+  }
+  if (!food && hint) {
+    const hit = pickConfidentMatch(hint);
+    if (hit) food = { name: hit.name, ...hit.data };
+    else {
+      const targets = findTargetFoods(hint);
+      if (targets.length) food = targets[targets.length - 1].food;
+    }
+  }
+  if (food && typeof food.cal === 'number') {
+    appendAgentMessage(en
+      ? `${displayFoodName(food)} is ${Math.round(food.cal)}kcal${food.serving ? ` (${food.serving})` : ''}.`
+      : `${formatFoodChange(food)}이에요.`);
+    return;
+  }
+  const name = hint || food?.name;
+  if (name && globalThis.RebuildersBridge?.isConfigured()) {
+    const message = appendAgentMessage(en ? 'Looking it up…' : '찾아볼게요.');
+    try {
+      const result = await RebuildersBridge.lookupAndWait({ date: dateKey(currentDate), meal: 'snack', items: [{ name }] });
+      const item = result.items?.[0];
+      const fields = item ? RebuildersBridge.toFoodFields(item) : null;
+      if (fields && typeof fields.cal === 'number') {
+        const label = fields.displayName || name;
+        const serving = fields.serving ? ` ${fields.serving}` : '';
+        setAgentMessageText(message, en
+          ? `${label}${serving} is ${Math.round(fields.cal)}kcal.`
+          : `${label}${serving} · ${Math.round(fields.cal)}kcal이에요.`);
+        return;
+      }
+      setAgentMessageText(message, en ? 'I could not find the calories right now.' : '지금은 확인할 수 없어요.');
+    } catch (error) {
+      const kind = error?.kind;
+      setAgentMessageText(message, (kind === 'unreachable' || kind === 'timeout' || kind === 'not_configured')
+        ? (en ? 'I cannot reach the Mac mini right now.' : '지금은 확인할 수 없어요. 맥 미니에 연결할 수 없어요.')
+        : (en ? 'I cannot check right now.' : '지금은 확인할 수 없어요.'));
+    }
+    return;
+  }
+  appendAgentMessage(en ? 'I cannot check right now.' : '지금은 확인할 수 없어요.');
+}
+
+function announceBridgeFill(job, records) {
+  if (!job || !records?.length) return;
+  const en = ACTIVE_LOCALE === 'en';
+  pendingFillChats = pendingFillChats.filter(entry => {
+    if (entry.date !== job.date || entry.mealId !== job.meal) return true;
+    const list = (job.date === dateKey(currentDate) ? meals[job.meal]?.foods : null) || [];
+    const byId = (entry.ids || []).map(id => list.find(food => food?.id === id)).filter(Boolean);
+    const byName = (entry.names || []).map(name => list.find(food => sourceNorm(food?.name) === sourceNorm(name) || sourceNorm(food?.inputName) === sourceNorm(name))).filter(Boolean);
+    const foods = byId.length ? byId : byName;
+    if (!foods.length) return true;
+    const anyFilled = foods.some(food => records.some(record => sourceNorm(record.name) === sourceNorm(food.name) || sourceNorm(record.inputName) === sourceNorm(food.name) || record === food));
+    if (!anyFilled) return true;
+    const el = document.querySelector(`#agent-log .agent-message[data-chat-id="${entry.chatId}"]`);
+    if (el) {
+      const summary = foods.map(formatFoodChange).join(', ');
+      const later = foods.some(isNutritionMissing)
+        ? (en ? ' Still looking up the rest.' : ' 나머지는 찾는 중이에요.')
+        : '';
+      setAgentMessageText(el, en
+        ? `Saved to ${mealLabel(job.meal)}: ${summary}.${later}`
+        : `${mealLabel(job.meal)}에 저장했어요: ${summary}.${later}`);
+    }
+    return foods.some(isNutritionMissing);
+  });
+}
+
+function hasConfidentSearchHit(query, result) {
+  const parsed = parseQuickFoodText(query);
+  if (parsed?.items?.length) {
+    if (parsed.items.every(item => item.known)) return true;
+    if (parsed.items.length >= 2 && parsed.items.some(item => item.known)) return true;
+  }
+  const q = sourceNorm(query);
+  if (!q || q.length < 2) return false;
+  const items = (result?.sections || []).flatMap(section => section.items || []);
+  return items.some(item => {
+    const n = sourceNorm(item.name);
+    return n && (n === q || n.startsWith(q) || q.startsWith(n));
+  });
+}
+
+function bridgeFailReason(error) {
+  const kind = typeof error === 'string' ? error : (error?.kind || 'error');
+  const en = ACTIVE_LOCALE === 'en';
+  if (kind === 'unreachable' || kind === 'timeout' || kind === 'not_configured') return en ? 'Cannot reach the Mac mini.' : '맥 미니에 연결할 수 없어요';
+  if (kind === 'unauthorized') return en ? 'Check the Mac mini token in Settings.' : '맥 미니 토큰을 확인해 주세요';
+  if (kind === 'not_found' || kind === 'failed') return en ? 'Could not find it.' : '찾지 못했어요';
+  return en ? 'Could not look it up right now.' : '지금은 찾을 수 없어요';
+}
+
+function renderSheetManualNutrition(container, query, reason) {
+  const en = ACTIVE_LOCALE === 'en';
+  container.querySelector('.fs-manual')?.remove();
+  const box = document.createElement('div');
+  box.className = 'fs-manual';
+  const note = document.createElement('p');
+  note.className = 'fs-lookup-error';
+  note.textContent = reason;
+  const kcal = document.createElement('input');
+  kcal.type = 'number';
+  kcal.inputMode = 'decimal';
+  kcal.min = '0';
+  kcal.step = '1';
+  kcal.placeholder = 'kcal';
+  kcal.setAttribute('aria-label', 'kcal');
+  kcal.className = 'fs-manual-kcal';
+  const amount = document.createElement('input');
+  amount.type = 'text';
+  amount.placeholder = en ? 'Amount (20g, 1ea)' : '양 (20g, 1개)';
+  amount.setAttribute('aria-label', en ? 'Amount' : '양');
+  amount.className = 'fs-manual-amount';
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'fs-manual-save';
+  save.textContent = en ? 'Log' : '기록';
+  save.addEventListener('click', () => runButtonAction(save, async () => {
+    const parsed = parseQuickFoodText(query);
+    const mealId = quickRecordTarget(parsed) || currentMeal;
+    if (!mealId) return;
+    const base = parsed?.items?.length ? parsed : { ...(parsed || {}), mealId, items: [{ name: query, known: false, food: { name: query } }] };
+    const foods = await foodsFromParsed(base);
+    const cal = kcal.value === '' ? NaN : Number(kcal.value);
+    const amtText = amount.value.trim();
+    const U = globalThis.RebuildersUnits;
+    foods.forEach(food => {
+      if (Number.isFinite(cal)) { food.cal = cal; food.userCalOverride = true; food.userEdited = true; }
+      if (amtText) {
+        const tokens = amtText.split(/\s+/);
+        const parsedAmt = globalThis.RebuildersQuickEntry?.parseAmountAt?.(tokens, 0)?.amount || U?.parseServing?.(amtText);
+        if (parsedAmt && U) Object.assign(food, U.applyAmount(food, parsedAmt, food));
+        else food.serving = amtText;
+      }
+    });
+    await goToEntryDate(parsed);
+    if (mealId === 'snack' && currentMeal !== 'snack') currentSnackSlot = getDefaultSnackSlot();
+    await addFoods(mealId, foods, parsed?.time);
+    await registerLoggedFoods(foods);
+    closeModal();
+    showToast(en
+      ? `Saved ${foods.length} to ${mealLabel(mealId)}`
+      : `${mealLabel(mealId)} ${foods.length}개 기록했어요`, 'info');
+  }));
+  const fields = document.createElement('div');
+  fields.className = 'fs-manual-fields';
+  fields.append(kcal, amount, save);
+  box.append(note, fields);
+  container.appendChild(box);
+}
+
+async function findAndAddWithAi(query, button, resultHost) {
+  const en = ACTIVE_LOCALE === 'en';
+  const parsed = parseQuickFoodText(query);
+  const mealId = quickRecordTarget(parsed) || currentMeal;
+  const labelBefore = button?.textContent;
+  const fail = reason => {
+    if (button) {
+      button.disabled = false;
+      button.classList.remove('is-busy');
+      if (labelBefore) button.textContent = labelBefore;
+    }
+    if (resultHost) renderSheetManualNutrition(resultHost, query, reason);
+  };
+  if (!mealId) { fail(en ? 'Pick a meal first.' : '끼니를 먼저 골라 주세요.'); return; }
+  if (button) {
+    button.disabled = true;
+    button.classList.add('is-busy');
+    button.textContent = en ? 'Looking up…' : '찾는 중';
+  }
+  if (!globalThis.RebuildersBridge?.isConfigured()) { fail(bridgeFailReason('not_configured')); return; }
+  try {
+    const items = (parsed?.items?.length ? parsed.items : [{ name: query }])
+      .map(item => ({ name: item.food?.name || item.name, serving: item.food?.serving || item.amount?.text || '' }));
+    const result = await RebuildersBridge.lookupAndWait({ date: dateKey(currentDate), meal: mealId, items });
+    const foods = items.map(item => {
+      const hit = (result.items || []).find(row => sourceNorm(row?.name) === sourceNorm(item.name) || sourceNorm(row?.display_name) === sourceNorm(item.name));
+      const fields = hit ? RebuildersBridge.toFoodFields(hit) : null;
+      if (!fields) return null;
+      const { displayName, ...rest } = fields;
+      return { name: displayName || item.name, ...rest, serving: item.serving || rest.serving };
+    }).filter(Boolean);
+    if (!foods.length) { fail(bridgeFailReason('failed')); return; }
+    await goToEntryDate(parsed);
+    if (mealId === 'snack' && currentMeal !== 'snack') currentSnackSlot = getDefaultSnackSlot();
+    await addFoods(mealId, foods, parsed?.time);
+    await registerLoggedFoods(foods);
+    closeModal();
+    showToast(en
+      ? `Saved ${foods.map(formatFoodChange).join(', ')} to ${mealLabel(mealId)}`
+      : `${mealLabel(mealId)}에 저장했어요: ${foods.map(formatFoodChange).join(', ')}`, 'info');
+  } catch (error) {
+    fail(bridgeFailReason(error));
+  }
+}
+
+async function handleAgentCommand() {
+  const input = document.getElementById('agent-input');
+  const text = input?.value.trim();
+  if (!text) return;
+  appendAgentMessage(text, 'user');
+  input.value = '';
+  refreshAiDockSend();
+  const classified = globalThis.RebuildersChatIntent?.classifyChat(text, { pendingClarify }) || { type: 'food' };
+  try {
+    if (classified.type === 'clarify-reply' && pendingClarify) {
+      await applyClarifyChoice(classified.choice);
+      return;
+    }
+    if (classified.type === 'edit') {
+      await applyEditIntent(classified);
+      return;
+    }
+    if (classified.type === 'question') {
+      await answerQuestion(text, classified);
+      return;
+    }
+    const parsed = parseQuickFoodText(text);
+    if (parsed?.ambiguous && parsed.items.length) {
+      pendingClarify = { parsed, text };
+      const phrase = parsed.ambiguous.phrase || parsed.items.map(item => item.name).join(' ');
+      const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
+        ? `Is “${phrase}” one product, or two foods?`
+        : `'${phrase}' 한 제품이에요, 두 개예요?`);
+      appendChoiceButtons(message, [
+        { label: ACTIVE_LOCALE === 'en' ? 'One product' : '한 제품', onClick: () => applyClarifyChoice('one') },
+        { label: ACTIVE_LOCALE === 'en' ? 'Two foods' : '두 개', onClick: () => applyClarifyChoice('two') },
+      ]);
+      return;
+    }
+    if (!parsed || !parsed.items.length) {
+      appendAgentMessage(ACTIVE_LOCALE === 'en'
+        ? 'Tell me the meal and food, such as “breakfast banana” or “lunch toast, iced americano.”'
+        : '“아침 바나나”, “점심 햄치즈 토스트, 아아”처럼 끼니와 음식을 적어주세요.');
+      return;
+    }
+    await applyChatFoods(parsed);
   } catch (error) {
     showStorageFailure(error);
     appendAgentMessage(ACTIVE_LOCALE === 'en'
@@ -7238,6 +7764,7 @@ async function handleAgentCommand() {
       : '저장하지 못했어요. 다시 시도해 주세요.');
   }
 }
+
 
 // 보내기 버튼(type=submit)과 return 키는 #ai-dock-form 의 submit 으로 처리(위 refreshAiDockSend 옆)
 
@@ -8816,6 +9343,7 @@ function fillFoodsFromBridge(list, found, records = []) {
     const idx = list.findIndex(existing => isNutritionMissing(existing) && compactFoodName(existing.name) === compactFoodName(name));
     if (idx < 0) return; // 그사이 지웠거나 직접 채웠으면 건드리지 않음
     const existing = list[idx];
+    if (existing.userCalOverride || existing.userEdited) return;
     const { displayName, ...rest } = fields;
     // 제목 = 공식 브랜드+메뉴명(양·괄호 없음), 양 = 따로(사용자가 적은 양 우선), 영양 = kcal·탄·단·지
     const next = { ...existing, ...rest, name: displayName || existing.name };
@@ -8879,6 +9407,7 @@ async function applyBridgeResult(job, result) {
       await persistMealsOrRestore(before);
       if (activeMealPageContext) renderMealPage();
       await refreshRecentAfterBridge(records);
+      announceBridgeFill(job, records);
     }
     return filled;
   }
@@ -8891,6 +9420,7 @@ async function applyBridgeResult(job, result) {
     await storageRepository.saveDay(job.date, next);
     if (statsCache) statsCache[job.date] = next;
     await refreshRecentAfterBridge(records);
+    announceBridgeFill(job, records);
   }
   return filled;
 }

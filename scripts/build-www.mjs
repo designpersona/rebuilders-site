@@ -9,7 +9,7 @@ const out = join(root, 'www');
 
 const FILES = [
   'index.html', 'privacy.html', 'style.css', 'app.js', 'storage.js', 'backup.js',
-  'notifications.js', 'keyboard.js', 'food-catalog.js', 'units.js', 'mfds.js', 'demo-seed.js', 'quick-entry.js', 'health.js', 'log-link.js', 'bridge.js', 'manifest.webmanifest',
+  'notifications.js', 'keyboard.js', 'food-catalog.js', 'units.js', 'mfds.js', 'demo-seed.js', 'quick-entry.js', 'chat-intent.js', 'health.js', 'log-link.js', 'bridge.js', 'manifest.webmanifest',
 ];
 const DIRS = ['assets', 'data'];
 
