@@ -13248,7 +13248,7 @@ body.no-character #view-home#view-home .dash-card .dash-vitals strong { font: 50
 body.no-character #view-home#view-home .dash-card .dash-top > .macros-panel {
   grid-area: macros !important; justify-self: stretch !important; align-self: start !important;
   display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 12px !important;
-  width: auto !important; margin: 12px 0 0 !important; padding: 12px 0 0 !important; border-top: 1px solid var(--rb-hairline) !important;
+  width: auto !important; margin: 12px 0 0 !important; padding: 12px 12px 10px !important; border-top: 1px solid var(--rb-hairline) !important;
 }
 body.no-character #view-home#view-home .dash-card .macro-row {
   display: flex !important; align-items: baseline !important; justify-content: flex-start !important; gap: 4px !important; min-width: 0 !important;
