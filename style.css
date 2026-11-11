@@ -13763,13 +13763,55 @@ body.ai-sheet-open .phone-frame > .bridge-pending {
 .food-amount-popover[hidden] { display: none !important; }
 .food-amount-card {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
   padding: 10px 12px;
   background: var(--rb-surface, #fff);
   border: var(--rb-card-border, 1px solid rgba(17, 18, 22, 0.08));
   border-radius: 16px;
   box-shadow: 0 16px 40px rgba(17, 18, 22, 0.16), 0 2px 6px rgba(17, 18, 22, 0.06);
+}
+.food-amount-card-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.food-amount-portions {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+.food-amount-portion {
+  min-width: 44px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(17, 18, 22, 0.12);
+  border-radius: 999px;
+  background: #fff;
+  color: #18181b;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.food-amount-portion:active { transform: scale(0.96); }
+.food-amount-weight-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #6a6762;
+  text-align: center;
+}
+.food-amount-weight-hint[hidden] { display: none !important; }
+.food-amount-weight-hint button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
 }
 .food-amount-step {
   width: 36px;
@@ -13939,6 +13981,9 @@ input.food-amount-value:focus {
   margin: 14px 0 4px;
 }
 .food-dex-amount[hidden] { display: none !important; }
+.food-dex-amount-portions {
+  margin: 0 0 8px;
+}
 .food-dex-amount-label {
   display: block;
   margin-bottom: 8px;

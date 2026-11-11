@@ -128,10 +128,41 @@ const halfCake = U.applyAmount(cake, { value: 0.5, unit: '개' }, cake);
 check('1개 1400kcal → 0.5개 700kcal, 단위는 개',
   halfCake.cal === 700 && halfCake.servingAmount === 0.5 && halfCake.servingUnit === '개' && halfCake.serving === '반개', halfCake);
 
-const cake95 = U.applyAmount(cake, { value: 95, unit: 'g' }, cake);
-check('한 개 무게 없는 1개 기록을 95g으로 바꾸면 단위는 g, kcal은 그대로, servingGrams는 95',
-  cake95.cal === 1400 && cake95.servingUnit === 'g' && cake95.servingAmount === 95 && cake95.servingGrams === 95
-  && cake95.basisGrams === 95 && cake95.carbs === 140, cake95);
+const cake95unknown = U.applyAmount(cake, { value: 95, unit: 'g' }, cake);
+check('한 개 무게 없는 1개 기록을 95g으로 바꾸면 단위·kcal을 그대로 두고 새 기준으로 덮지 않음',
+  cake95unknown.cal === 1400 && cake95unknown.servingUnit === '개' && cake95unknown.servingAmount === 1
+  && cake95unknown.basisGrams !== 95, cake95unknown);
+
+const brulee = {
+  name: '스타벅스 브륄레 쿠키 치즈케이크',
+  cal: 1400, carbs: 103, protein: 13, fat: 104, sugar: 102,
+  saturatedFat: 58, transFat: 1.4, cholesterol: 385, sodium: 1100,
+  serving: '1개', servingAmount: 1, servingUnit: '개',
+  packageGrams: 380, unitGrams: { '개': 380 }, servingGrams: 380,
+};
+const brulee95 = U.applyAmount(brulee, { value: 95, unit: 'g' }, brulee);
+check('브륄레 1개 380g 1400kcal → 95g = 350kcal, 탄수 25.8, 단백질 3.3(3.25), 지방 26',
+  brulee95.cal === 350 && brulee95.carbs === 25.8 && brulee95.protein === 3.3 && brulee95.fat === 26
+  && brulee95.sugar === 25.5 && brulee95.sodium === 275
+  && brulee95.servingUnit === 'g' && brulee95.servingAmount === 95 && brulee95.servingGrams === 95, brulee95);
+
+const bruleeQuarter = U.applyAmount(brulee, { value: 0.25, unit: '개' }, brulee);
+const bruleeHalf = U.applyAmount(brulee, { value: 0.5, unit: '개' }, brulee);
+check('브륄레 0.25개 = 95g 350kcal, 1/2 = 700kcal',
+  bruleeQuarter.cal === 350 && bruleeQuarter.servingGrams === 95 && bruleeQuarter.carbs === 25.8 && bruleeQuarter.protein === 3.3
+  && bruleeHalf.cal === 700 && bruleeHalf.servingGrams === 190, { bruleeQuarter, bruleeHalf });
+
+const portionQuarter = U.portionAmount(brulee, 0.25);
+const portionHalf = U.portionAmount(brulee, 0.5);
+const portionOne = U.portionAmount(brulee, 1);
+check('1/4·1/2·1 버튼은 한 개 기준 (0.25개 / 0.5개 / 1개)',
+  portionQuarter?.value === 0.25 && portionQuarter?.unit === '개'
+  && portionHalf?.value === 0.5 && portionOne?.value === 1 && portionOne?.unit === '개',
+  { portionQuarter, portionHalf, portionOne });
+
+const portionFromGrams = U.portionAmount({ ...brulee, servingAmount: 95, servingUnit: 'g', servingGrams: 95, cal: 350 }, 0.25);
+check('g으로 보고 있을 때 1/4은 95g',
+  portionFromGrams?.value === 95 && portionFromGrams?.unit === 'g', portionFromGrams);
 
 const known = { ...cake, servingGrams: 400 };
 const known95 = U.applyAmount(known, { value: 95, unit: 'g' }, known);
@@ -140,8 +171,38 @@ check('한 개 400g을 알면 95g은 비례(1400 × 95/400)',
 
 const absurdSrc = { ...cake, servingGrams: 1 };
 const absurd = U.applyAmount(absurdSrc, { value: 95, unit: 'g' }, absurdSrc);
-check('1개를 1g으로 잘못 둔 채 95g을 넣어도 수백만 kcal이 되지 않음',
-  absurd.cal === 1400 && absurd.cal < 10000 && absurd.servingUnit === 'g' && absurd.servingGrams === 95, absurd);
+check('1개를 1g으로 잘못 둔 채 95g을 넣어도 수백만 kcal이 되지 않고 단위도 바꾸지 않음',
+  absurd.cal === 1400 && absurd.cal < 10000 && absurd.servingUnit === '개' && absurd.servingAmount === 1, absurd);
+
+const scaled = U.scaleByCalorie({ cal: 1400, carbs: 103, protein: 13, fat: 104 }, 700);
+check('칼로리 1400→700이면 탄단지도 절반',
+  scaled.cal === 700 && scaled.carbs === 51.5 && scaled.protein === 6.5 && scaled.fat === 52, scaled);
+
+// 깨진 기록(95g에 1400kcal을 기준으로 덮어씀)은 자동으로 고치지 않음. 수정 시트에서 1개·380g을 넣으면 기준이 복구됨.
+const broken = {
+  name: '스타벅스 브륄레 쿠키 치즈케이크',
+  cal: 1400, carbs: 103, protein: 13, fat: 104, sugar: 102,
+  saturatedFat: 58, transFat: 1.4, cholesterol: 385, sodium: 1100,
+  serving: '95g', servingAmount: 95, servingUnit: 'g', servingGrams: 95,
+  basisGrams: 95, basis: '95g',
+  basisNutrients: { cal: 1400, carbs: 103, protein: 13, fat: 104, sugar: 102, saturatedFat: 58, transFat: 1.4, cholesterol: 385, sodium: 1100 },
+  servingUnitPreferred: '개',
+};
+const stillBroken = { ...broken };
+check('저장된 깨진 기록은 읽기만 해서 값이 그대로',
+  stillBroken.cal === 1400 && stillBroken.servingAmount === 95 && stillBroken.basisGrams === 95);
+
+const restored = U.applyPackageWeight({
+  ...broken,
+  servingAmount: 1, servingUnit: '개', serving: '1개',
+}, 380);
+check('수정에서 1개·중량 380g을 넣으면 1400kcal이 380g 기준이 됨',
+  restored.cal === 1400 && restored.packageGrams === 380 && restored.servingAmount === 1 && restored.servingUnit === '개'
+  && restored.servingGrams === 380 && restored.basisGrams === 380, restored);
+const restored95 = U.applyAmount(restored, { value: 95, unit: 'g' }, restored);
+check('기준을 복구한 뒤 95g은 350kcal',
+  restored95.cal === 350 && restored95.carbs === 25.8 && restored95.protein === 3.3 && restored95.fat === 26
+  && restored95.servingGrams === 95, restored95);
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

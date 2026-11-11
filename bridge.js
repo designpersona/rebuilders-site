@@ -112,8 +112,17 @@
     const sodium = item.sodium_mg === null || item.sodium_mg === undefined ? null : num(item.sodium_mg, 50000);
     if (sugar !== null) out.sugar = sugar;
     if (sodium !== null) out.sodium = sodium;
-    // 찾은 곳 종류(공식/공공DB/블로그·앱/추정) — 기록 표시는 그대로 '추정'(AI가 찾은 값)
+    // 찾은 곳 종류. 공식·공공DB(포장지·식약처·브랜드 공식)는 고정값, 추정은 공식 데이터가 없을 때만.
     if (['공식', '공공DB', '블로그·앱', '추정'].includes(item.source_type)) out.sourceType = item.source_type;
+    if (item.source_type === '공식' || item.source_type === '공공DB') {
+      out.sourceLabel = item.source_type;
+      out.sourceTrust = 'reference';
+      out.estimate = false;
+      out.aiEstimate = false;
+    } else if (item.source_type === '추정' || item.source_type === '블로그·앱') {
+      out.sourceLabel = '추정';
+      out.sourceTrust = 'estimate';
+    }
     // 이름은 공식 브랜드+메뉴명만, 양은 따로(괄호 없이)
     const noParen = text => String(text || '').replace(/\s*[([（［][^)\]）］]*[)\]）］]/g, ' ').replace(/[()[\]（）［］]/g, ' ').replace(/\s+/g, ' ').trim();
     const displayName = noParen(item.display_name).slice(0, 60);
@@ -140,6 +149,37 @@
     }
     const sGrams = basisNum(item.serving_grams ?? item.servingGrams, 20000);
     if (sGrams != null) out.servingGrams = sGrams;
+    const packageGrams = basisNum(
+      item.package_grams ?? item.packageGrams
+      ?? item.unit_grams ?? (typeof item.unitGrams === 'number' ? item.unitGrams : null)
+      ?? item.piece_grams ?? item.pieceGrams
+      ?? item.total_weight_g ?? item.totalWeightG
+      ?? item.net_weight_g ?? item.netWeightG
+      ?? item.package_ml ?? item.packageMl,
+      20000
+    );
+    if (packageGrams != null) {
+      out.packageGrams = packageGrams;
+      if (out.servingGrams == null) out.servingGrams = packageGrams;
+    }
+    const pieceWeight = packageGrams ?? sGrams;
+    if (pieceWeight != null) {
+      const serveText = String(out.serving || item.serving || '').trim();
+      const serveParsed = serveText.match(/^(\d+(?:\.\d+)?)\s*([가-힣A-Za-z]+)$/u);
+      const serveUnit = serveParsed ? serveParsed[2] : '';
+      const serveAmt = serveParsed ? Number(serveParsed[1]) : null;
+      const countUnit = serveUnit && !['g', 'kg', 'ml', 'l'].includes(serveUnit.toLowerCase()) ? serveUnit : '개';
+      if (typeof item.unitGrams === 'object' && item.unitGrams) out.unitGrams = { ...item.unitGrams };
+      else out.unitGrams = { [countUnit]: pieceWeight };
+      if (out.servingAmount == null && (serveAmt == null || countUnit === '개' && !serveUnit)) {
+        out.servingAmount = 1;
+        out.servingUnit = countUnit;
+        if (!out.serving) out.serving = `1${countUnit}`;
+      } else if (serveAmt != null) {
+        if (out.servingAmount == null) out.servingAmount = serveAmt;
+        if (!out.servingUnit) out.servingUnit = serveUnit || countUnit;
+      }
+    }
     const note = String(item.source_note || '').replace(/\s+/g, ' ').trim().slice(0, 120);
     if (note) out.sourceNote = note;
     try { const u = new URL(String(item.source_url || '')); if (u.protocol === 'https:') out.sourceUrl = u.href.slice(0, 300); } catch { /* 없음 */ }

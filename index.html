@@ -1088,11 +1088,6 @@
                 <option value="작은술">작은술</option>
               </select>
             </div>
-            <div class="meal-serving-row">
-              <input type="number" class="settings-input" id="custom-serving-grams" inputmode="decimal" min="0"
-                step="0.1" placeholder="선택" autocomplete="off" />
-              <span class="serving-conversion-label">환산 중량 g (선택 · 추정 가능)</span>
-            </div>
             <input type="hidden" id="custom-serving" value="100g" />
           </div>
           <div class="form-group">
@@ -1105,6 +1100,11 @@
               <label for="custom-cal">칼로리</label>
               <input type="number" class="settings-input" id="custom-cal" inputmode="decimal" min="0" step="1"
                 placeholder="kcal" />
+            </div>
+            <div class="form-group">
+              <label for="custom-serving-grams">총중량 / 한 개 중량 (g)</label>
+              <input type="number" class="settings-input" id="custom-serving-grams" inputmode="decimal" min="0"
+                step="0.1" placeholder="포장지 중량" autocomplete="off" />
             </div>
             <div class="form-group">
               <label for="custom-carbs">탄수화물</label>
@@ -1180,7 +1180,7 @@
   <div class="food-dex" id="food-dex" role="dialog" aria-modal="true" aria-labelledby="food-dex-name" hidden>
     <header class="food-dex-header">
       <button type="button" class="food-dex-close" id="food-dex-close" aria-label="음식 정보 닫기">←</button>
-      <span>FOOD INDEX</span>
+      <span id="food-dex-title">음식 정보</span>
     </header>
     <main class="food-dex-content">
       <div class="food-dex-number" id="food-dex-number">NO. 001</div>
@@ -1196,6 +1196,11 @@
       <p class="food-dex-serving" id="food-dex-serving"></p>
       <div class="food-dex-amount" id="food-dex-amount" hidden>
         <span class="food-dex-amount-label">먹은 양</span>
+        <div class="food-amount-portions food-dex-amount-portions" role="group" aria-label="한 개 비율">
+          <button type="button" class="food-amount-portion" data-portion="0.25">1/4</button>
+          <button type="button" class="food-amount-portion" data-portion="0.5">1/2</button>
+          <button type="button" class="food-amount-portion" data-portion="1">1</button>
+        </div>
         <div class="food-dex-amount-row">
           <button type="button" class="food-amount-step" data-dir="-1" aria-label="-">−</button>
           <div class="food-dex-amount-copy">
@@ -1205,6 +1210,7 @@
           <button type="button" class="food-amount-step" data-dir="1" aria-label="+">+</button>
           <button type="button" class="food-amount-unit food-dex-amount-unit"></button>
         </div>
+        <p class="food-amount-weight-hint food-dex-weight-hint" hidden></p>
       </div>
       <p class="food-dex-description" id="food-dex-description"></p>
       <section class="food-dex-nutrition" aria-labelledby="food-dex-nutrition-title">

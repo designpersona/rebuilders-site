@@ -187,7 +187,7 @@
     return info && Number(info.step) > 0 ? info.step : 1;
   }
 
-  // −/+ : 개·조각은 1 아래를 0.5 → 0.25로 내릴 수 있게. g는 최소 1.
+  // −/+ : 개·봉지 같은 셀 단위는 1 이상에서 기본 간격, 1 아래는 0.5 → 0.25. g·ml은 기존 간격, 최소 1g(또는 0.1kg).
   function nudgeAmount(unit, current, dir) {
     const u = String(unit || '개');
     const cur = Number(current);
@@ -199,6 +199,7 @@
       const min = (u === 'kg' || u === 'l') ? 0.1 : 1;
       return Math.max(min, next);
     }
+    // 1 이상은 단위 기본 간격(개는 1), 1 아래는 0.5 → 0.25.
     if (sign > 0) {
       if (base < 0.25) return 0.25;
       if (base < 0.5) return 0.5;
@@ -246,6 +247,46 @@
       return { grams: Number(generic.grams), unit: u, estimated: !generic.official, source: generic.source };
     }
     return null;
+  }
+
+  // 포장지·한 개 중량처럼 실제로 아는 무게만. 봉지 20g 같은 추정 일반값은 쓰지 않음.
+  function knownPackageGrams(foodName, unit, data) {
+    if (Number(data?.packageGrams) > 0 && !data?.servingGramsEstimated) {
+      return { grams: Number(data.packageGrams), unit: unit || '개', estimated: false };
+    }
+    const table = data && data.unitGrams && typeof data.unitGrams === 'object' ? data.unitGrams : null;
+    if (table) {
+      const direct = unit && !isMassUnit(unit) && Number(table[unit]) > 0 ? Number(table[unit]) : null;
+      const fallback = Object.entries(table).find(([u, v]) => !isMassUnit(u) && Number(v) > 0);
+      const grams = direct || (fallback ? Number(fallback[1]) : null);
+      const u = direct ? unit : (fallback ? fallback[0] : null);
+      if (grams > 0 && u && !data?.servingGramsEstimated) return { grams, unit: u, estimated: false };
+    }
+    if (data && !isMassUnit(data.servingUnit) && Number(data.servingGrams) > 0 && Number(data.servingAmount) > 0 && !data.servingGramsEstimated) {
+      return { grams: Number(data.servingGrams) / Number(data.servingAmount), unit: data.servingUnit, estimated: false };
+    }
+    const u = unit && !isMassUnit(unit) ? unit : null;
+    if (!u) return null;
+    const food = lookupFood(foodName);
+    if (food && food.units && food.units[u] && Number(food.units[u].grams) > 0 && food.units[u].official) {
+      return { grams: Number(food.units[u].grams), unit: u, estimated: false, source: food.units[u].source };
+    }
+    return null;
+  }
+
+  // 1/4·1/2·1 은 한 포장(한 개) 기준. 무게를 알면 g로 적을 때도 포장 무게의 그 비율.
+  function portionAmount(food, fraction) {
+    const frac = Number(fraction);
+    if (!(frac > 0)) return null;
+    const unit = food?.servingUnit || typicalServing(food?.baseFood || food?.name, food)?.unit || '개';
+    const pack = knownPackageGrams(food?.baseFood || food?.name, isMassUnit(unit) ? null : unit, food);
+    if (isMassUnit(unit) && pack) {
+      const mass = (GENERIC_UNITS[unit] && GENERIC_UNITS[unit].kind === 'volume') || unit === 'ml' || unit === 'l' ? 'ml' : 'g';
+      const grams = Math.round(frac * pack.grams * 10) / 10;
+      return { value: grams, unit: mass };
+    }
+    const countUnit = pack?.unit || (isMassUnit(unit) ? '개' : unit) || '개';
+    return { value: frac, unit: countUnit };
   }
 
   function plateCountFor(foodName) {
@@ -445,6 +486,22 @@
     });
   }
 
+  // 칼로리를 고치면 들어 있는 탄단지·상세 영양도 같은 비율로.
+  function scaleByCalorie(nutrients, nextCal) {
+    const prev = typeof nutrients?.cal === 'number' ? nutrients.cal : null;
+    const cal = Number(nextCal);
+    const out = { ...(nutrients || {}) };
+    if (!Number.isFinite(cal)) return out;
+    out.cal = cal;
+    if (!(prev > 0) || cal === prev) return out;
+    const factor = cal / prev;
+    NUTRIENT_KEYS.forEach(key => {
+      if (key === 'cal') return;
+      if (typeof nutrients[key] === 'number') out[key] = Math.round(nutrients[key] * factor * 10) / 10;
+    });
+    return out;
+  }
+
   function applyAmount(food, amount, data) {
     const name = food?.baseFood || food?.name || '';
     const src = data || food;
@@ -452,9 +509,12 @@
     const resolved = resolveAmount(name, amount?.value, amount?.unit, src);
     if (!resolved) return next;
     const currentNutrients = pickNutrients(food);
-    const fromGrams = Number(food?.servingGrams) > 0 ? Number(food.servingGrams) : null;
     const fromAmount = Number(food?.servingAmount) > 0 ? Number(food.servingAmount) : null;
     const fromUnit = food?.servingUnit;
+    const fromPack = fromUnit && !isMassUnit(fromUnit) ? knownPackageGrams(name, fromUnit, src) : null;
+    const fromGrams = Number(food?.servingGrams) > 0
+      ? Number(food.servingGrams)
+      : (fromPack && fromAmount ? fromAmount * fromPack.grams : null);
     let numerator = null;
     let denominator = null;
     let basisNutrients = null;
@@ -519,21 +579,9 @@
         }
       }
     }
-    if (numerator == null && Object.keys(currentNutrients).length && resolved && fromUnit && fromUnit !== resolved.unit) {
-      // 개 → g 처럼 무게를 몰라 비례할 수 없으면, 지금 kcal을 새 양의 기준으로 둠(지어낸 무게로 나누지 않음).
-      next.basisNutrients = { ...currentNutrients };
-      if (resolved.grams != null && isMassUnit(resolved.unit)) {
-        next.basisGrams = resolved.grams;
-        next.basis = `${trimNum(resolved.grams)}${resolved.unit === 'ml' || resolved.unit === 'l' ? 'ml' : 'g'}`;
-        delete next.basisAmount;
-        delete next.basisUnit;
-      } else {
-        next.basisAmount = resolved.value;
-        next.basisUnit = resolved.unit;
-        next.basis = resolved.text;
-        delete next.basisGrams;
-      }
-      NUTRIENT_KEYS.forEach(key => { if (typeof food[key] === 'number') next[key] = food[key]; });
+    // 개 → g 처럼 무게를 몰라 비례할 수 없으면, 단위를 바꾸거나 적은 g을 새 기준으로 두지 않음.
+    if (numerator == null && fromUnit && resolved && fromUnit !== resolved.unit) {
+      return next;
     }
     next.servingAmount = resolved.value;
     next.servingUnit = resolved.unit;
@@ -572,6 +620,86 @@
     return [raw];
   }
 
+
+  // 0da44c1: 한 개 영양을 적은 g의 기준으로 덮어쓴 기록. 원래 단위(개 등)가 남아 있을 때만 확실함.
+  function isRebasedTypedGrams(food) {
+    if (!food || !isMassUnit(food.servingUnit)) return false;
+    const grams = Number(food.servingGrams) > 0 ? Number(food.servingGrams) : Number(food.servingAmount);
+    const amount = Number(food.servingAmount);
+    const basisG = Number(food.basisGrams);
+    if (!(grams > 0) || grams !== amount) return false;
+    if (basisG > 0 && basisG !== grams) return false;
+    const preferred = food.servingUnitPreferred;
+    if (!preferred || isMassUnit(preferred)) return false;
+    if (Number(food.packageGrams) > 0 && Number(food.packageGrams) !== grams) return false;
+    const table = food.unitGrams && typeof food.unitGrams === 'object' ? food.unitGrams : null;
+    if (table && Object.entries(table).some(([u, v]) => !isMassUnit(u) && Number(v) > 0 && Number(v) !== grams)) return false;
+    if (food.basisNutrients && typeof food.basisNutrients.cal === 'number' && typeof food.cal === 'number' && food.basisNutrients.cal !== food.cal) return false;
+    return true;
+  }
+
+  function repairRebasedTypedGrams(food) {
+    if (!isRebasedTypedGrams(food)) return food;
+    const unit = food.servingUnitPreferred || '개';
+    const next = { ...food };
+    next.servingAmount = 1;
+    next.servingUnit = unit;
+    next.serving = `1${unit}`;
+    delete next.servingGrams;
+    delete next.basisGrams;
+    next.basisAmount = 1;
+    next.basisUnit = unit;
+    next.basis = `1${unit}`;
+    if (!next.basisNutrients) next.basisNutrients = pickNutrients(next);
+    return next;
+  }
+
+  // 포장지 중량을 넣었을 때. 적은 g이 한 개 영양의 기준으로 남은 기록이면, 영양을 포장 무게 기준으로 되돌린 뒤 먹은 양만큼 비례.
+  function applyPackageWeight(food, packageGrams) {
+    const grams = Number(packageGrams);
+    if (!(grams > 0) || !food) return food;
+    const next = { ...food, unitGrams: { ...(food.unitGrams || {}) } };
+    const countUnit = (!isMassUnit(food.servingUnit) && food.servingUnit) || food.servingUnitPreferred || '개';
+    next.packageGrams = grams;
+    next.unitGrams[countUnit] = grams;
+    next.servingGramsEstimated = false;
+    const eatenMass = isMassUnit(food.servingUnit)
+      ? ((String(food.servingUnit).toLowerCase() === 'kg' || String(food.servingUnit).toLowerCase() === 'l')
+        ? Number(food.servingAmount) * 1000
+        : (Number(food.servingAmount) > 0 ? Number(food.servingAmount) : Number(food.servingGrams)))
+      : null;
+    const nutrients = pickNutrients(food);
+    const sameBasis = Number(food.basisGrams) > 0 && eatenMass > 0 && Number(food.basisGrams) === eatenMass;
+    const density = (typeof food.cal === 'number' && eatenMass > 0) ? food.cal / eatenMass : 0;
+    const looksWholeItemOnTypedGrams = eatenMass > 0 && eatenMass !== grams && Object.keys(nutrients).length
+      && (isRebasedTypedGrams(food) || (sameBasis && density > 9));
+    if (looksWholeItemOnTypedGrams) {
+      next.basisNutrients = { ...nutrients };
+      next.basisGrams = grams;
+      next.basis = `${trimNum(grams)}g`;
+      delete next.basisAmount;
+      delete next.basisUnit;
+      scaleNutrients(next, nutrients, eatenMass, grams);
+      next.servingGrams = eatenMass;
+      return next;
+    }
+    if (!isMassUnit(food.servingUnit) && Number(food.servingAmount) > 0) {
+      next.servingGrams = Math.round(Number(food.servingAmount) * grams * 10) / 10;
+      if (Object.keys(nutrients).length) {
+        next.basisNutrients = { ...(food.basisNutrients || nutrients) };
+        next.basisGrams = grams;
+        next.basis = `${trimNum(grams)}g`;
+        delete next.basisAmount;
+        delete next.basisUnit;
+      }
+    } else if (isMassUnit(food.servingUnit) && eatenMass > 0 && Object.keys(nutrients).length && !next.basisGrams) {
+      next.basisNutrients = { ...(food.basisNutrients || nutrients) };
+      next.basisGrams = eatenMass;
+      next.basis = `${trimNum(eatenMass)}g`;
+    }
+    return next;
+  }
+
   const api = {
     NUTRIENT_KEYS,
     GENERIC_UNITS,
@@ -587,6 +715,8 @@
     nudgeAmount,
     isMassUnit,
     gramsForUnit,
+    knownPackageGrams,
+    portionAmount,
     plateCountFor,
     typicalServing,
     resolveAmount,
@@ -595,6 +725,10 @@
     getBasis,
     attachBasis,
     applyAmount,
+    scaleByCalorie,
+    isRebasedTypedGrams,
+    repairRebasedTypedGrams,
+    applyPackageWeight,
     splitCombinedFoods,
     trimNum,
   };

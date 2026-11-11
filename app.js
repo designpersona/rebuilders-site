@@ -1621,6 +1621,7 @@ function applyExtendedStaticCopy() {
   document.querySelectorAll('.cal-legend-item').forEach((el, index) => el.lastChild.textContent = [t('statsUnder'), t('statsOnTarget'), t('statsOver')][index] || '');
   label('#foodex-library-close', t('foodexClose'), t('foodexClose'));
   label('#food-dex-close', '음식 정보 닫기', 'Close food information');
+  set('#food-dex-title', '음식 정보', 'Food info');
   label('#time-edit-modal .time-period-toggle', '오전 또는 오후', 'AM or PM');
   label('.search-index-viewbar', t('foodexViewOptions'), t('foodexViewOptions'));
   set('.search-index-sort .sr-only', t('foodexSort'), t('foodexSort'));
@@ -1668,8 +1669,8 @@ function applyExtendedStaticCopy() {
   set('#tab-recent .recent-label-row > span', '최근 음식', 'Recent foods');
   placeholder('#custom-name', '예: 편의점 닭가슴살 샐러드', 'e.g. Chicken breast salad');
   placeholder('#custom-serving-amount', '예: 100', 'e.g. 100');
-  placeholder('#custom-serving-grams', '선택', 'Optional');
-  set('.serving-conversion-label', '환산 중량 g (선택 · 추정 가능)', 'Weight in g (optional · may be estimated)');
+  placeholder('#custom-serving-grams', '포장지 중량', 'Package weight');
+  set('label[for="custom-serving-grams"]', '총중량 / 한 개 중량 (g)', 'Total / piece weight (g)');
   const servingUnitLabels = en
     ? { g: 'g', ml: 'ml', '개': 'item', '봉지': 'bag', '팩': 'pack', '컵': 'cup', '접시': 'plate', '큰술': 'tbsp', '작은술': 'tsp' }
     : { g: 'g', ml: 'ml', '개': '개', '봉지': '봉지', '팩': '팩', '컵': '컵', '접시': '접시', '큰술': '큰술', '작은술': '작은술' };
@@ -2290,28 +2291,34 @@ function foodAmountLabel(food) {
   return ACTIVE_LOCALE === 'en' ? 'Set amount' : '양 입력';
 }
 
+function knownFoodPackage(food, unit) {
+  const U = globalThis.RebuildersUnits;
+  if (!U?.knownPackageGrams) return null;
+  return U.knownPackageGrams(food?.baseFood || food?.name, unit, food);
+}
+
+function packageWeightHintText() {
+  return ACTIVE_LOCALE === 'en'
+    ? 'Add the package weight to log in grams'
+    : '포장지 중량을 넣으면 g로 기록할 수 있어요';
+}
+
 function toggleAmountUnit(food, value, unit) {
   const U = globalThis.RebuildersUnits;
   if (!U) return null;
   if (U.isMassUnit(unit)) {
-    const preferred = food.servingUnitPreferred || U.typicalServing(food.baseFood || food.name, food)?.unit || '개';
-    const per = U.gramsForUnit(food.baseFood || food.name, preferred, food);
+    const preferred = food.servingUnitPreferred || knownFoodPackage(food, null)?.unit || U.typicalServing(food.baseFood || food.name, food)?.unit || '개';
+    const per = knownFoodPackage(food, preferred);
     if (!per) return null;
     const raw = value / per.grams;
-    const snapped = U.nudgeAmount ? Math.max(0.25, Math.round(raw * 100) / 100) : Math.max(U.stepFor(preferred), Math.round(raw / U.stepFor(preferred)) * U.stepFor(preferred));
     // 한 개 무게를 알 때만 개수로 되돌림. 0.5개처럼 1 미만도 허용.
     if (raw < 1) return { value: raw >= 0.25 ? Math.round(raw * 100) / 100 : 0.25, unit: preferred };
-    const step = U.stepFor(preferred);
-    const stepped = Math.round(raw / step) * step;
-    return { value: Math.round(Math.max(step, stepped) * 100) / 100, unit: preferred };
+    return { value: Math.round(raw * 100) / 100, unit: preferred };
   }
-  const per = U.gramsForUnit(food.baseFood || food.name, unit, food);
+  const per = knownFoodPackage(food, unit);
   const info = U.GENERIC_UNITS[unit];
   const mass = info && info.kind === 'volume' ? 'ml' : 'g';
-  if (!per) {
-    // 한 개 무게를 모르면 숫자만 g로 바꾸지 않음. 칼로리는 그대로 두고 무게를 받음.
-    return { value: null, unit: mass, unknownWeight: true };
-  }
+  if (!per) return null;
   return { value: Math.round(value * per.grams * 10) / 10, unit: mass };
 }
 
@@ -2345,27 +2352,25 @@ function paintAmountEditor() {
   const U = globalThis.RebuildersUnits;
   const food = meals[state.mealId]?.foods[state.idx];
   if (!food) { closeAmountEditor(false); return; }
+  pop.classList.remove('is-awaiting-grams');
   const valueEl = pop.querySelector('.food-amount-value');
   if (valueEl) {
-    const pending = pop.classList.contains('is-awaiting-grams');
     if (valueEl.tagName === 'INPUT') {
-      if (document.activeElement !== valueEl) valueEl.value = pending ? '' : foodAmountLabel(food);
-      valueEl.placeholder = pending
-        ? (ACTIVE_LOCALE === 'en' ? 'Grams (e.g. 95)' : '무게 (예: 95g)')
-        : '';
+      if (document.activeElement !== valueEl) valueEl.value = foodAmountLabel(food);
+      valueEl.placeholder = '';
     } else {
       valueEl.textContent = foodAmountLabel(food);
     }
   }
   const cal = pop.querySelector('.food-amount-cals');
   if (cal) {
-    if (pop.classList.contains('is-awaiting-grams')) cal.textContent = ACTIVE_LOCALE === 'en' ? 'Enter the weight in grams' : '한 개 무게를 몰라요. g을 적어 주세요';
-    else cal.textContent = isNutritionMissing(food) ? (ACTIVE_LOCALE === 'en' ? 'No nutrition yet' : '영양정보 미입력') : `${Math.round(food.cal || 0)}kcal`;
+    cal.textContent = isNutritionMissing(food) ? (ACTIVE_LOCALE === 'en' ? 'No nutrition yet' : '영양정보 미입력') : `${Math.round(food.cal || 0)}kcal`;
   }
+  const unit = food.servingUnit || '';
+  const canToggle = Boolean(U && toggleAmountUnit(food, Number(food.servingAmount) || 0, unit || '개'));
   const unitBtn = pop.querySelector('.food-amount-unit');
   if (unitBtn) {
-    const unit = food.servingUnit || '';
-    unitBtn.hidden = !U;
+    unitBtn.hidden = !canToggle;
     unitBtn.textContent = (U && U.isMassUnit(unit))
       ? (ACTIVE_LOCALE === 'en' ? 'Use piece' : '개 단위')
       : (ACTIVE_LOCALE === 'en' ? 'Use g' : 'g으로');
@@ -2373,6 +2378,25 @@ function paintAmountEditor() {
       unitBtn.textContent = U.isMassUnit(unit)
         ? (ACTIVE_LOCALE === 'en' ? 'Use cup' : '잔·컵')
         : (ACTIVE_LOCALE === 'en' ? 'Use ml' : 'ml로');
+    }
+  }
+  const hint = pop.querySelector('.food-amount-weight-hint');
+  if (hint) {
+    const needHint = Boolean(U) && !U.isMassUnit(unit || '개') && !canToggle;
+    hint.hidden = !needHint;
+    if (needHint) {
+      hint.innerHTML = '';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = packageWeightHintText();
+      btn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const st = amountEditorState;
+        closeAmountEditor(false);
+        if (st) openFoodEdit(st.mealId, st.idx);
+      });
+      hint.appendChild(btn);
     }
   }
 }
@@ -2384,22 +2408,13 @@ function commitAmountEdit(nextAmount) {
   const list = meals[state.mealId]?.foods;
   if (!list || !list[state.idx] || !U) return;
   const current = list[state.idx];
-  if (nextAmount?.unknownWeight) {
-    const pop = document.getElementById('food-amount-popover');
-    if (pop) {
-      pop.classList.add('is-awaiting-grams');
-      const input = pop.querySelector('.food-amount-value');
-      if (input?.tagName === 'INPUT') {
-        input.value = '';
-        input.placeholder = ACTIVE_LOCALE === 'en' ? 'Grams (e.g. 95)' : '무게 (예: 95g)';
-        setTimeout(() => input.focus(), 0);
-      }
-      const cal = pop.querySelector('.food-amount-cals');
-      if (cal) cal.textContent = ACTIVE_LOCALE === 'en' ? 'Enter the weight in grams' : '한 개 무게를 몰라요. g을 적어 주세요';
-    }
+  if (nextAmount?.unknownWeight) { paintAmountEditor(); return; }
+  const next = U.applyAmount(current, nextAmount, current);
+  if (nextAmount && current.servingUnit && nextAmount.unit && current.servingUnit !== nextAmount.unit
+    && next.servingUnit === current.servingUnit && next.servingAmount === current.servingAmount) {
+    paintAmountEditor();
     return;
   }
-  const next = U.applyAmount(current, nextAmount, current);
   const label = inferSourceLabel(current);
   if (label === '추정' || label === '없음') {
     next.sourceLabel = '내 음식';
@@ -2466,13 +2481,35 @@ function openAmountEditor(food, dragCtx, anchor) {
     pop.id = 'food-amount-popover';
     pop.className = 'food-amount-popover';
     pop.innerHTML = `<div class="food-amount-card">
-      <button type="button" class="food-amount-step" data-dir="-1" aria-label="-">−</button>
-      <div class="food-amount-copy"><input class="food-amount-value" type="text" inputmode="decimal" enterkeyhint="done" aria-label="${ACTIVE_LOCALE === 'en' ? 'Amount' : '양'}"><span class="food-amount-cals"></span></div>
-      <button type="button" class="food-amount-step" data-dir="1" aria-label="+">+</button>
-      <button type="button" class="food-amount-unit"></button>
+      <div class="food-amount-portions" role="group" aria-label="${ACTIVE_LOCALE === 'en' ? 'Portion of one package' : '한 개 비율'}">
+        <button type="button" class="food-amount-portion" data-portion="0.25">1/4</button>
+        <button type="button" class="food-amount-portion" data-portion="0.5">1/2</button>
+        <button type="button" class="food-amount-portion" data-portion="1">1</button>
+      </div>
+      <div class="food-amount-card-row">
+        <button type="button" class="food-amount-step" data-dir="-1" aria-label="-">−</button>
+        <div class="food-amount-copy"><input class="food-amount-value" type="text" inputmode="decimal" enterkeyhint="done" aria-label="${ACTIVE_LOCALE === 'en' ? 'Amount' : '양'}"><span class="food-amount-cals"></span></div>
+        <button type="button" class="food-amount-step" data-dir="1" aria-label="+">+</button>
+        <button type="button" class="food-amount-unit"></button>
+      </div>
+      <p class="food-amount-weight-hint" hidden></p>
     </div>`;
     document.body.appendChild(pop);
     pop.addEventListener('click', event => event.stopPropagation());
+    pop.querySelectorAll('.food-amount-portion').forEach(btn => {
+      btn.addEventListener('click', event => {
+        event.preventDefault();
+        const state = amountEditorState;
+        if (!state) return;
+        const foodNow = meals[state.mealId]?.foods[state.idx];
+        if (!foodNow) return;
+        const U2 = globalThis.RebuildersUnits;
+        const next = U2?.portionAmount?.(foodNow, Number(btn.dataset.portion));
+        if (!next) return;
+        pop.classList.remove('is-awaiting-grams');
+        commitAmountEdit(next);
+      });
+    });
     pop.querySelectorAll('.food-amount-step').forEach(btn => {
       btn.addEventListener('click', event => {
         event.preventDefault();
@@ -2497,7 +2534,7 @@ function openAmountEditor(food, dragCtx, anchor) {
       const toggled = toggleAmountUnit(foodNow, Number(foodNow.servingAmount) || 0, foodNow.servingUnit || '개');
       if (!toggled) return;
       if (!globalThis.RebuildersUnits.isMassUnit(foodNow.servingUnit || '')) foodNow.servingUnitPreferred = foodNow.servingUnit;
-      if (!toggled.unknownWeight) document.getElementById('food-amount-popover')?.classList.remove('is-awaiting-grams');
+      document.getElementById('food-amount-popover')?.classList.remove('is-awaiting-grams');
       commitAmountEdit(toggled);
     });
     const input = pop.querySelector('.food-amount-value');
@@ -2509,17 +2546,19 @@ function openAmountEditor(food, dragCtx, anchor) {
       const U2 = globalThis.RebuildersUnits;
       const raw = String(input?.value || '').trim();
       if (!raw) { paintAmountEditor(); return; }
-      const awaiting = pop.classList.contains('is-awaiting-grams');
       const parsed = U2?.parseServing?.(raw) || U2?.parseServing?.(raw.replace(/,/g, '.'));
       let value = parsed?.value;
       let unit = parsed?.unit;
       if (value == null) {
         const frac = raw.match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
         value = frac ? Number(frac[1]) / Number(frac[2]) : Number(raw.replace(/,/g, '.'));
-        unit = awaiting ? 'g' : (foodNow.servingUnit || '개');
+        unit = foodNow.servingUnit || '개';
       }
-      if (awaiting && (!unit || !U2.isMassUnit(unit))) unit = 'g';
       if (!Number.isFinite(value) || value <= 0) { paintAmountEditor(); return; }
+      if (U2?.isMassUnit(unit) && foodNow.servingUnit && !U2.isMassUnit(foodNow.servingUnit) && !knownFoodPackage(foodNow, foodNow.servingUnit)) {
+        paintAmountEditor();
+        return;
+      }
       pop.classList.remove('is-awaiting-grams');
       commitAmountEdit({ value, unit });
     };
@@ -4551,8 +4590,11 @@ function startEditCustomFood(name, data) {
   setInputValue('custom-name', name);
   const serving = parseServingValue(data.serving);
   setInputValue('custom-serving-amount', data.servingAmount ?? serving.amount ?? 100);
-  setInputValue('custom-serving-grams', data.servingGrams);
-  document.getElementById('custom-serving-unit').value = data.servingUnit || serving.unit || 'g';
+  const unitNow = data.servingUnit || serving.unit || 'g';
+  const pack = Number(data.packageGrams) > 0 ? Number(data.packageGrams)
+    : (data.unitGrams && Number(data.unitGrams[unitNow] || data.unitGrams['개']) > 0 ? Number(data.unitGrams[unitNow] || data.unitGrams['개']) : data.servingGrams);
+  setInputValue('custom-serving-grams', pack);
+  document.getElementById('custom-serving-unit').value = unitNow;
   setInputValue('custom-description', data.description);
   setInputValue('custom-cal', data.cal);
   setInputValue('custom-carbs', data.carbs);
@@ -4572,6 +4614,37 @@ function startEditCustomFood(name, data) {
   setInputValue('custom-vitamin-c', data.vitaminC);
   updateCustomSaveLabel();
 }
+
+(function setupCustomCalScale() {
+  const cal = document.getElementById('custom-cal');
+  if (!cal) return;
+  const ids = ['custom-carbs', 'custom-protein', 'custom-fat', 'custom-sugar', 'custom-fiber',
+    'custom-saturated-fat', 'custom-trans-fat', 'custom-cholesterol', 'custom-sodium',
+    'custom-potassium', 'custom-calcium', 'custom-iron', 'custom-magnesium',
+    'custom-vitamin-d', 'custom-vitamin-c'];
+  let snapshot = null;
+  const snap = () => {
+    snapshot = { cal: cal.value === '' ? null : Number(cal.value) };
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      const v = el && el.value !== '' ? Number(el.value) : null;
+      if (v != null && Number.isFinite(v)) snapshot[id] = v;
+    });
+  };
+  cal.addEventListener('focus', snap);
+  cal.addEventListener('input', () => {
+    const nextCal = Number(cal.value);
+    const oldCal = snapshot && Number(snapshot.cal);
+    if (!(oldCal > 0) || !Number.isFinite(nextCal) || nextCal === oldCal) return;
+    const factor = nextCal / oldCal;
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el || snapshot[id] == null) return;
+      el.value = String(Math.round(snapshot[id] * factor * 10) / 10);
+    });
+  });
+  document.getElementById('custom-carbs')?.addEventListener('focus', snap);
+})();
 
 document.getElementById('custom-save').addEventListener('click', async () => {
   const button = document.getElementById('custom-save');
@@ -4611,6 +4684,13 @@ document.getElementById('custom-save').addEventListener('click', async () => {
     discoveryOrigin: CUSTOM_FOODS[editingCustomFoodName]?.discoveryOrigin || 'manual',
     unlocked: true,
   };
+  if (servingGrams && !['g', 'kg', 'ml', 'l'].includes(servingUnit)) {
+    foodData.packageGrams = servingGrams;
+    foodData.unitGrams = { ...(CUSTOM_FOODS[editingCustomFoodName]?.unitGrams || {}), [servingUnit]: servingGrams };
+    if (Number(servingAmount) > 0) foodData.servingGrams = Math.round(Number(servingAmount) * servingGrams * 10) / 10;
+  } else if (servingGrams) {
+    foodData.packageGrams = servingGrams;
+  }
 
   if (!name) {
     alert(ACTIVE_LOCALE === 'en' ? 'Enter a food name.' : '음식 이름을 입력해주세요.');
@@ -4766,7 +4846,7 @@ function openFoodDex(food) {
   const categoryLabel = document.getElementById('food-dex-category');
   if (categoryLabel) {
     categoryLabel.hidden = mode === 'meal';
-    categoryLabel.textContent = ACTIVE_LOCALE === 'en' ? 'FOOD INDEX' : '음식 도감';
+    categoryLabel.textContent = ACTIVE_LOCALE === 'en' ? 'Food index' : '음식 도감';
   }
   document.getElementById('food-dex-name').textContent = visibleName || (ACTIVE_LOCALE === 'en' ? 'Food' : '음식');
   let sourceEl = document.getElementById('food-dex-source');
@@ -4939,6 +5019,26 @@ function syncFoodDexAmount(mode, food) {
         : (ACTIVE_LOCALE === 'en' ? 'Use ml' : 'ml로');
     }
   }
+  const hint = wrap.querySelector('.food-dex-weight-hint, .food-amount-weight-hint');
+  if (hint) {
+    const canToggle = Boolean(U && toggleAmountUnit(live, Number(live.servingAmount) || 0, unit || '개'));
+    const needHint = Boolean(U) && !U.isMassUnit(unit || '개') && !canToggle;
+    hint.hidden = !needHint;
+    if (needHint) {
+      hint.innerHTML = '';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = packageWeightHintText();
+      btn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const ctx = foodDexEditContext;
+        closeFoodDex();
+        if (ctx) window.setTimeout(() => openFoodEdit(ctx.mealId, ctx.idx), 220);
+      });
+      hint.appendChild(btn);
+    }
+  }
 }
 
 function currentFoodDexFood() {
@@ -4990,10 +5090,16 @@ document.getElementById('food-dex-close')?.addEventListener('click', closeFoodDe
 document.getElementById('food-dex-amount')?.addEventListener('click', event => {
   const step = event.target.closest('.food-amount-step');
   const unitBtn = event.target.closest('.food-dex-amount-unit');
+  const portion = event.target.closest('.food-amount-portion');
   const foodNow = currentFoodDexFood();
   if (!foodNow) return;
   event.preventDefault();
   event.stopPropagation();
+  if (portion) {
+    const next = globalThis.RebuildersUnits?.portionAmount?.(foodNow, Number(portion.dataset.portion));
+    if (next) void commitFoodDexAmount(next);
+    return;
+  }
   if (step) {
     const U2 = globalThis.RebuildersUnits;
     let current = foodNow;
@@ -5100,6 +5206,13 @@ function servingUnitLabel(unit) {
   }[unit] || unit;
 }
 
+function amountFieldLabel(unit) {
+  const u = String(unit || '').toLowerCase();
+  if (u === 'g' || u === 'kg') return ACTIVE_LOCALE === 'en' ? 'Weight' : '중량';
+  if (u === 'ml' || u === 'l') return ACTIVE_LOCALE === 'en' ? 'Volume' : '용량';
+  return ACTIVE_LOCALE === 'en' ? 'Amount' : '수량';
+}
+
 function openFoodEdit(mealId, idx) {
   detailMealId = mealId;
   editingFoodIdx = idx;
@@ -5114,6 +5227,13 @@ function openFoodEdit(mealId, idx) {
     : parseServingValue(food.serving);
   const servingUnits = ['g', '개', '봉지', '팩', '접시', 'ml', '컵', '큰술', '작은술', '꼬집'];
   if (serving.unit && !servingUnits.includes(serving.unit)) servingUnits.push(serving.unit);
+  const packageGramsValue = Number(food.packageGrams) > 0
+    ? food.packageGrams
+    : (food.unitGrams && Number(food.unitGrams[serving.unit] || food.unitGrams['개']) > 0
+      ? (food.unitGrams[serving.unit] || food.unitGrams['개'])
+      : (!['g', 'ml', 'kg', 'l'].includes(String(serving.unit || '')) && Number(food.servingGrams) > 0 && Number(serving.amount) > 0
+        ? Math.round(Number(food.servingGrams) / Number(serving.amount) * 10) / 10
+        : ''));
   mealDetailEditGrid.innerHTML = `
     <section class="meal-edit-section meal-edit-identity">
       <h4>${ACTIVE_LOCALE === 'en' ? 'Name' : '이름'}</h4>
@@ -5125,14 +5245,17 @@ function openFoodEdit(mealId, idx) {
     <section class="meal-edit-section meal-edit-serving">
       <h4>${ACTIVE_LOCALE === 'en' ? 'Amount eaten' : '섭취량'}</h4>
       <div class="meal-serving-row">
-        <label class="meal-detail-field"><span>${ACTIVE_LOCALE === 'en' ? 'Amount' : '수량'}</span><input class="settings-input meal-detail-input" data-serving-amount type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(serving.amount)}" /></label>
+        <label class="meal-detail-field"><span data-serving-amount-label>${escapeHtml(amountFieldLabel(serving.unit))}</span><input class="settings-input meal-detail-input" data-serving-amount type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(serving.amount)}" /></label>
         <label class="meal-detail-field"><span>${ACTIVE_LOCALE === 'en' ? 'Unit' : '단위'}</span><select class="settings-input meal-serving-unit" data-serving-unit>${servingUnits.map(unit => `<option value="${escapeHtml(unit)}"${unit === serving.unit ? ' selected' : ''}>${escapeHtml(servingUnitLabel(unit))}</option>`).join('')}</select></label>
       </div>
     </section>
     <section class="meal-edit-section meal-edit-nutrition">
       <h4>${ACTIVE_LOCALE === 'en' ? 'Key nutrition' : '핵심 영양'}</h4>
       ${isNutritionMissing(food) ? `<p class="meal-edit-missing-note">${ACTIVE_LOCALE === 'en' ? 'Nutrition not entered yet. Fill in calories, carbs, protein, and fat. Blank values count as 0 in totals.' : '영양정보 미입력 상태예요. 칼로리·탄수화물·단백질·지방을 채워주세요. 비워둔 값은 합계에 0으로 계산돼요.'}</p><div class="meal-edit-ask-host"></div>` : ''}
-      ${editNumberField('cal', detailFieldLabel('cal', '칼로리'), food.cal, 'kcal', 'is-wide')}
+      <div class="meal-serving-row">
+        ${editNumberField('cal', detailFieldLabel('cal', '칼로리'), food.cal, 'kcal')}
+        <label class="meal-detail-field"><span>${ACTIVE_LOCALE === 'en' ? 'Total / piece weight (g)' : '총중량 / 한 개 중량 (g)'}</span><input class="settings-input meal-detail-input" data-package-grams type="number" inputmode="decimal" min="0" step="0.1" placeholder="${ACTIVE_LOCALE === 'en' ? 'Package weight' : '포장지 중량'}" value="${packageGramsValue === '' ? '' : escapeHtml(packageGramsValue)}" /></label>
+      </div>
       <div class="meal-primary-nutrients">
         ${editNumberField('carbs', detailFieldLabel('carbs', '탄수화물'), food.carbs, 'g')}
         ${editNumberField('protein', detailFieldLabel('protein', '단백질'), food.protein, 'g')}
@@ -5168,37 +5291,61 @@ function openFoodEdit(mealId, idx) {
 }
 
 /* 섭취량을 바꾸면 영양(칼로리·탄단지·상세)이 같은 비율로 바로 바뀜.
-   기준: 열 때의 값 ÷ 열 때의 양(g 로 바꿀 수 있으면 g, 아니면 같은 단위끼리).
-   칼로리 등 영양 칸을 직접 고치면 그 값이 새 기준(직접 입력 표시) — 그 뒤 양을 바꾸면 고친 값에서 비례. */
+   기준은 포장지·한 개 중량(또는 기록에 저장된 공식 무게). 무게를 모르면 g으로 바꾸지 않음.
+   칼로리를 고치면 들어 있는 탄단지·상세도 같은 비율로 바뀜. */
 const EDIT_NUTRIENT_FIELDS = ['cal', 'carbs', 'protein', 'fat', 'sugar', 'fiber', 'saturatedFat', 'transFat', 'cholesterol', 'sodium', 'potassium', 'calcium', 'iron', 'magnesium', 'vitaminD', 'vitaminC'];
 let editRescale = null;
-function editUnitGrams(food, unit) {
+function editUnitGrams(food, unit, packageOverride) {
   if (unit === 'g' || unit === 'ml') return 1;
   if (unit === 'kg' || unit === 'l') return 1000;
+  const pack = Number(packageOverride);
+  if (pack > 0 && unit && !['g', 'ml', 'kg', 'l'].includes(String(unit).toLowerCase())) return pack;
   const U = globalThis.RebuildersUnits;
-  if (U) {
-    const hit = U.gramsForUnit(food?.baseFood || food?.name, unit, food);
+  if (U?.knownPackageGrams) {
+    const hit = U.knownPackageGrams(food?.baseFood || food?.name, unit, food);
     if (hit && Number(hit.grams) > 0) return Number(hit.grams);
   }
-  const table = food?.unitGrams || FOOD_DB[food?.baseFood || food?.name]?.unitGrams; // 예전 기록은 DB 의 한 개 무게로
+  if (food?.servingUnit === unit && Number(food.servingGrams) > 0 && Number(food.servingAmount) > 0 && !food.servingGramsEstimated) {
+    return Number(food.servingGrams) / Number(food.servingAmount);
+  }
+  const table = food?.unitGrams;
   if (table && Number(table[unit]) > 0) return Number(table[unit]);
-  if (food?.servingUnit === unit && Number(food.servingGrams) > 0 && Number(food.servingAmount) > 0) return Number(food.servingGrams) / Number(food.servingAmount);
   return null;
 }
-function editQuantity(food, amount, unit) {
+function editQuantity(food, amount, unit, packageOverride) {
   const a = Number(amount);
   if (!(a > 0)) return null;
-  const per = editUnitGrams(food, unit);
+  const per = editUnitGrams(food, unit, packageOverride);
   if (per) return { base: unit === 'ml' || unit === 'l' ? 'ml' : 'g', value: a * per };
   return { base: unit, value: a };
 }
 function setupEditRescale(food) {
   const amountInput = mealDetailEditGrid.querySelector('[data-serving-amount]');
   const unitInput = mealDetailEditGrid.querySelector('[data-serving-unit]');
+  const packageInput = mealDetailEditGrid.querySelector('[data-package-grams]');
+  const amountLabel = mealDetailEditGrid.querySelector('[data-serving-amount-label]');
   const fieldInput = f => mealDetailEditGrid.querySelector(`[data-edit-field="${f}"]`);
   const state = { food, density: {}, qty: null, edited: false };
+  const massUnit = u => ['g', 'ml', 'kg', 'l'].includes(String(u || '').toLowerCase());
+  const livePack = () => {
+    const v = packageInput && packageInput.value !== '' ? Number(packageInput.value) : NaN;
+    return v > 0 ? v : null;
+  };
+  const gramsFor = unit => editUnitGrams(food, unit, livePack());
+  let calSnapshot = null;
+  const snapCalories = () => {
+    calSnapshot = {};
+    EDIT_NUTRIENT_FIELDS.forEach(k => {
+      const el = fieldInput(k);
+      const v = el && el.value !== '' ? Number(el.value) : null;
+      if (v != null && Number.isFinite(v)) calSnapshot[k] = v;
+    });
+  };
+  const updateAmountLabel = () => {
+    if (amountLabel) amountLabel.textContent = amountFieldLabel(unitInput?.value);
+  };
   const reanchor = (fields = EDIT_NUTRIENT_FIELDS) => {
-    state.qty = editQuantity(food, amountInput?.value, unitInput?.value);
+    state.qty = editQuantity(food, amountInput?.value, unitInput?.value, livePack());
     fields.forEach(f => {
       const input = fieldInput(f);
       const v = input && input.value !== '' ? Number(input.value) : null;
@@ -5206,29 +5353,30 @@ function setupEditRescale(food) {
       else delete state.density[f];
     });
   };
-  const massUnit = u => ['g', 'ml', 'kg', 'l'].includes(String(u || '').toLowerCase());
-  const hintForUnit = () => {
+  const hintForUnit = (force = false) => {
     let hint = mealDetailEditGrid.querySelector('.edit-grams-hint');
-    const need = unitInput && amountInput && massUnit(unitInput.value) && !editUnitGrams(food, food.servingUnit || unitInput.value) && !massUnit(food.servingUnit) && !Number(food.servingGrams);
-    if (!need) { hint?.remove(); return; }
+    const unit = unitInput?.value;
+    const know = Boolean(livePack() || gramsFor(unit) || gramsFor(food.servingUnitPreferred || food.servingUnit || '개'));
+    const show = force || (!know && !massUnit(unit));
+    if (!show) { hint?.remove(); return; }
     if (!hint) {
       hint = document.createElement('p');
       hint.className = 'edit-grams-hint';
-      unitInput.closest('.meal-serving-row')?.appendChild(hint);
+      const host = packageInput?.closest('.meal-serving-row') || unitInput?.closest('.meal-serving-row');
+      host?.appendChild(hint);
     }
-    hint.textContent = ACTIVE_LOCALE === 'en'
-      ? 'Piece weight is unknown, so the calories stay the same and this weight becomes the new basis.'
-      : '한 개 무게를 몰라요. 지금 kcal은 그대로 두고, 적은 무게가 새 기준이 됩니다.';
+    hint.textContent = packageWeightHintText();
   };
   reanchor();
+  updateAmountLabel();
+  hintForUnit();
   const rescale = () => {
-    if (state.awaitingBasis) return;
-    const q = editQuantity(food, amountInput?.value, unitInput?.value);
+    const q = editQuantity(food, amountInput?.value, unitInput?.value, livePack());
     if (!q) return;
     if (!state.qty || q.base !== state.qty.base) {
-      // 개 ↔ g 을 무게 없이 바꾸면 1개를 1g으로 보지 않음. 영양 숫자는 그대로, 다음 입력부터 새 기준.
       reanchor();
       hintForUnit();
+      updateAmountLabel();
       return;
     }
     const nextVals = {};
@@ -5244,38 +5392,84 @@ function setupEditRescale(food) {
       const input = fieldInput(f);
       if (input) input.value = String(v);
     });
+    snapCalories();
   };
   amountInput?.addEventListener('input', rescale);
   unitInput?.addEventListener('change', () => {
-    const prevUnit = food.servingUnit || state.qty?.base;
+    const prevUnit = unitInput?.dataset.prevUnit || food.servingUnit || state.qty?.base;
     const nextUnit = unitInput?.value;
-    const per = editUnitGrams(food, prevUnit);
+    const countUnit = massUnit(prevUnit)
+      ? (food.servingUnitPreferred || (!massUnit(nextUnit) ? nextUnit : '개'))
+      : prevUnit;
+    const per = gramsFor(countUnit);
     if (per && massUnit(nextUnit) && !massUnit(prevUnit) && amountInput) {
       const grams = Math.round(Number(amountInput.value || 0) * per * 10) / 10;
       if (grams > 0) amountInput.value = String(grams);
+      unitInput.dataset.prevUnit = nextUnit;
       reanchor();
       hintForUnit();
+      updateAmountLabel();
       return;
     }
-    if (!per && massUnit(nextUnit) && !massUnit(prevUnit) && amountInput) {
-      amountInput.value = '';
-      amountInput.placeholder = ACTIVE_LOCALE === 'en' ? 'e.g. 95' : '예: 95';
-      state.qty = null;
-      state.awaitingBasis = true;
+    if (per && !massUnit(nextUnit) && massUnit(prevUnit) && amountInput) {
+      const raw = Number(amountInput.value || 0) / per;
+      if (raw > 0) amountInput.value = String(Math.round(raw * 100) / 100);
+      unitInput.dataset.prevUnit = nextUnit;
+      reanchor();
       hintForUnit();
+      updateAmountLabel();
       return;
     }
+    if (!per && massUnit(nextUnit) && !massUnit(prevUnit)) {
+      unitInput.value = prevUnit || '개';
+      hintForUnit(true);
+      updateAmountLabel();
+      packageInput?.focus();
+      return;
+    }
+    // 무게를 모를 때 g→개로 바꾸면 숫자는 한 개 기준으로 두고 kcal은 그대로(95g을 95개로 보지 않음).
+    if (!per && !massUnit(nextUnit) && massUnit(prevUnit) && amountInput) {
+      amountInput.value = '1';
+      unitInput.dataset.prevUnit = nextUnit;
+      reanchor();
+      hintForUnit();
+      updateAmountLabel();
+      return;
+    }
+    unitInput.dataset.prevUnit = unitInput.value;
     rescale();
     hintForUnit();
+    updateAmountLabel();
   });
-  amountInput?.addEventListener('change', () => {
-    if (!state.awaitingBasis) return;
-    const q = editQuantity(food, amountInput?.value, unitInput?.value);
-    if (!q) return;
-    reanchor();
-    state.awaitingBasis = false;
+  if (unitInput) unitInput.dataset.prevUnit = unitInput.value;
+  packageInput?.addEventListener('input', () => {
+    hintForUnit();
+    if (!massUnit(unitInput?.value)) reanchor();
   });
-  EDIT_NUTRIENT_FIELDS.forEach(f => fieldInput(f)?.addEventListener('input', () => { state.edited = true; reanchor([f]); }));
+  fieldInput('cal')?.addEventListener('focus', snapCalories);
+  snapCalories();
+  EDIT_NUTRIENT_FIELDS.forEach(f => fieldInput(f)?.addEventListener('input', () => {
+    state.edited = true;
+    if (f === 'cal') {
+      const input = fieldInput('cal');
+      const newCal = input && input.value !== '' ? Number(input.value) : NaN;
+      const oldCal = calSnapshot && Number(calSnapshot.cal);
+      if (Number.isFinite(newCal) && oldCal > 0 && newCal !== oldCal) {
+        const factor = newCal / oldCal;
+        EDIT_NUTRIENT_FIELDS.forEach(k => {
+          if (k === 'cal') return;
+          const el = fieldInput(k);
+          if (!el || calSnapshot[k] == null) return;
+          el.value = String(Math.round(calSnapshot[k] * factor * 10) / 10);
+        });
+        reanchor(EDIT_NUTRIENT_FIELDS);
+        return;
+      }
+    } else {
+      snapCalories();
+    }
+    reanchor([f]);
+  }));
   editRescale = state;
 }
 
@@ -5302,6 +5496,8 @@ mealDetailSaveBtn.addEventListener('click', async () => {
   });
   const servingAmount = mealDetailEditGrid.querySelector('[data-serving-amount]')?.value.trim() || '';
   const servingUnit = mealDetailEditGrid.querySelector('[data-serving-unit]')?.value || 'g';
+  const packageRaw = mealDetailEditGrid.querySelector('[data-package-grams]')?.value.trim() || '';
+  const packageGrams = packageRaw === '' ? null : Number(packageRaw);
   next.serving = servingAmount ? `${servingAmount}${servingUnit}` : food.serving;
   next.servingAmount = servingAmount ? Number(servingAmount) : undefined;
   next.servingUnit = servingAmount ? servingUnit : undefined;
@@ -5310,13 +5506,36 @@ mealDetailSaveBtn.addEventListener('click', async () => {
   next.servingGramsEstimated = false;
   // 개수 단위에 한 개 무게를 알면 총 g 도 같이(표시: "2개 · 100g")
   const massUnitSave = ['g', 'ml', 'kg', 'l'].includes(servingUnit);
-  const perUnit = servingAmount ? editUnitGrams(food, servingUnit) : null;
   if (massUnitSave && Number(servingAmount) > 0) {
     next.servingGrams = (servingUnit === 'kg' || servingUnit === 'l') ? Number(servingAmount) * 1000 : Number(servingAmount);
-  } else if (perUnit && !massUnitSave) {
-    next.servingGrams = Math.round(Number(servingAmount) * perUnit * 10) / 10;
   } else {
     next.servingGrams = undefined;
+  }
+  if (packageGrams > 0) {
+    const countUnit = massUnitSave ? (food.servingUnitPreferred || '개') : servingUnit;
+    const prepared = { ...next };
+    if (food.servingUnitPreferred) prepared.servingUnitPreferred = food.servingUnitPreferred;
+    const U = globalThis.RebuildersUnits;
+    const eaten = Number(next.servingGrams) || (massUnitSave ? Number(servingAmount) : 0);
+    const density = (typeof next.cal === 'number' && eaten > 0) ? next.cal / eaten : 0;
+    const looksRebased = Boolean(
+      (food.servingUnitPreferred && U?.isRebasedTypedGrams?.(prepared))
+      || (massUnitSave && eaten > 0 && eaten !== packageGrams && density > 9 && Number(food.basisGrams) === eaten)
+    );
+    if (looksRebased && U?.applyPackageWeight) {
+      Object.assign(next, U.applyPackageWeight(prepared, packageGrams));
+    } else {
+      next.packageGrams = packageGrams;
+      next.unitGrams = { ...(food.unitGrams || {}), ...(next.unitGrams || {}), [countUnit || '개']: packageGrams };
+      if (!massUnitSave && Number(servingAmount) > 0) {
+        next.servingGrams = Math.round(Number(servingAmount) * packageGrams * 10) / 10;
+      }
+    }
+  } else if (!massUnitSave) {
+    const perUnit = servingAmount ? editUnitGrams({ ...food, ...next }, servingUnit, packageGrams) : null;
+    if (perUnit && Number(servingAmount) > 0) {
+      next.servingGrams = Math.round(Number(servingAmount) * perUnit * 10) / 10;
+    }
   }
   if (editRescale?.edited) next.nutritionCustom = true; // 영양 칸을 직접 고침
   delete next.quantityNote;

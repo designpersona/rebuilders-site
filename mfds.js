@@ -68,20 +68,28 @@
     return out;
   }
 
-  // 한 줄 → 앱 음식 데이터(기본 양: 1회 중량, 없으면 100). 양을 바꾸면 기존 g 비례 계산 그대로
+  // 한 줄 → 앱 음식 데이터. 기본 양은 식품중량(한 포장·1회)의 영양, 총중량도 같이 저장.
   function toFood(row) {
     const [name, mi, kind, unitFlag, w, kcal, carbs, protein, fat] = row;
     const unit = unitFlag ? 'ml' : 'g';
     const amount = w > 0 ? w : 100;
     const f = amount / 100;
     const maker = state.makers[mi] || '';
-    return {
+    const food = {
       name, cal: Math.round(kcal * f), carbs: r1(carbs * f), protein: r1(protein * f), fat: r1(fat * f),
-      serving: `${amount}${unit}`, basis: `100${unit}`,
+      serving: `${amount}${unit}`, servingAmount: amount, servingUnit: unit,
+      servingGrams: amount, basis: `100${unit}`, basisGrams: 100,
       per100: { cal: kcal, carbs, protein, fat },
       maker, mfdsKind: KIND[kind] || '',
       source: '식약처', nutritionSource: { provider: '식품의약품안전처 식품영양성분 DB', date: state.date },
     };
+    if (kind === 1 && w > 0) {
+      food.sourceLabel = '공식';
+      food.sourceTrust = 'reference';
+      food.packageGrams = amount;
+      food.unitGrams = { '개': amount };
+    }
+    return food;
   }
 
   function searchRecords(query, db, limit = 200) {

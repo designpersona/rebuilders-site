@@ -390,13 +390,13 @@ try {
     && /반개|0\\.5개/.test(rHalf.shown || '') && /700/.test(rHalf.rowCal || '') && rHalf.popCal === '700kcal',
     JSON.stringify(rHalf));
 
-  // 2i. 한 개 무게 없는 기록을 수정 시트에서 g·95로 바꾸면 단위가 붙고 kcal은 그대로(수백만이 되지 않음)
+  // 2i. 한 개 무게가 없으면 g으로 바꾸지 않고 힌트를 보여 줌. 380g을 넣으면 95g = 350kcal.
   const rGrams = await evaluate(`
     document.getElementById('food-amount-popover')?.setAttribute('hidden', '');
     amountEditorState = null;
     meals.breakfast.foods = [{
       name: '스타벅스 브륄레 쿠키 치즈케이크',
-      cal: 1400, carbs: 140, protein: 20, fat: 80,
+      cal: 1400, carbs: 103, protein: 13, fat: 104,
       serving: '1개', servingAmount: 1, servingUnit: '개',
       id: 'cake-grams'
     }];
@@ -406,30 +406,95 @@ try {
     const unit = document.querySelector('[data-serving-unit]');
     const amount = document.querySelector('[data-serving-amount]');
     const cal = document.querySelector('[data-edit-field="cal"]');
+    const pack = document.querySelector('[data-package-grams]');
+    const amountLabel = document.querySelector('[data-serving-amount-label]')?.textContent;
+    const header = document.getElementById('food-dex-title')?.textContent;
     unit.value = 'g';
     unit.dispatchEvent(new Event('change', { bubbles: true }));
     ${W8(100)}
-    const afterSwitch = { unit: unit.value, amount: amount.value, cal: cal.value, hint: document.querySelector('.edit-grams-hint')?.textContent || '' };
+    const afterSwitch = { unit: unit.value, amount: amount.value, cal: cal.value, hint: document.querySelector('.edit-grams-hint')?.textContent || '', amountLabel };
+    pack.value = '380';
+    pack.dispatchEvent(new Event('input', { bubbles: true }));
+    unit.value = 'g';
+    unit.dispatchEvent(new Event('change', { bubbles: true }));
+    ${W8(100)}
+    const afterPack = { unit: unit.value, amount: amount.value, cal: cal.value, label: document.querySelector('[data-serving-amount-label]')?.textContent };
     amount.value = '95';
     amount.dispatchEvent(new Event('input', { bubbles: true }));
-    amount.dispatchEvent(new Event('change', { bubbles: true }));
     ${W8(100)}
-    const afterType = { unit: unit.value, amount: amount.value, cal: cal.value };
+    const afterType = { unit: unit.value, amount: amount.value, cal: cal.value, carbs: document.querySelector('[data-edit-field="carbs"]').value, protein: document.querySelector('[data-edit-field="protein"]').value, fat: document.querySelector('[data-edit-field="fat"]').value };
     document.getElementById('meal-detail-save-btn').click();
     ${W8(400)}
     const f = meals.breakfast.foods[0];
     return {
-      afterSwitch, afterType,
-      cal: f.cal, unit: f.servingUnit, amount: f.servingAmount, grams: f.servingGrams ?? null, serving: f.serving,
+      header, afterSwitch, afterPack, afterType,
+      cal: f.cal, unit: f.servingUnit, amount: f.servingAmount, grams: f.servingGrams ?? null, pack: f.packageGrams ?? null,
     };
   `);
-  check('단위를 g으로 바꿔도 한 개 무게가 없으면 1개를 1g으로 보지 않고 kcal은 그대로',
-    rGrams.afterSwitch.unit === 'g' && rGrams.afterSwitch.cal === '1400' && Number(rGrams.afterSwitch.amount) !== 1,
+  check('한 개 무게가 없으면 g으로 바꾸지 않고 포장지 중량 힌트를 보여 줌',
+    rGrams.afterSwitch.unit === '개' && Number(rGrams.afterSwitch.cal) === 1400 && Number(rGrams.afterSwitch.amount) === 1
+    && /포장지 중량/.test(rGrams.afterSwitch.hint || ''),
     JSON.stringify(rGrams.afterSwitch));
-  check('95g을 적으면 단위는 g으로 남고 kcal은 1400, 13300000 같은 값은 나오지 않음',
-    rGrams.afterType.unit === 'g' && rGrams.afterType.amount === '95' && Number(rGrams.afterType.cal) === 1400
-    && rGrams.cal === 1400 && rGrams.unit === 'g' && rGrams.amount === 95 && rGrams.grams === 95 && rGrams.cal < 10000,
+  check('상세 헤더는 음식 정보, 단위가 개일 때 칸 이름은 수량',
+    rGrams.header === '음식 정보' && rGrams.afterSwitch.amountLabel === '수량',
+    JSON.stringify({ header: rGrams.header, amountLabel: rGrams.afterSwitch.amountLabel }));
+  check('380g을 넣은 뒤 g·95 → 350kcal, 칸 이름은 중량, 탄단지 비례',
+    rGrams.afterPack.unit === 'g' && rGrams.afterPack.label === '중량' && Number(rGrams.afterPack.amount) === 380 && Number(rGrams.afterPack.cal) === 1400
+    && Number(rGrams.afterType.cal) === 350 && Number(rGrams.afterType.carbs) === 25.8 && Number(rGrams.afterType.protein) === 3.3 && Number(rGrams.afterType.fat) === 26
+    && rGrams.cal === 350 && rGrams.unit === 'g' && rGrams.amount === 95 && rGrams.grams === 95 && rGrams.pack === 380,
     JSON.stringify(rGrams));
+
+  // 2j. 홈 양 편집: 1/4 버튼, 로투스처럼 무게 없으면 g 버튼 대신 힌트
+  const rPortion = await evaluate(`
+    document.getElementById('food-amount-popover')?.setAttribute('hidden', '');
+    amountEditorState = null;
+    meals.breakfast.foods = [{
+      name: '스타벅스 브륄레 쿠키 치즈케이크',
+      cal: 1400, carbs: 103, protein: 13, fat: 104,
+      serving: '1개', servingAmount: 1, servingUnit: '개',
+      packageGrams: 380, unitGrams: { '개': 380 }, servingGrams: 380,
+      id: 'cake-portion'
+    }];
+    renderAll(true);
+    const card = document.getElementById('breakfast-card');
+    if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+    ${W8(300)}
+    document.querySelector('#breakfast-items .food-amount-btn').click();
+    ${W8(200)}
+    const pop = document.getElementById('food-amount-popover');
+    const buttons = [...pop.querySelectorAll('.food-amount-portion')].map(b => b.textContent.trim());
+    pop.querySelector('[data-portion="0.25"]').click();
+    ${W8(200)}
+    const f = meals.breakfast.foods[0];
+    const shown = document.querySelector('#breakfast-items .food-amount-btn')?.textContent;
+    const rowCal = document.querySelector('#breakfast-items .food-cal')?.textContent;
+    document.getElementById('food-amount-popover')?.setAttribute('hidden', '');
+    amountEditorState = null;
+    meals.breakfast.foods = [{
+      name: 'Lotus Biscoff', cal: 30, carbs: 4.7, protein: 0.4, fat: 1.2,
+      serving: '1개', servingAmount: 1, servingUnit: '개', id: 'lotus-hint'
+    }];
+    renderAll(true);
+    if (!document.getElementById('breakfast-card').classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+    ${W8(200)}
+    document.querySelector('#breakfast-items .food-amount-btn').click();
+    ${W8(200)}
+    const lotusPop = document.getElementById('food-amount-popover');
+    return {
+      buttons,
+      cal: f.cal, amount: f.servingAmount, unit: f.servingUnit, grams: f.servingGrams, shown, rowCal,
+      lotusUnitHidden: lotusPop.querySelector('.food-amount-unit')?.hidden === true,
+      lotusHint: lotusPop.querySelector('.food-amount-weight-hint')?.textContent || '',
+    };
+  `);
+  check('양 편집 1/4 버튼 → 0.25개 95g 350kcal, 줄 표시도 갱신',
+    JSON.stringify(rPortion.buttons) === JSON.stringify(['1/4', '1/2', '1'])
+    && rPortion.cal === 350 && rPortion.amount === 0.25 && rPortion.unit === '개' && rPortion.grams === 95
+    && /350/.test(rPortion.rowCal || ''),
+    JSON.stringify(rPortion));
+  check('한 개 무게 없는 로투스는 g 버튼 대신 포장지 중량 힌트',
+    rPortion.lotusUnitHidden && /포장지 중량/.test(rPortion.lotusHint || ''),
+    JSON.stringify({ hidden: rPortion.lotusUnitHidden, hint: rPortion.lotusHint }));
 
   // 3. 예전 기록(양 없음)은 값을 그대로 두고 수정 가능
   const r3 = await evaluate(`

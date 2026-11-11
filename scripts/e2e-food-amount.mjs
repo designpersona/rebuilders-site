@@ -1,4 +1,4 @@
-// 먹은 양: 채팅 '계란 2개' → 한 개 50g(USDA 173424) × 개수로 기록, 수정 창에서 양을 바꾸면 칼로리·탄단지가 바로 비례, 칼로리 직접 고치면 그 값이 기준.
+// 먹은 양: 채팅 '계란 2개' → 한 개 50g(USDA 173424) × 개수로 기록, 수정 창에서 양을 바꾸면 칼로리·탄단지가 바로 비례, 칼로리를 고치면 탄단지도 같은 비율.
 // Headless Chrome(CDP), Node 22. 사용법: (저장소 루트) 정적 서버 8765 → node scripts/e2e-food-amount.mjs
 import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
@@ -52,9 +52,12 @@ try {
   const r2 = await evaluate(`${vals} openFoodEdit('breakfast', 0); ${W8(300)} const a = out(); setAmt(1); const b = out(); setUnit('g'); setAmt(150); const c = out(); return { a, b, c };`);
   check('수정 창: 2개(155) → 1개 입력하면 바로 77.5kcal·탄 0.6·단 6.3·지 5.3, 단위를 g 로 바꾸고 150 → 232.5kcal', r2.a.amount === '2' && r2.a.unit === '개' && r2.b.cal === '77.5' && r2.b.carbs === '0.6' && r2.b.protein === '6.3' && r2.b.fat === '5.3' && r2.c.cal === '232.5' && r2.c.protein === '18.9' && r2.c.sodium === '186', JSON.stringify(r2));
   await shotIfAsked();
-  // 3. 칼로리 직접 고치면 그 값이 기준(직접 입력 표시): 150g 에서 300kcal → 75g 이면 150kcal, 탄단지는 원래 비율
-  const r3 = await evaluate(`${vals} setField('cal', 300); setAmt(75); const d = out(); document.getElementById('meal-detail-save-btn').click(); ${W8(500)} const f = meals.breakfast.foods[0]; return { d, saved: { cal: f.cal, protein: f.protein, serving: f.serving, custom: f.nutritionCustom === true, grams: f.servingGrams ?? null, note: f.quantityNote ?? null } };`);
-  check('칼로리를 300 으로 직접 고친 뒤 75g → 150kcal(고친 값에서 비례)·단백질 9.5g, 저장하면 직접 입력 표시', r3.d.cal === '150' && r3.d.protein === '9.5' && r3.saved.cal === 150 && r3.saved.serving === '75g' && r3.saved.custom && r3.saved.grams === 75, JSON.stringify(r3));
+  // 3. 칼로리를 고치면 탄단지도 같은 비율: 150g 232.5kcal·단 18.9 → 300kcal·단 24.4, 75g 이면 150kcal·단 12.2
+  const r3 = await evaluate(`${vals} const before = out(); setField('cal', 300); const mid = out(); setAmt(75); const d = out(); document.getElementById('meal-detail-save-btn').click(); ${W8(500)} const f = meals.breakfast.foods[0]; return { before, mid, d, saved: { cal: f.cal, protein: f.protein, serving: f.serving, custom: f.nutritionCustom === true, grams: f.servingGrams ?? null, note: f.quantityNote ?? null } };`);
+  check('칼로리를 300 으로 고치면 단백질도 비례(24.4)하고, 75g → 150kcal·단백질 12.2, 저장하면 직접 입력 표시',
+    Number(r3.mid.cal) === 300 && Number(r3.mid.protein) === 24.4
+    && Number(r3.d.cal) === 150 && Number(r3.d.protein) === 12.2
+    && r3.saved.cal === 150 && r3.saved.serving === '75g' && r3.saved.custom && r3.saved.grams === 75, JSON.stringify(r3));
   // 4. 예전 기록(100g 값 + '1개' 메모): 단위를 개, 양 1 로 바꾸면 DB 의 한 개 무게(50g)로 77.5kcal
   const r4 = await evaluate(`${vals} meals.breakfast.foods = [{ ...NILIRI_FOOD_CATALOG['삶은 달걀'], unitGrams: undefined, name: '삶은 달걀', serving: '100g', quantityNote: '1개', id: 'old-egg' }]; renderAll(true); openFoodEdit('breakfast', 0); ${W8(300)} const a = out(); setUnit('개'); setAmt(1); const b = out(); document.getElementById('meal-detail-save-btn').click(); ${W8(500)} const f = meals.breakfast.foods[0]; return { a, b, saved: { cal: f.cal, serving: f.serving, grams: f.servingGrams, note: f.quantityNote ?? null, shown: displayServing(f) } };`);
   check("예전 기록(100g·155kcal, 메모 '1개'): 1개로 고치면 77.5kcal, 저장 '1개 (50g)', 메모 없어짐", r4.a.amount === '100' && r4.a.unit === 'g' && r4.b.cal === '77.5' && r4.saved.cal === 77.5 && r4.saved.grams === 50 && r4.saved.shown === '1개 (50g)' && r4.saved.note === null, JSON.stringify(r4));
@@ -118,6 +121,59 @@ try {
     && r6.plus.cal === 60 && r6.plus.amount === 2
     && /60/.test(r6.plus.rowCal || '') && r6.plus.mealCard === '60kcal' && String(r6.plus.day) === '60',
     JSON.stringify(r6));
+  // 7. 깨진 치즈케이크(95g/1400kcal)는 자동으로 바꾸지 않고, 수정에서 1개·380g을 넣으면 이후 95g이 350kcal
+  const r7 = await evaluate(`${vals}
+    document.getElementById('food-amount-popover')?.setAttribute('hidden', '');
+    amountEditorState = null;
+    meals.breakfast.foods = [{
+      name: '스타벅스 브륄레 쿠키 치즈케이크',
+      cal: 1400, carbs: 103, protein: 13, fat: 104, sugar: 102, sodium: 1100,
+      serving: '95g', servingAmount: 95, servingUnit: 'g', servingGrams: 95,
+      basisGrams: 95, basis: '95g',
+      basisNutrients: { cal: 1400, carbs: 103, protein: 13, fat: 104, sugar: 102, sodium: 1100 },
+      servingUnitPreferred: '개',
+      id: 'cake-broken'
+    }];
+    renderAll(true);
+    const before = { cal: meals.breakfast.foods[0].cal, amount: meals.breakfast.foods[0].servingAmount, unit: meals.breakfast.foods[0].servingUnit };
+    openFoodEdit('breakfast', 0);
+    ${W8(300)}
+    const labelG = document.querySelector('[data-serving-amount-label]')?.textContent;
+    setUnit('개');
+    setAmt(1);
+    const pack = document.querySelector('[data-package-grams]');
+    pack.value = '380';
+    pack.dispatchEvent(new Event('input', { bubbles: true }));
+    const mid = out();
+    const labelCount = document.querySelector('[data-serving-amount-label]')?.textContent;
+    document.getElementById('meal-detail-save-btn').click();
+    ${W8(500)}
+    const saved = meals.breakfast.foods[0];
+    openFoodEdit('breakfast', 0);
+    ${W8(300)}
+    setUnit('g');
+    setAmt(95);
+    const after = out();
+    document.getElementById('meal-detail-save-btn').click();
+    ${W8(400)}
+    const f = meals.breakfast.foods[0];
+    return {
+      before, labelG, mid, labelCount, after,
+      saved: { cal: saved.cal, amount: saved.servingAmount, unit: saved.servingUnit, grams: saved.servingGrams, pack: saved.packageGrams },
+      final: { cal: f.cal, carbs: f.carbs, protein: f.protein, fat: f.fat, amount: f.servingAmount, unit: f.servingUnit, grams: f.servingGrams },
+    };`);
+  check('깨진 95g/1400kcal 기록은 열어도 그대로이고, 수정 칸이 g이면 중량으로 표시',
+    r7.before.cal === 1400 && r7.before.amount === 95 && r7.before.unit === 'g' && r7.labelG === '중량',
+    JSON.stringify(r7.before) + ' ' + r7.labelG);
+  check('1개·380g으로 저장하면 1400kcal이 한 개 기준, 칸 이름은 수량',
+    r7.labelCount === '수량' && Number(r7.mid.cal) === 1400 && Number(r7.mid.amount) === 1 && r7.mid.unit === '개'
+    && r7.saved.cal === 1400 && r7.saved.amount === 1 && r7.saved.unit === '개' && r7.saved.grams === 380 && r7.saved.pack === 380,
+    JSON.stringify({ mid: r7.mid, saved: r7.saved, labelCount: r7.labelCount }));
+  check('복구 후 95g = 350kcal, 탄수 25.8, 단백질 3.3, 지방 26',
+    r7.final.cal === 350 && r7.final.carbs === 25.8 && r7.final.protein === 3.3 && r7.final.fat === 26
+    && r7.final.amount === 95 && r7.final.unit === 'g' && r7.final.grams === 95,
+    JSON.stringify(r7.final));
+
   check('페이지 오류 없음', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (err) { results.push('ERROR ' + (err.stack || err.message)); failed++; }
 finally {
