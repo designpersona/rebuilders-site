@@ -8162,6 +8162,31 @@ body.meal-page-open .bottom-nav {
   display: block;
 }
 
+.agent-message.is-searching .agent-bubble-text::after,
+.fs-search-status.is-searching::after,
+.food-detail-line .food-cal.is-pending::after,
+.food-dex-amount-cals.is-pending::after {
+  content: '';
+  animation: rb-ellipsis 1.2s steps(1, end) infinite;
+}
+@keyframes rb-ellipsis {
+  0%, 24% { content: ''; }
+  25%, 49% { content: '.'; }
+  50%, 74% { content: '..'; }
+  75%, 100% { content: '...'; }
+}
+.fs-search-status {
+  margin: 8px 4px 12px;
+  font-size: 13px;
+  color: #6b6863;
+}
+.edit-grams-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #6b6863;
+}
+
 .agent-confirm {
   display: inline-flex;
   margin-top: 0;
@@ -13775,6 +13800,23 @@ body.ai-sheet-open .phone-frame > .bridge-pending {
   font-weight: 700;
   color: #18181b;
 }
+input.food-amount-value {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+  min-width: 0;
+}
+input.food-amount-value:focus {
+  outline: none;
+}
+
 .food-amount-cals {
   font-size: 11px;
   color: #6a6762;

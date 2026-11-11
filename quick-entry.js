@@ -263,7 +263,7 @@
   }
 
   function cleanUnknown(name) {
-    return name.replace(/\s+/g, ' ').trim().replace(/(을|를|에|는|은|이|가|도|만|요|와|과|랑|하고)$/u, '').trim();
+    return name.replace(/\s+/g, ' ').trim().replace(/(을|를|에|는|은|도|만|요|랑|하고)$/u, '').trim();
   }
 
   const DRINK_TAILS = '주스|쥬스|스무디|에이드|쉐이크|셰이크|우유';

@@ -187,6 +187,35 @@
     return info && Number(info.step) > 0 ? info.step : 1;
   }
 
+  // −/+ : 개·조각은 1 아래를 0.5 → 0.25로 내릴 수 있게. g는 최소 1.
+  function nudgeAmount(unit, current, dir) {
+    const u = String(unit || '개');
+    const cur = Number(current);
+    const base = Number.isFinite(cur) && cur > 0 ? cur : stepFor(u);
+    const sign = dir < 0 ? -1 : 1;
+    if (isMassUnit(u)) {
+      const step = stepFor(u);
+      const next = Math.round((base + sign * step) * 100) / 100;
+      const min = (u === 'kg' || u === 'l') ? 0.1 : 1;
+      return Math.max(min, next);
+    }
+    if (sign > 0) {
+      if (base < 0.25) return 0.25;
+      if (base < 0.5) return 0.5;
+      if (base < 1) return 1;
+      const step = stepFor(u);
+      return Math.round((base + step) * 100) / 100;
+    }
+    if (base > 1) {
+      const step = stepFor(u);
+      const next = Math.round((base - step) * 100) / 100;
+      return Math.max(0.25, next);
+    }
+    if (base > 0.5) return 0.5;
+    if (base > 0.25) return 0.25;
+    return 0.25;
+  }
+
   function isMassUnit(unit) {
     return ['g', 'kg', 'ml', 'l'].includes(String(unit || '').toLowerCase());
   }
@@ -310,10 +339,15 @@
       const label = ['숏', '톨', '그란데', '벤티'].find(k => compact(k) === compactRaw) || raw;
       return { value: ml, unit: 'ml', text: label, grams: ml, estimated: false };
     }
-    const m = raw.match(/^((?:\d+(?:\.\d+)?)|반|한|하나|두|둘)\s*([가-힣A-Za-z]+)?(?:\s*[·(]?\s*(\d+(?:\.\d+)?)\s*g)?/u);
+    const m = raw.match(/^((?:\d+\/\d+)|(?:\d+(?:\.\d+)?)|반|한|하나|두|둘|½|¼|¾)\s*([가-힣A-Za-z]+)?(?:\s*[·(]?\s*(\d+(?:\.\d+)?)\s*g)?/u);
     if (!m) return null;
-    const words = { '반': 0.5, '한': 1, '하나': 1, '두': 2, '둘': 2 };
-    const value = words[m[1]] != null ? words[m[1]] : Number(m[1]);
+    const words = { '반': 0.5, '한': 1, '하나': 1, '두': 2, '둘': 2, '½': 0.5, '¼': 0.25, '¾': 0.75, '1/2': 0.5, '1/4': 0.25, '3/4': 0.75 };
+    let value;
+    if (words[m[1]] != null) value = words[m[1]];
+    else if (m[1].includes('/')) {
+      const [a, b] = m[1].split('/').map(Number);
+      value = b ? a / b : NaN;
+    } else value = Number(m[1]);
     const unit = (m[2] || (String(raw).toLowerCase().includes('ml') ? 'ml' : 'g')).replace(/추정$/u, '');
     if (!Number.isFinite(value) || value <= 0) return null;
     const grams = m[3] ? Number(m[3]) : null;
@@ -463,18 +497,43 @@
     }
 
     if (numerator != null && denominator > 0 && Number.isFinite(numerator) && basisNutrients) {
+      const prevCal = typeof food.cal === 'number' ? food.cal : null;
       scaleNutrients(next, basisNutrients, numerator, denominator);
-      next.basisNutrients = { ...basisNutrients };
-      next.basis = storedLabel;
-      if (storedGrams) {
-        next.basisGrams = storedGrams;
+      const factor = prevCal > 0 && typeof next.cal === 'number' ? next.cal / prevCal : 1;
+      // 한 개 무게를 모르는 채 g로 바꾸면 수만·수백만 kcal이 나올 수 있음. 그런 값은 버리지 않고 영양은 그대로 둠.
+      const absurd = typeof next.cal === 'number' && (next.cal > 10000 || next.cal < 0 || factor > 50 || (prevCal > 0 && factor < 1 / 50 && next.cal < 1));
+      if (absurd) {
+        NUTRIENT_KEYS.forEach(key => { if (typeof food[key] === 'number') next[key] = food[key]; });
+        numerator = null;
+      } else {
+        next.basisNutrients = { ...basisNutrients };
+        next.basis = storedLabel;
+        if (storedGrams) {
+          next.basisGrams = storedGrams;
+          delete next.basisAmount;
+          delete next.basisUnit;
+        } else {
+          next.basisAmount = storedAmount;
+          next.basisUnit = storedUnit;
+          delete next.basisGrams;
+        }
+      }
+    }
+    if (numerator == null && Object.keys(currentNutrients).length && resolved && fromUnit && fromUnit !== resolved.unit) {
+      // 개 → g 처럼 무게를 몰라 비례할 수 없으면, 지금 kcal을 새 양의 기준으로 둠(지어낸 무게로 나누지 않음).
+      next.basisNutrients = { ...currentNutrients };
+      if (resolved.grams != null && isMassUnit(resolved.unit)) {
+        next.basisGrams = resolved.grams;
+        next.basis = `${trimNum(resolved.grams)}${resolved.unit === 'ml' || resolved.unit === 'l' ? 'ml' : 'g'}`;
         delete next.basisAmount;
         delete next.basisUnit;
       } else {
-        next.basisAmount = storedAmount;
-        next.basisUnit = storedUnit;
+        next.basisAmount = resolved.value;
+        next.basisUnit = resolved.unit;
+        next.basis = resolved.text;
         delete next.basisGrams;
       }
+      NUTRIENT_KEYS.forEach(key => { if (typeof food[key] === 'number') next[key] = food[key]; });
     }
     next.servingAmount = resolved.value;
     next.servingUnit = resolved.unit;
@@ -525,6 +584,7 @@
     isStapleName,
     isCompoundDish,
     stepFor,
+    nudgeAmount,
     isMassUnit,
     gramsForUnit,
     plateCountFor,

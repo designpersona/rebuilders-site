@@ -83,14 +83,14 @@ try {
   const btn = await evaluate(`const b = document.querySelector('#breakfast-items .food-amount-btn')?.getBoundingClientRect(); return b && b.width ? [Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2)] : null;`);
   if (!btn) throw new Error('no amount button');
   await touch('touchStart', btn[0], btn[1]); await sleep(80); await touch('touchEnd'); await sleep(400);
-  const opened = await evaluate(`const pop = document.getElementById('food-amount-popover'); return { open: pop && !pop.hidden, value: pop?.querySelector('.food-amount-value')?.textContent, cal: pop?.querySelector('.food-amount-cals')?.textContent };`);
+  const opened = await evaluate(`const pop = document.getElementById('food-amount-popover'); return { open: pop && !pop.hidden, value: pop?.querySelector('.food-amount-value')?.value || pop?.querySelector('.food-amount-value')?.textContent, cal: pop?.querySelector('.food-amount-cals')?.textContent };`);
   check('양 버튼을 누르면 −/+ 편집이 열림', opened.open && opened.value.includes('1개'), JSON.stringify(opened));
   await shot('/tmp/rebuilders-servings-home.png');
 
   const plus = await evaluate(`const b = document.querySelector('#food-amount-popover [data-dir="1"]')?.getBoundingClientRect(); return b && b.width ? [Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2)] : null;`);
   check('플러스 버튼이 보임', Boolean(plus), JSON.stringify(plus));
   if (plus) { await touch('touchStart', plus[0], plus[1]); await sleep(80); await touch('touchEnd'); await sleep(400); }
-  const r2 = await evaluate(`const f = meals.breakfast.foods[0]; const row = document.querySelector('#breakfast-items .food-item'); return { cal: f.cal, amount: f.servingAmount, unit: f.servingUnit, grams: f.servingGrams, shown: row?.querySelector('.food-amount-btn')?.textContent, pop: document.querySelector('#food-amount-popover .food-amount-value')?.textContent };`);
+  const r2 = await evaluate(`const f = meals.breakfast.foods[0]; const row = document.querySelector('#breakfast-items .food-item'); return { cal: f.cal, amount: f.servingAmount, unit: f.servingUnit, grams: f.servingGrams, shown: row?.querySelector('.food-amount-btn')?.textContent, pop: document.querySelector('#food-amount-popover .food-amount-value')?.value || document.querySelector('#food-amount-popover .food-amount-value')?.textContent };`);
   check('+ 한 번이면 2개 (236g) 210kcal로 바로 다시 계산', r2.cal === 210 && r2.amount === 2 && r2.unit === '개' && r2.grams === 236 && r2.shown === '2개 (236g)', JSON.stringify(r2));
   await shot('/tmp/rebuilders-servings-stepper.png');
   await evaluate(`closeAmountEditor(true); ${W8(200)} return 1;`);
@@ -194,7 +194,7 @@ try {
       cal: f.cal, carbs: f.carbs, protein: f.protein, fat: f.fat,
       amount: f.servingAmount, grams: f.servingGrams, serving: f.serving,
       shown: document.querySelector('#breakfast-items .food-amount-btn')?.textContent,
-      pop: document.querySelector('#food-amount-popover .food-amount-value')?.textContent,
+      pop: document.querySelector('#food-amount-popover .food-amount-value')?.value || document.querySelector('#food-amount-popover .food-amount-value')?.textContent,
       popCal: document.querySelector('#food-amount-popover .food-amount-cals')?.textContent,
     };
     document.querySelector('#food-amount-popover [data-dir="-1"]').click();
@@ -357,6 +357,79 @@ try {
     && rLotusChat.plus.cal === 60 && rLotusChat.plus.amount === 2
     && /60/.test(rLotusChat.plus.rowCal || '') && rLotusChat.plus.mealCard === '60kcal' && String(rLotusChat.plus.day) === '60',
     JSON.stringify(rLotusChat));
+
+  // 2h. 1개에서 − 하면 0.5개, kcal 절반
+  const rHalf = await evaluate(`
+    closeMealPage?.();
+    setActiveView('home');
+    for (const m of ['breakfast','lunch','dinner','snack']) meals[m].foods = [];
+    meals.breakfast.foods = [{
+      name: '스타벅스 브륄레 쿠키 치즈케이크',
+      cal: 1400, carbs: 140, protein: 20, fat: 80,
+      serving: '1개', servingAmount: 1, servingUnit: '개',
+      id: 'cake-half'
+    }];
+    renderAll(true);
+    const card = document.getElementById('breakfast-card');
+    if (!card.classList.contains('expanded')) document.querySelector('[data-expand-meal="breakfast"]').click();
+    ${W8(300)}
+    document.querySelector('#breakfast-items .food-amount-btn').click();
+    ${W8(200)}
+    document.querySelector('#food-amount-popover [data-dir="-1"]').click();
+    ${W8(200)}
+    const f = meals.breakfast.foods[0];
+    return {
+      cal: f.cal, amount: f.servingAmount, unit: f.servingUnit, serving: f.serving,
+      shown: document.querySelector('#breakfast-items .food-amount-btn')?.textContent,
+      rowCal: document.querySelector('#breakfast-items .food-cal')?.textContent,
+      popCal: document.querySelector('#food-amount-popover .food-amount-cals')?.textContent,
+    };
+  `);
+  check('1개 1400kcal에서 − 하면 0.5개 700kcal',
+    rHalf.cal === 700 && rHalf.amount === 0.5 && rHalf.unit === '개'
+    && /반개|0\\.5개/.test(rHalf.shown || '') && /700/.test(rHalf.rowCal || '') && rHalf.popCal === '700kcal',
+    JSON.stringify(rHalf));
+
+  // 2i. 한 개 무게 없는 기록을 수정 시트에서 g·95로 바꾸면 단위가 붙고 kcal은 그대로(수백만이 되지 않음)
+  const rGrams = await evaluate(`
+    document.getElementById('food-amount-popover')?.setAttribute('hidden', '');
+    amountEditorState = null;
+    meals.breakfast.foods = [{
+      name: '스타벅스 브륄레 쿠키 치즈케이크',
+      cal: 1400, carbs: 140, protein: 20, fat: 80,
+      serving: '1개', servingAmount: 1, servingUnit: '개',
+      id: 'cake-grams'
+    }];
+    renderAll(true);
+    openFoodEdit('breakfast', 0);
+    ${W8(300)}
+    const unit = document.querySelector('[data-serving-unit]');
+    const amount = document.querySelector('[data-serving-amount]');
+    const cal = document.querySelector('[data-edit-field="cal"]');
+    unit.value = 'g';
+    unit.dispatchEvent(new Event('change', { bubbles: true }));
+    ${W8(100)}
+    const afterSwitch = { unit: unit.value, amount: amount.value, cal: cal.value, hint: document.querySelector('.edit-grams-hint')?.textContent || '' };
+    amount.value = '95';
+    amount.dispatchEvent(new Event('input', { bubbles: true }));
+    amount.dispatchEvent(new Event('change', { bubbles: true }));
+    ${W8(100)}
+    const afterType = { unit: unit.value, amount: amount.value, cal: cal.value };
+    document.getElementById('meal-detail-save-btn').click();
+    ${W8(400)}
+    const f = meals.breakfast.foods[0];
+    return {
+      afterSwitch, afterType,
+      cal: f.cal, unit: f.servingUnit, amount: f.servingAmount, grams: f.servingGrams ?? null, serving: f.serving,
+    };
+  `);
+  check('단위를 g으로 바꿔도 한 개 무게가 없으면 1개를 1g으로 보지 않고 kcal은 그대로',
+    rGrams.afterSwitch.unit === 'g' && rGrams.afterSwitch.cal === '1400' && Number(rGrams.afterSwitch.amount) !== 1,
+    JSON.stringify(rGrams.afterSwitch));
+  check('95g을 적으면 단위는 g으로 남고 kcal은 1400, 13300000 같은 값은 나오지 않음',
+    rGrams.afterType.unit === 'g' && rGrams.afterType.amount === '95' && Number(rGrams.afterType.cal) === 1400
+    && rGrams.cal === 1400 && rGrams.unit === 'g' && rGrams.amount === 95 && rGrams.grams === 95 && rGrams.cal < 10000,
+    JSON.stringify(rGrams));
 
   // 3. 예전 기록(양 없음)은 값을 그대로 두고 수정 가능
   const r3 = await evaluate(`

@@ -167,4 +167,12 @@ r = p('방금 거 지워줘');
 check('지우라는 말은 음식 이름이 되지 않음', r.items.length === 0, r);
 
 
+
+r = p('버거킹 애플파이');
+check('애플파이 끝 이 를 조사로 떼지 않음', names(r).join() === '버거킹 애플파이', r);
+r = p('떡볶이');
+check('떡볶이 이름 유지', names(r).join() === '떡볶이', r);
+r = p('파이');
+check('파이 이름 유지', names(r).join() === '파이', r);
+
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');

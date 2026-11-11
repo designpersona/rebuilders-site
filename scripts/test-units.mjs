@@ -112,5 +112,36 @@ check('1개 기록의 기준을 100g으로 두지 않음',
 const smallBanana = U.gramsForUnit('바나나', '개', { servingUnit: '개', servingAmount: 1, servingGrams: 80 });
 check('기록에 적힌 한 개 무게가 음식 표보다 우선', smallBanana && smallBanana.grams === 80, smallBanana);
 
+
+check('− 버튼은 1개에서 0.5개로', U.nudgeAmount('개', 1, -1) === 0.5, U.nudgeAmount('개', 1, -1));
+check('0.5개에서 − 는 0.25개', U.nudgeAmount('개', 0.5, -1) === 0.25, U.nudgeAmount('개', 0.5, -1));
+check('0.5개에서 + 는 1개', U.nudgeAmount('개', 0.5, 1) === 1, U.nudgeAmount('개', 0.5, 1));
+check('1/4개 파싱', U.parseServing('1/4개')?.value === 0.25 && U.parseServing('1/4개')?.unit === '개', U.parseServing('1/4개'));
+check('0.5개 파싱', U.parseServing('0.5개')?.value === 0.5, U.parseServing('0.5개'));
+
+const cake = {
+  name: '스타벅스 브륄레 쿠키 치즈케이크',
+  cal: 1400, carbs: 140, protein: 20, fat: 80,
+  serving: '1개', servingAmount: 1, servingUnit: '개',
+};
+const halfCake = U.applyAmount(cake, { value: 0.5, unit: '개' }, cake);
+check('1개 1400kcal → 0.5개 700kcal, 단위는 개',
+  halfCake.cal === 700 && halfCake.servingAmount === 0.5 && halfCake.servingUnit === '개' && halfCake.serving === '반개', halfCake);
+
+const cake95 = U.applyAmount(cake, { value: 95, unit: 'g' }, cake);
+check('한 개 무게 없는 1개 기록을 95g으로 바꾸면 단위는 g, kcal은 그대로, servingGrams는 95',
+  cake95.cal === 1400 && cake95.servingUnit === 'g' && cake95.servingAmount === 95 && cake95.servingGrams === 95
+  && cake95.basisGrams === 95 && cake95.carbs === 140, cake95);
+
+const known = { ...cake, servingGrams: 400 };
+const known95 = U.applyAmount(known, { value: 95, unit: 'g' }, known);
+check('한 개 400g을 알면 95g은 비례(1400 × 95/400)',
+  known95.cal === Math.round(1400 * 95 / 400 * 10) / 10 && known95.servingUnit === 'g' && known95.servingGrams === 95, known95);
+
+const absurdSrc = { ...cake, servingGrams: 1 };
+const absurd = U.applyAmount(absurdSrc, { value: 95, unit: 'g' }, absurdSrc);
+check('1개를 1g으로 잘못 둔 채 95g을 넣어도 수백만 kcal이 되지 않음',
+  absurd.cal === 1400 && absurd.cal < 10000 && absurd.servingUnit === 'g' && absurd.servingGrams === 95, absurd);
+
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

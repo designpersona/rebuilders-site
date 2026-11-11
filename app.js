@@ -68,11 +68,24 @@ const FOOD_NAME_ALIASES = Object.freeze({
   '밥': ['쌀밥', '백미밥', '공기밥', '흰밥', '흰쌀밥'],
 });
 
+function officialDishName(name, data) {
+  if (data?.mfdsKind !== '음식') return name;
+  const s = String(name || '').trim();
+  const i = s.search(/\s+/);
+  return i > 0 ? s.slice(i).trim() : s;
+}
 function displayFoodName(foodOrName) {
   const food = typeof foodOrName === 'string' ? null : foodOrName;
   const name = typeof foodOrName === 'string' ? foodOrName : foodOrName?.name || '';
-  if (ACTIVE_LOCALE !== 'en') return name;
-  return food?.nameEn || FOOD_NAME_EN[name] || name;
+  let shown = ACTIVE_LOCALE === 'en' ? (food?.nameEn || FOOD_NAME_EN[name] || name) : name;
+  const maker = String(food?.maker || food?.brand || '').trim();
+  if (maker) {
+    const compact = s => String(s || '').toLowerCase().normalize('NFC').replace(/[\s·.,()\[\]\-_/]+/g, '');
+    if (shown && !compact(shown).includes(compact(maker))) {
+      shown = `${maker} ${officialDishName(shown, food)}`;
+    }
+  }
+  return shown;
 }
 
 /* ============================
@@ -768,7 +781,15 @@ const FoodSearch = (() => {
       const raw = String(item.name || '');
       const n = norm(raw);
       const words = raw.split(/[\s_,()]+/).filter(Boolean).map(norm);
-      let tier = Math.min(...[nq, ...alt].map(q => tierFor(n, words, q)));
+      const makerN = norm(item.data?.maker || item.data?.brand || '');
+      const shownN = norm((() => { try { return displayFoodName({ name: raw, ...(item.data || {}) }); } catch { return raw; } })());
+      let tier = Math.min(...[nq, ...alt].map(q => Math.min(tierFor(n, words, q), shownN ? tierFor(shownN, words, q) : 6)));
+      if (makerN && nq.startsWith(makerN) && nq.length > makerN.length) {
+        const rest = nq.slice(makerN.length);
+        const dishN = norm(raw.replace(/^\S+\s+/, ''));
+        if (rest && (n === rest || dishN === rest || shownN === nq)) tier = Math.min(tier, 0);
+        else if (rest && (n.endsWith(rest) || dishN.startsWith(rest) || shownN.includes(rest))) tier = Math.min(tier, 1);
+      }
       if (DEMOTE_FIRST_WORD.test(raw)) tier = Math.max(tier, 4); // 첫 낱말만 우연히 같은 다른 음식(예: '밥 옥광' = 옥수수 품종)
       const kind = item.mfds ? (KIND_RANK[item.data?.mfdsKind] ?? 2) : 0;
       const fresh = /생것/.test(raw) ? 0 : 1;
@@ -914,7 +935,7 @@ function foodSearchRow(item, onPick) {
   button.dataset.name = name;
   if (maker) button.dataset.maker = maker;
   button.innerHTML = `
-    <span class="fs-main"><span class="fs-name">${escapeHtml(displayFoodName(food))}</span>${maker ? `<span class="fs-maker">${escapeHtml(maker)}</span>` : ''}
+    <span class="fs-main"><span class="fs-name">${escapeHtml(displayFoodName(food))}</span>${maker && !displayFoodName(food).includes(maker) ? `<span class="fs-maker">${escapeHtml(maker)}</span>` : ''}
       <span class="fs-sub">${amount ? `<span class="fs-amount">${amount}</span> · ` : ''}<span class="${isNutritionMissing(data) ? 'fs-missing' : 'fs-kcal'}">${kcal}</span></span></span>`;
   button.addEventListener('click', () => onPick(food, item));
   return button;
@@ -2277,14 +2298,20 @@ function toggleAmountUnit(food, value, unit) {
     const per = U.gramsForUnit(food.baseFood || food.name, preferred, food);
     if (!per) return null;
     const raw = value / per.grams;
+    const snapped = U.nudgeAmount ? Math.max(0.25, Math.round(raw * 100) / 100) : Math.max(U.stepFor(preferred), Math.round(raw / U.stepFor(preferred)) * U.stepFor(preferred));
+    // 한 개 무게를 알 때만 개수로 되돌림. 0.5개처럼 1 미만도 허용.
+    if (raw < 1) return { value: raw >= 0.25 ? Math.round(raw * 100) / 100 : 0.25, unit: preferred };
     const step = U.stepFor(preferred);
-    const snapped = Math.max(step, Math.round(raw / step) * step);
-    return { value: Math.round(snapped * 100) / 100, unit: preferred };
+    const stepped = Math.round(raw / step) * step;
+    return { value: Math.round(Math.max(step, stepped) * 100) / 100, unit: preferred };
   }
   const per = U.gramsForUnit(food.baseFood || food.name, unit, food);
-  if (!per) return null;
   const info = U.GENERIC_UNITS[unit];
   const mass = info && info.kind === 'volume' ? 'ml' : 'g';
+  if (!per) {
+    // 한 개 무게를 모르면 숫자만 g로 바꾸지 않음. 칼로리는 그대로 두고 무게를 받음.
+    return { value: null, unit: mass, unknownWeight: true };
+  }
   return { value: Math.round(value * per.grams * 10) / 10, unit: mass };
 }
 
@@ -2318,14 +2345,27 @@ function paintAmountEditor() {
   const U = globalThis.RebuildersUnits;
   const food = meals[state.mealId]?.foods[state.idx];
   if (!food) { closeAmountEditor(false); return; }
-  pop.querySelector('.food-amount-value').textContent = foodAmountLabel(food);
+  const valueEl = pop.querySelector('.food-amount-value');
+  if (valueEl) {
+    const pending = pop.classList.contains('is-awaiting-grams');
+    if (valueEl.tagName === 'INPUT') {
+      if (document.activeElement !== valueEl) valueEl.value = pending ? '' : foodAmountLabel(food);
+      valueEl.placeholder = pending
+        ? (ACTIVE_LOCALE === 'en' ? 'Grams (e.g. 95)' : '무게 (예: 95g)')
+        : '';
+    } else {
+      valueEl.textContent = foodAmountLabel(food);
+    }
+  }
   const cal = pop.querySelector('.food-amount-cals');
-  if (cal) cal.textContent = isNutritionMissing(food) ? (ACTIVE_LOCALE === 'en' ? 'No nutrition yet' : '영양정보 미입력') : `${Math.round(food.cal || 0)}kcal`;
+  if (cal) {
+    if (pop.classList.contains('is-awaiting-grams')) cal.textContent = ACTIVE_LOCALE === 'en' ? 'Enter the weight in grams' : '한 개 무게를 몰라요. g을 적어 주세요';
+    else cal.textContent = isNutritionMissing(food) ? (ACTIVE_LOCALE === 'en' ? 'No nutrition yet' : '영양정보 미입력') : `${Math.round(food.cal || 0)}kcal`;
+  }
   const unitBtn = pop.querySelector('.food-amount-unit');
   if (unitBtn) {
     const unit = food.servingUnit || '';
-    const mass = U && !U.isMassUnit(unit);
-    unitBtn.hidden = !U || !toggleAmountUnit(food, Number(food.servingAmount) || 0, unit || '개');
+    unitBtn.hidden = !U;
     unitBtn.textContent = (U && U.isMassUnit(unit))
       ? (ACTIVE_LOCALE === 'en' ? 'Use piece' : '개 단위')
       : (ACTIVE_LOCALE === 'en' ? 'Use g' : 'g으로');
@@ -2344,6 +2384,21 @@ function commitAmountEdit(nextAmount) {
   const list = meals[state.mealId]?.foods;
   if (!list || !list[state.idx] || !U) return;
   const current = list[state.idx];
+  if (nextAmount?.unknownWeight) {
+    const pop = document.getElementById('food-amount-popover');
+    if (pop) {
+      pop.classList.add('is-awaiting-grams');
+      const input = pop.querySelector('.food-amount-value');
+      if (input?.tagName === 'INPUT') {
+        input.value = '';
+        input.placeholder = ACTIVE_LOCALE === 'en' ? 'Grams (e.g. 95)' : '무게 (예: 95g)';
+        setTimeout(() => input.focus(), 0);
+      }
+      const cal = pop.querySelector('.food-amount-cals');
+      if (cal) cal.textContent = ACTIVE_LOCALE === 'en' ? 'Enter the weight in grams' : '한 개 무게를 몰라요. g을 적어 주세요';
+    }
+    return;
+  }
   const next = U.applyAmount(current, nextAmount, current);
   const label = inferSourceLabel(current);
   if (label === '추정' || label === '없음') {
@@ -2412,7 +2467,7 @@ function openAmountEditor(food, dragCtx, anchor) {
     pop.className = 'food-amount-popover';
     pop.innerHTML = `<div class="food-amount-card">
       <button type="button" class="food-amount-step" data-dir="-1" aria-label="-">−</button>
-      <div class="food-amount-copy"><strong class="food-amount-value"></strong><span class="food-amount-cals"></span></div>
+      <div class="food-amount-copy"><input class="food-amount-value" type="text" inputmode="decimal" enterkeyhint="done" aria-label="${ACTIVE_LOCALE === 'en' ? 'Amount' : '양'}"><span class="food-amount-cals"></span></div>
       <button type="button" class="food-amount-step" data-dir="1" aria-label="+">+</button>
       <button type="button" class="food-amount-unit"></button>
     </div>`;
@@ -2427,9 +2482,9 @@ function openAmountEditor(food, dragCtx, anchor) {
         if (!foodNow) return;
         const U2 = globalThis.RebuildersUnits;
         const unit = foodNow.servingUnit || U2?.typicalServing(foodNow.baseFood || foodNow.name, foodNow)?.unit || '개';
-        const step = U2 ? U2.stepFor(unit) : 1;
         const dir = Number(btn.dataset.dir) || 1;
-        const value = Math.max(step, Math.round(((Number(foodNow.servingAmount) || step) + dir * step) * 100) / 100);
+        const value = U2?.nudgeAmount ? U2.nudgeAmount(unit, foodNow.servingAmount, dir) : Math.max(0.25, Math.round(((Number(foodNow.servingAmount) || 1) + dir) * 100) / 100);
+        document.getElementById('food-amount-popover')?.classList.remove('is-awaiting-grams');
         commitAmountEdit({ value, unit });
       });
     });
@@ -2442,8 +2497,37 @@ function openAmountEditor(food, dragCtx, anchor) {
       const toggled = toggleAmountUnit(foodNow, Number(foodNow.servingAmount) || 0, foodNow.servingUnit || '개');
       if (!toggled) return;
       if (!globalThis.RebuildersUnits.isMassUnit(foodNow.servingUnit || '')) foodNow.servingUnitPreferred = foodNow.servingUnit;
+      if (!toggled.unknownWeight) document.getElementById('food-amount-popover')?.classList.remove('is-awaiting-grams');
       commitAmountEdit(toggled);
     });
+    const input = pop.querySelector('.food-amount-value');
+    const commitTypedAmount = () => {
+      const state = amountEditorState;
+      if (!state) return;
+      const foodNow = meals[state.mealId]?.foods[state.idx];
+      if (!foodNow) return;
+      const U2 = globalThis.RebuildersUnits;
+      const raw = String(input?.value || '').trim();
+      if (!raw) { paintAmountEditor(); return; }
+      const awaiting = pop.classList.contains('is-awaiting-grams');
+      const parsed = U2?.parseServing?.(raw) || U2?.parseServing?.(raw.replace(/,/g, '.'));
+      let value = parsed?.value;
+      let unit = parsed?.unit;
+      if (value == null) {
+        const frac = raw.match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
+        value = frac ? Number(frac[1]) / Number(frac[2]) : Number(raw.replace(/,/g, '.'));
+        unit = awaiting ? 'g' : (foodNow.servingUnit || '개');
+      }
+      if (awaiting && (!unit || !U2.isMassUnit(unit))) unit = 'g';
+      if (!Number.isFinite(value) || value <= 0) { paintAmountEditor(); return; }
+      pop.classList.remove('is-awaiting-grams');
+      commitAmountEdit({ value, unit });
+    };
+    input?.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+    });
+    input?.addEventListener('change', commitTypedAmount);
+    input?.addEventListener('blur', commitTypedAmount);
   }
   amountEditorState = { mealId, idx, before: snapshotMeals() };
   pop.hidden = false;
@@ -4924,9 +5008,8 @@ document.getElementById('food-dex-amount')?.addEventListener('click', event => {
       }
     }
     const unit = current.servingUnit || U2?.typicalServing(current.baseFood || current.name, current)?.unit || '개';
-    const stepSize = U2 ? U2.stepFor(unit) : 1;
     const dir = Number(step.dataset.dir) || 1;
-    const value = Math.max(stepSize, Math.round(((Number(current.servingAmount) || stepSize) + dir * stepSize) * 100) / 100);
+    const value = U2?.nudgeAmount ? U2.nudgeAmount(unit, current.servingAmount, dir) : Math.max(0.25, Math.round(((Number(current.servingAmount) || 1) + dir) * 100) / 100);
     void commitFoodDexAmount({ value, unit });
     return;
   }
@@ -5123,19 +5206,75 @@ function setupEditRescale(food) {
       else delete state.density[f];
     });
   };
+  const massUnit = u => ['g', 'ml', 'kg', 'l'].includes(String(u || '').toLowerCase());
+  const hintForUnit = () => {
+    let hint = mealDetailEditGrid.querySelector('.edit-grams-hint');
+    const need = unitInput && amountInput && massUnit(unitInput.value) && !editUnitGrams(food, food.servingUnit || unitInput.value) && !massUnit(food.servingUnit) && !Number(food.servingGrams);
+    if (!need) { hint?.remove(); return; }
+    if (!hint) {
+      hint = document.createElement('p');
+      hint.className = 'edit-grams-hint';
+      unitInput.closest('.meal-serving-row')?.appendChild(hint);
+    }
+    hint.textContent = ACTIVE_LOCALE === 'en'
+      ? 'Piece weight is unknown, so the calories stay the same and this weight becomes the new basis.'
+      : '한 개 무게를 몰라요. 지금 kcal은 그대로 두고, 적은 무게가 새 기준이 됩니다.';
+  };
   reanchor();
   const rescale = () => {
+    if (state.awaitingBasis) return;
     const q = editQuantity(food, amountInput?.value, unitInput?.value);
     if (!q) return;
-    if (!state.qty || q.base !== state.qty.base) { reanchor(); return; } // g ↔ 개처럼 바꿀 수 없는 단위면 값은 그대로, 새 기준만
-    state.qty = q;
+    if (!state.qty || q.base !== state.qty.base) {
+      // 개 ↔ g 을 무게 없이 바꾸면 1개를 1g으로 보지 않음. 영양 숫자는 그대로, 다음 입력부터 새 기준.
+      reanchor();
+      hintForUnit();
+      return;
+    }
+    const nextVals = {};
+    let absurd = false;
     Object.entries(state.density).forEach(([f, d]) => {
+      const v = Math.round(d * q.value * 10) / 10;
+      nextVals[f] = v;
+      if (f === 'cal' && (v > 10000 || v < 0)) absurd = true;
+    });
+    if (absurd) return;
+    state.qty = q;
+    Object.entries(nextVals).forEach(([f, v]) => {
       const input = fieldInput(f);
-      if (input) input.value = String(Math.round(d * q.value * 10) / 10);
+      if (input) input.value = String(v);
     });
   };
   amountInput?.addEventListener('input', rescale);
-  unitInput?.addEventListener('change', rescale);
+  unitInput?.addEventListener('change', () => {
+    const prevUnit = food.servingUnit || state.qty?.base;
+    const nextUnit = unitInput?.value;
+    const per = editUnitGrams(food, prevUnit);
+    if (per && massUnit(nextUnit) && !massUnit(prevUnit) && amountInput) {
+      const grams = Math.round(Number(amountInput.value || 0) * per * 10) / 10;
+      if (grams > 0) amountInput.value = String(grams);
+      reanchor();
+      hintForUnit();
+      return;
+    }
+    if (!per && massUnit(nextUnit) && !massUnit(prevUnit) && amountInput) {
+      amountInput.value = '';
+      amountInput.placeholder = ACTIVE_LOCALE === 'en' ? 'e.g. 95' : '예: 95';
+      state.qty = null;
+      state.awaitingBasis = true;
+      hintForUnit();
+      return;
+    }
+    rescale();
+    hintForUnit();
+  });
+  amountInput?.addEventListener('change', () => {
+    if (!state.awaitingBasis) return;
+    const q = editQuantity(food, amountInput?.value, unitInput?.value);
+    if (!q) return;
+    reanchor();
+    state.awaitingBasis = false;
+  });
   EDIT_NUTRIENT_FIELDS.forEach(f => fieldInput(f)?.addEventListener('input', () => { state.edited = true; reanchor([f]); }));
   editRescale = state;
 }
@@ -5170,8 +5309,15 @@ mealDetailSaveBtn.addEventListener('click', async () => {
   next.sourceTrust = 'user';
   next.servingGramsEstimated = false;
   // 개수 단위에 한 개 무게를 알면 총 g 도 같이(표시: "2개 · 100g")
+  const massUnitSave = ['g', 'ml', 'kg', 'l'].includes(servingUnit);
   const perUnit = servingAmount ? editUnitGrams(food, servingUnit) : null;
-  next.servingGrams = perUnit && !['g', 'ml', 'kg', 'l'].includes(servingUnit) ? Math.round(Number(servingAmount) * perUnit * 10) / 10 : undefined;
+  if (massUnitSave && Number(servingAmount) > 0) {
+    next.servingGrams = (servingUnit === 'kg' || servingUnit === 'l') ? Number(servingAmount) * 1000 : Number(servingAmount);
+  } else if (perUnit && !massUnitSave) {
+    next.servingGrams = Math.round(Number(servingAmount) * perUnit * 10) / 10;
+  } else {
+    next.servingGrams = undefined;
+  }
   if (editRescale?.edited) next.nutritionCustom = true; // 영양 칸을 직접 고침
   delete next.quantityNote;
   // 지금 저장한 양의 영양을 −/+ 기준(g 또는 개)으로 두어, 다음 양 변경이 고친 값에서 비례하게 함
@@ -7111,11 +7257,16 @@ document.getElementById('telegram-mark-connected')?.addEventListener('click', ()
 
 refreshTelegramBannerState();
 
-function setAgentMessageText(message, text) {
+function setAgentSearching(message, on) {
+  if (!message) return;
+  message.classList.toggle('is-searching', !!on);
+}
+function setAgentMessageText(message, text, { searching = false } = {}) {
   if (!message) return;
   const target = message.querySelector('.agent-bubble-text');
   if (target) target.textContent = text;
   else message.textContent = text;
+  setAgentSearching(message, searching);
   if (message.dataset.chatId) updateChatHistory(message.dataset.chatId, text);
 }
 
@@ -7268,7 +7419,11 @@ function saveLastChatBatch(batch) {
 function formatFoodChange(food) {
   const name = displayFoodName(food);
   const amount = food?.serving ? ` ${food.serving}` : '';
-  if (typeof food?.cal === 'number') return `${name}${amount} · ${Math.round(food.cal)}kcal`;
+  if (typeof food?.cal === 'number') {
+    const src = inferSourceLabel(food);
+    const tag = src && src !== '없음' ? ` (${sourceLabelText(food)})` : '';
+    return `${name}${amount} · ${Math.round(food.cal)}kcal${tag}`;
+  }
   return `${name}${amount}`;
 }
 
@@ -7375,15 +7530,22 @@ async function applyChatFoods(parsed) {
   rememberChatBatch(parsed, mealId, foods, indexes);
   await registerLoggedFoods(foods);
   const missing = foods.map((food, i) => ({ food, idx: indexes[i] })).filter(({ food }) => isNutritionMissing(food));
-  const summary = foods.map(quickItemSummary).join(', ');
   const queued = queueBridgeLookup(mealId, foods);
-  const later = queued
-    ? (ACTIVE_LOCALE === 'en' ? ' The Mac mini AI is finding nutrition and will fill it in.' : ' 맥 미니 AI가 영양성분을 찾아서 채워줄게요.')
+  const summary = foods.map(food => {
+    if (!isNutritionMissing(food)) return formatFoodChange(food);
+    if (!queued) return quickItemSummary(food);
+    const visible = displayFoodName(food);
+    const amount = food.serving && food.serving !== visible ? ` ${food.serving}` : '';
+    return `${visible}${amount}`;
+  }).join(', ');
+  const later = !missing.length ? '' : queued
+    ? (ACTIVE_LOCALE === 'en' ? ' Not in the existing data — looking it up' : ' 기존 데이터에 없어서 찾는 중')
     : (ACTIVE_LOCALE === 'en' ? ' You can fill in nutrition later.' : ' 영양정보는 나중에 채워도 돼요.');
   const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
-    ? `Saved to ${mealLabel(mealId)}: ${summary}.${missing.length ? later : ''}`
-    : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.${missing.length ? later : ''}`);
+    ? `Saved to ${mealLabel(mealId)}: ${summary}.${later}`
+    : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.${later}`);
   if (queued) {
+    setAgentSearching(message, true);
     pendingFillChats.push({
       chatId: message.dataset.chatId,
       date: dateKey(currentDate),
@@ -7629,11 +7791,31 @@ function announceBridgeFill(job, records) {
       const later = foods.some(isNutritionMissing)
         ? (en ? ' Still looking up the rest.' : ' 나머지는 찾는 중이에요.')
         : '';
+      const still = foods.some(isNutritionMissing);
       setAgentMessageText(el, en
         ? `Saved to ${mealLabel(job.meal)}: ${summary}.${later}`
-        : `${mealLabel(job.meal)}에 저장했어요: ${summary}.${later}`);
+        : `${mealLabel(job.meal)}에 저장했어요: ${summary}.${later}`, { searching: still });
     }
     return foods.some(isNutritionMissing);
+  });
+}
+
+function announceBridgeFailure(names, reason) {
+  if (!names?.length) return;
+  const en = ACTIVE_LOCALE === 'en';
+  const set = new Set(names.map(name => sourceNorm(name)));
+  pendingFillChats = pendingFillChats.filter(entry => {
+    const hit = (entry.names || []).some(name => set.has(sourceNorm(name)));
+    if (!hit) return true;
+    const el = document.querySelector(`#agent-log .agent-message[data-chat-id="${entry.chatId}"]`);
+    if (el) {
+      const shown = (entry.names || []).join(', ');
+      const why = reason || (en ? 'Could not find nutrition. Please enter kcal yourself.' : '못 찾았어요. 칼로리를 직접 넣어 주세요.');
+      setAgentMessageText(el, en
+        ? `Saved to ${mealLabel(entry.mealId)}: ${shown}. ${why}`
+        : `${mealLabel(entry.mealId)}에 저장했어요: ${shown}. ${why}`);
+    }
+    return false;
   });
 }
 
@@ -7648,7 +7830,12 @@ function hasConfidentSearchHit(query, result) {
   const items = (result?.sections || []).flatMap(section => section.items || []);
   return items.some(item => {
     const n = sourceNorm(item.name);
-    return n && (n === q || n.startsWith(q) || q.startsWith(n));
+    const shown = sourceNorm(displayFoodName({ name: item.name, ...(item.data || {}) }));
+    const maker = sourceNorm(item.data?.maker || item.data?.brand || '');
+    const dish = sourceNorm(String(item.name || '').replace(/^\S+\s+/, ''));
+    return (n && (n === q || n.startsWith(q) || q.startsWith(n)))
+      || (shown && (shown === q || shown.startsWith(q) || q.startsWith(shown)))
+      || (maker && dish && sourceNorm(maker + dish) === q);
   });
 }
 
@@ -7731,13 +7918,23 @@ async function findAndAddWithAi(query, button, resultHost) {
       button.classList.remove('is-busy');
       if (labelBefore) button.textContent = labelBefore;
     }
-    if (resultHost) renderSheetManualNutrition(resultHost, query, reason);
+    if (resultHost) {
+      resultHost.querySelector('.fs-search-status')?.remove();
+      renderSheetManualNutrition(resultHost, query, reason);
+    }
   };
   if (!mealId) { fail(en ? 'Pick a meal first.' : '끼니를 먼저 골라 주세요.'); return; }
   if (button) {
     button.disabled = true;
     button.classList.add('is-busy');
     button.textContent = en ? 'Looking up…' : '찾는 중';
+  }
+  if (resultHost) {
+    resultHost.querySelector('.fs-search-status')?.remove();
+    const status = document.createElement('p');
+    status.className = 'fs-search-status is-searching';
+    status.textContent = en ? 'Not in the existing data — looking it up' : '기존 데이터에 없어서 찾는 중';
+    resultHost.prepend(status);
   }
   if (!globalThis.RebuildersBridge?.isConfigured()) { fail(bridgeFailReason('not_configured')); return; }
   try {
@@ -7812,12 +8009,19 @@ function addExactOfficialHits(catalogs, text) {
     const q = String(query || '').trim();
     if (q.length < 2) return;
     (Mfds.search(q, 20) || []).forEach(item => {
-      if (!item?.name || seen.has(compact(item.name))) return;
-      if (compact(item.name) !== compact(q) && compact(item.name) !== compact(item.data?.name || '')) return;
-      if (compact(item.name) === compact(q)) {
-        catalogs.db.push({ name: item.name, data: item.data || item, aliases: [] });
-        seen.add(compact(item.name));
-      }
+      if (!item?.name) return;
+      const maker = item.data?.maker || '';
+      const aliases = (globalThis.MfdsDB?.brandAliases?.(item.name, maker, item.data?.mfdsKind === '음식' ? 0 : 1) || [])
+        .concat(maker ? [`${maker} ${item.name}`] : []);
+      const keys = [item.name, ...aliases].map(compact).filter(Boolean);
+      const cq = compact(q);
+      const exact = item.brandExact || keys.includes(cq);
+      if (!exact) return;
+      const id = `${compact(item.name)}|${compact(maker)}`;
+      if (seen.has(id) || seen.has(compact(item.name))) return;
+      catalogs.db.push({ name: item.name, data: item.data || item, aliases });
+      seen.add(id);
+      seen.add(compact(item.name));
     });
   });
   return catalogs;
@@ -8005,6 +8209,7 @@ async function interpretOrFallback(text, { candidates, catalogs } = {}) {
   const en = ACTIVE_LOCALE === 'en';
   const Intent = globalThis.RebuildersChatIntent;
   const message = appendAgentMessage(en ? 'Figuring that out…' : '알아보는 중…');
+  setAgentSearching(message, true);
   const payload = Intent.buildInterpretPayload(text, {
     date: dateKey(currentDate),
     meal: currentMeal || globalThis.RebuildersQuickEntry?.mealForTime?.(new Date()) || 'snack',
@@ -8046,11 +8251,35 @@ async function handleAgentCommand() {
       }
       pendingClarify = null;
     }
+    await ensureMfdsReady();
     const catalogs = addExactOfficialHits(localMatchCatalogs(), text);
+    const classified = Intent?.classifyChat(text, { pendingClarify }) || { type: 'food' };
     const local = Intent?.matchLocalInstant(text, catalogs, { now: new Date() }) || { ok: false, candidates: [] };
-    if (local.ok && local.parsed?.items?.length) {
-      await applyChatFoods(local.parsed);
-      return;
+    if (classified.type === 'food') {
+      if (local.ok && local.parsed?.items?.length) {
+        await applyChatFoods(local.parsed);
+        return;
+      }
+      if (!local.instruction) {
+        const parsed = local.parsed || parseQuickFoodText(text);
+        if (parsed?.ambiguous && parsed.items.length) {
+          if (!globalThis.RebuildersBridge?.isConfigured()) {
+            pendingClarify = { parsed, text };
+            const phrase = parsed.ambiguous.phrase || parsed.items.map(item => item.name).join(' ');
+            const reply = appendAgentMessage(ACTIVE_LOCALE === 'en'
+              ? `Is “${phrase}” one product, or two foods?`
+              : `'${phrase}' 한 제품이에요, 두 개예요?`);
+            appendChoiceButtons(reply, [
+              { label: ACTIVE_LOCALE === 'en' ? 'One product' : '한 제품', onClick: () => applyClarifyChoice('one') },
+              { label: ACTIVE_LOCALE === 'en' ? 'Two foods' : '두 개', onClick: () => applyClarifyChoice('two') },
+            ]);
+            return;
+          }
+        } else if (parsed?.items?.length) {
+          await applyChatFoods(parsed);
+          return;
+        }
+      }
     }
     if (globalThis.RebuildersBridge?.isConfigured()) {
       await interpretOrFallback(text, { candidates: local.candidates, catalogs });
@@ -9778,10 +10007,13 @@ async function runBridgeQueueOnce({ announce = false } = {}) {
   }
   const en = ACTIVE_LOCALE === 'en';
   if (total) showToast(en ? `Nutrition filled · ${total} (AI estimate)` : `영양 채웠어요 · ${total}개 (AI 추정)`, 'success');
-  if (failedNames.length && announce) {
-    showToast(en ? `Could not find: ${failedNames.join(', ')}. Please enter it yourself.` : `${failedNames.join(', ')}은(는) 못 찾았어요. 직접 입력해 주세요.`, 'info');
-  } else if (!total && announce && stopKind) {
-    showToast(bridgeStopMessage(stopKind), stopKind === 'unauthorized' ? 'error' : 'info');
+  if (failedNames.length) {
+    announceBridgeFailure(failedNames);
+    if (announce) showToast(en ? `Could not find: ${failedNames.join(', ')}. Please enter it yourself.` : `${failedNames.join(', ')}은(는) 못 찾았어요. 직접 입력해 주세요.`, 'info');
+  } else if (!total && stopKind) {
+    const waiting = RebuildersBridge.getQueue().flatMap(job => (job.items || []).map(item => item.name)).filter(Boolean);
+    if (waiting.length) announceBridgeFailure(waiting, bridgeStopMessage(stopKind));
+    if (announce) showToast(bridgeStopMessage(stopKind), stopKind === 'unauthorized' ? 'error' : 'info');
   }
   return { filled: total, stopKind };
 }

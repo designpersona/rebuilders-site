@@ -53,7 +53,7 @@ for fname, kind in FILES:
             if kcal is None or not name: continue
             unit = 1 if 'ml' in (r.get('영양성분함량기준량') or '').lower() else 0
             maker = ''
-            for k in ('제조사명', '수입업체명', '유통업체명'):
+            for k in ('업체명', '제조사명', '수입업체명', '유통업체명'):
                 v = (r.get(k) or '').strip()
                 if v not in NONE: maker = re.sub(r'\s+', ' ', v); break
             w = weight(r.get('식품중량')) or weight(r.get('1회 섭취참고량'))

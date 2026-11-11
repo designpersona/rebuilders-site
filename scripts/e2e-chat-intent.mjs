@@ -80,9 +80,9 @@ try {
     food.cal = 120; food.carbs = 10; food.protein = 5; food.fat = 4;
     pendingFillChats.push({ chatId: msg.dataset.chatId, date: dateKey(currentDate), mealId: 'snack', ids: [food.id], names: [food.name] });
     announceBridgeFill({ date: dateKey(currentDate), meal: 'snack' }, [food]);
-    return { text: msg.querySelector('.agent-bubble-text')?.textContent || '', hasLater: /채워줄게요/.test(msg.textContent) };
+    return { text: msg.querySelector('.agent-bubble-text')?.textContent || '', hasLater: /채워줄게요|찾는 중/.test(msg.textContent), searching: msg.classList.contains('is-searching') };
   `);
-  check('영양을 채우면 채팅이 kcal로 바뀌고 채워줄게요는 사라짐', /테스트채움음식/.test(r.text) && /120kcal/.test(r.text) && !r.hasLater, JSON.stringify(r));
+  check('영양을 채우면 채팅이 kcal로 바뀌고 찾는 중 안내가 사라짐', /테스트채움음식/.test(r.text) && /120kcal/.test(r.text) && !r.hasLater && !r.searching, JSON.stringify(r));
 
   // 7. 검색 시트 폴백
   r = await evaluate(`
@@ -129,7 +129,33 @@ try {
   const callsAfterMine = await evaluate(`return window.__bridgeCalls.slice();`);
   check('내 음식 재사용은 /interpret·/jobs·/log 를 부르지 않음', !callsAfterMine.some(c => /\/(interpret|jobs|log)/.test(c)), JSON.stringify(callsAfterMine));
 
-  // 9. 모르는 말은 원문 통째로 /interpret
+  // 8b. 기존에 없는 짧은 음식은 바로 저장하고 찾는 중 (interpret를 기다리지 않음)
+  r = await evaluate(`
+    window.__bridgeCalls = [];
+    window.__lastInterpretBody = null;
+    const prev = window.fetch;
+    window.fetch = async (url, opts = {}) => {
+      const path = '/' + String(url).split('/').slice(3).join('/');
+      const method = (opts.method || 'GET').toUpperCase();
+      window.__bridgeCalls.push(method + ' ' + path);
+      if (path === '/health') return new Response(JSON.stringify({ ok: true, interpret: true, jobs: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/jobs' && method === 'POST') {
+        return new Response(JSON.stringify({ ok: true, job_id: 'd'.repeat(32), done: false, pending: ['기존없는음식xyz테스트'] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (path === '/interpret' && method === 'POST') {
+        window.__lastInterpretBody = JSON.parse(opts.body || '{}');
+        return new Response(JSON.stringify({ ok: true, job_id: 'e'.repeat(32), done: true, pending: [], intent: 'log', items: [], edits: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return prev(url, opts);
+    };
+    return 1;
+  `);
+  r = await evaluate(chat('기존없는음식xyz테스트'));
+  const unknownCalls = await evaluate(`return { calls: window.__bridgeCalls.slice(), interpret: window.__lastInterpretBody, searching: [...document.querySelectorAll('#agent-log .agent-message.is-agent')].pop()?.classList.contains('is-searching') };`);
+  check('기존에 없는 음식은 바로 저장되고 찾는 중이 보임', r.foods.some(f => f.name === '기존없는음식xyz테스트') && /저장했어요/.test(r.reply) && /기존 데이터에 없어서 찾는 중/.test(r.reply), JSON.stringify(r));
+  check('짧은 음식 기록은 /interpret 를 기다리지 않음', !unknownCalls.interpret && !unknownCalls.calls.some(c => c === 'POST /interpret') && unknownCalls.searching, JSON.stringify(unknownCalls));
+
+  // 9. 애매한 말은 원문 통째로 /interpret
   r = await evaluate(`
     window.__bridgeCalls = [];
     window.__lastInterpretBody = null;
@@ -167,8 +193,14 @@ try {
   const afterQ = await evaluate(`return (${allFoods}).length;`);
   check('interpret question 은 답만 하고 기록을 추가하지 않음', afterQ === beforeQ && /확인된 값이 없어요/.test(r.reply), JSON.stringify({ afterQ, beforeQ, r }));
 
-  r = await evaluate(`window.__interpretReply = { intent: 'clarify', items: [], edits: [], clarifyQuestion: '한 제품이에요, 두 개예요?', clarifyOptions: ['한 제품', '두 개'] }; return 1;`);
-  r = await evaluate(chat('신제품모호한입력xyz'));
+  r = await evaluate(`
+    window.__interpretReply = { intent: 'clarify', items: [], edits: [], clarifyQuestion: '한 제품이에요, 두 개예요?', clarifyOptions: ['한 제품', '두 개'] };
+    await interpretOrFallback('신제품모호한입력xyz');
+    return {
+      reply: [...document.querySelectorAll('#agent-log .agent-message.is-agent .agent-bubble-text')].pop()?.textContent || '',
+      choices: [...document.querySelectorAll('#agent-log .agent-choice')].map(b => b.textContent),
+    };
+  `);
   check('interpret clarify 는 선택 버튼을 보여 줌', /한 제품이에요, 두 개예요\?/.test(r.reply) && r.choices.slice(-2).join('|') === '한 제품|두 개', JSON.stringify(r));
 
   // 11. 브리지가 꺼지면 기존 규칙으로 넣고 짧게 알림
@@ -180,7 +212,7 @@ try {
   `);
   r = await evaluate(chat('해석실패테스트바나나'));
   const fallbackNotes = await evaluate(`return [...document.querySelectorAll('#agent-log .agent-message.is-agent .agent-bubble-text')].slice(-3).map(el => el.textContent);`);
-  check('브리지가 꺼지면 휴대폰 규칙으로 넣고 연결이 안 된다고 알림', fallbackNotes.some(t => /맥 미니에 연결할 수 없어서/.test(t)) && r.foods.some(f => /해석실패테스트바나나|바나나/.test(f.name)), JSON.stringify({ fallbackNotes, foods: r.foods }));
+  check('브리지가 꺼져도 기존에 없는 음식은 바로 저장됨', r.foods.some(f => /해석실패테스트바나나|바나나/.test(f.name)) && fallbackNotes.some(t => /저장했어요/.test(t)), JSON.stringify({ fallbackNotes, foods: r.foods, reply: r.reply }));
 
   // 12. 검색 순서·중복 제거
   r = await evaluate(`
