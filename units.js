@@ -35,8 +35,8 @@
     '줌': { step: 1, kind: 'count', grams: 20, estimated: true },
     '한줌': { step: 1, kind: 'count', grams: 20, estimated: true },
     '회': { step: 1, kind: 'count' },
-    'g': { step: 10, kind: 'mass', grams: 1 },
-    'ml': { step: 10, kind: 'volume', ml: 1, grams: 1 },
+    'g': { step: 5, kind: 'mass', grams: 1 },
+    'ml': { step: 5, kind: 'volume', ml: 1, grams: 1 },
     'kg': { step: 0.1, kind: 'mass', grams: 1000 },
     'l': { step: 0.1, kind: 'volume', ml: 1000, grams: 1000 },
   };
@@ -370,9 +370,26 @@
     return primary;
   }
 
+  function portionFromParts(food, eaten, total) {
+    const e = Number(eaten), n = Number(total);
+    if (!(e > 0) || !(n > 0)) return null;
+    return portionAmount(food, e / n);
+  }
+
   function parseServing(text) {
     const raw = String(text || '').trim();
     if (!raw) return null;
+    const split = raw.match(/^\s*(\d+)\s*(?:등분|조각)\s*(?:중|으로\s*나눠서|해서)\s*(\d+)\s*조각\s*$/u)
+      || raw.match(/^\s*(\d+)\s*분의\s*(\d+)\s*$/u);
+    if (split) {
+      const total = Number(split[1]), eaten = Number(split[2]);
+      if (total > 0 && eaten > 0) return { value: eaten / total, unit: '개', text: `${eaten}/${total}` };
+    }
+    const splitRev = raw.match(/^\s*(\d+)\s*조각으로\s*(?:나눠서|나누(?:어|어)?서)\s*(\d+)\s*조각\s*$/u);
+    if (splitRev) {
+      const total = Number(splitRev[1]), eaten = Number(splitRev[2]);
+      if (total > 0 && eaten > 0) return { value: eaten / total, unit: '개', text: `${eaten}/${total}` };
+    }
     const cup = { '숏': 237, short: 237, '톨': 355, tall: 355, '그란데': 473, grande: 473, '벤티': 591, venti: 591 };
     const compactRaw = compact(raw).replace(/사이즈$/u, '');
     if (cup[compactRaw] || cup[raw]) {
@@ -717,6 +734,7 @@
     gramsForUnit,
     knownPackageGrams,
     portionAmount,
+    portionFromParts,
     plateCountFor,
     typicalServing,
     resolveAmount,

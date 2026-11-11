@@ -458,12 +458,12 @@ function setCardTime(mealId, slot, value, manual = true) {
 }
 
 function setAutoTimeForFirstFood(mealId, slot, wasEmpty, clock) {
+  // 이미 있는 끼니 시각(점심 12:30 등)은 음식을 넣어도 바꾸지 않음.
+  // 시각이 비어 있는 간식 칸만, 첫 음식일 때 채운다.
   if (!wasEmpty) return;
   const entry = timeEntryFor(mealId, slot);
-  if (!entry.manual) {
-    // 첫 음식을 넣은 시각, 또는 문장에 말한 시각. 평균 고정 시간(08:00 등)은 쓰지 않음.
-    entry.value = (typeof clock === 'string' && /^\d{2}:\d{2}$/.test(clock)) ? clock : currentClockTime();
-  }
+  if (!entry || entry.value) return;
+  entry.value = (typeof clock === 'string' && /^\d{2}:\d{2}$/.test(clock)) ? clock : currentClockTime();
 }
 
 function escapeHtml(str) {
@@ -2486,6 +2486,16 @@ function openAmountEditor(food, dragCtx, anchor) {
         <button type="button" class="food-amount-portion" data-portion="0.5">1/2</button>
         <button type="button" class="food-amount-portion" data-portion="1">1</button>
       </div>
+      <details class="food-amount-split">
+        <summary>${ACTIVE_LOCALE === 'en' ? 'Split into pieces' : '등분'}</summary>
+        <div class="food-amount-split-row">
+          <input class="food-amount-split-total" type="number" inputmode="numeric" min="2" step="1" value="4" aria-label="${ACTIVE_LOCALE === 'en' ? 'How many pieces' : '몇 등분'}">
+          <span>${ACTIVE_LOCALE === 'en' ? 'pieces, eat' : '등분 중'}</span>
+          <input class="food-amount-split-eaten" type="number" inputmode="numeric" min="1" step="1" value="1" aria-label="${ACTIVE_LOCALE === 'en' ? 'Pieces eaten' : '몇 조각'}">
+          <span>${ACTIVE_LOCALE === 'en' ? '' : '조각'}</span>
+          <button type="button" class="food-amount-split-apply">${ACTIVE_LOCALE === 'en' ? 'Apply' : '적용'}</button>
+        </div>
+      </details>
       <div class="food-amount-card-row">
         <button type="button" class="food-amount-step" data-dir="-1" aria-label="-">−</button>
         <div class="food-amount-copy"><input class="food-amount-value" type="text" inputmode="decimal" enterkeyhint="done" aria-label="${ACTIVE_LOCALE === 'en' ? 'Amount' : '양'}"><span class="food-amount-cals"></span></div>
@@ -2496,6 +2506,19 @@ function openAmountEditor(food, dragCtx, anchor) {
     </div>`;
     document.body.appendChild(pop);
     pop.addEventListener('click', event => event.stopPropagation());
+    pop.querySelector('.food-amount-split-apply')?.addEventListener('click', event => {
+      event.preventDefault();
+      const state = amountEditorState;
+      if (!state) return;
+      const foodNow = meals[state.mealId]?.foods[state.idx];
+      if (!foodNow) return;
+      const total = Number(pop.querySelector('.food-amount-split-total')?.value);
+      const eaten = Number(pop.querySelector('.food-amount-split-eaten')?.value);
+      const next = globalThis.RebuildersUnits?.portionFromParts?.(foodNow, eaten, total);
+      if (!next) return;
+      pop.classList.remove('is-awaiting-grams');
+      commitAmountEdit(next);
+    });
     pop.querySelectorAll('.food-amount-portion').forEach(btn => {
       btn.addEventListener('click', event => {
         event.preventDefault();
@@ -5091,10 +5114,20 @@ document.getElementById('food-dex-amount')?.addEventListener('click', event => {
   const step = event.target.closest('.food-amount-step');
   const unitBtn = event.target.closest('.food-dex-amount-unit');
   const portion = event.target.closest('.food-amount-portion');
+  const splitBtn = event.target.closest('.food-amount-split-apply');
   const foodNow = currentFoodDexFood();
   if (!foodNow) return;
+  if (!step && !unitBtn && !portion && !splitBtn) return;
   event.preventDefault();
   event.stopPropagation();
+  if (splitBtn) {
+    const root = document.getElementById('food-dex-amount');
+    const total = Number(root?.querySelector('.food-amount-split-total')?.value);
+    const eaten = Number(root?.querySelector('.food-amount-split-eaten')?.value);
+    const next = globalThis.RebuildersUnits?.portionFromParts?.(foodNow, eaten, total);
+    if (next) void commitFoodDexAmount(next);
+    return;
+  }
   if (portion) {
     const next = globalThis.RebuildersUnits?.portionAmount?.(foodNow, Number(portion.dataset.portion));
     if (next) void commitFoodDexAmount(next);
@@ -7618,6 +7651,7 @@ const LAST_CHAT_BATCH_KEY = 'rebuilders-last-chat-batch';
 let lastChatBatch = null;
 let pendingClarify = null;
 let pendingFillChats = [];
+let lastInterpretMs = 0;
 
 function loadLastChatBatch() {
   if (lastChatBatch) return lastChatBatch;
@@ -8260,18 +8294,128 @@ function lastChatBatchContext() {
   };
 }
 
+function todayRecordsContext() {
+  const out = [];
+  ['breakfast', 'lunch', 'dinner', 'snack'].forEach(mealId => {
+    (meals[mealId]?.foods || []).forEach(food => {
+      if (!food?.name) return;
+      out.push({
+        id: food.id || '',
+        name: food.name,
+        brand: food.brand || food.maker || '',
+        meal: mealId,
+        amount: food.serving || '',
+        kcal: typeof food.cal === 'number' ? food.cal : null,
+      });
+    });
+  });
+  return out;
+}
+
+function savedFoodsContext() {
+  return Object.entries(CUSTOM_FOODS || {}).slice(0, 40).map(([name, data]) => ({
+    name,
+    brand: data?.brand || data?.maker || '',
+  }));
+}
+
+function mealSlotTime(mealId) {
+  const entry = mealId && mealId !== 'snack' ? timeEntryFor(mealId) : null;
+  return entry?.value || null;
+}
+
+function interpretContextFor(text, catalogs, candidates) {
+  const Intent = globalThis.RebuildersChatIntent;
+  const meal = Intent?.mealIdFrom?.(text) || currentMeal || null;
+  return {
+    date: dateKey(currentDate),
+    meal,
+    time: mealSlotTime(meal),
+    lastBatch: lastChatBatchContext(),
+    candidates: candidates || Intent?.candidateNames?.(text, catalogs || localMatchCatalogs()) || [],
+    todayRecords: todayRecordsContext(),
+    savedFoods: savedFoodsContext(),
+  };
+}
+
+async function showFoodCandidateButtons(text, matches, { mealId, amount } = {}) {
+  const en = ACTIVE_LOCALE === 'en';
+  const unique = [];
+  const seen = new Set();
+  (matches || []).forEach(entry => {
+    const name = entry?.name;
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    unique.push(entry);
+  });
+  if (unique.length < 2) return false;
+  const question = en ? 'Which one did you mean?' : '어떤 음식이에요?';
+  const message = appendAgentMessage(question);
+  const options = unique.slice(0, 4).map(entry => {
+    const brand = entry.brand || entry.data?.brand || entry.data?.maker || '';
+    const label = brand && !String(entry.name).includes(brand) ? `${brand} ${entry.name}` : entry.name;
+    return { label, entry };
+  });
+  pendingClarify = { source: 'candidates', text, options: options.map(opt => opt.label), parsed: null };
+  appendChoiceButtons(message, options.map(opt => ({
+    label: opt.label,
+    onClick: async () => {
+      pendingClarify = null;
+      const catalogs = addExactOfficialHits(localMatchCatalogs(), opt.entry.name);
+      const local = globalThis.RebuildersChatIntent?.matchLocalFood?.(opt.label, catalogs, { now: new Date(), mealId })
+        || globalThis.RebuildersChatIntent?.matchLocalInstant?.(opt.label, catalogs, { now: new Date() });
+      const parsed = local?.ok ? local.parsed : null;
+      if (parsed?.items?.length) {
+        if (mealId && !parsed.mealExplicit) { parsed.mealId = mealId; parsed.mealExplicit = true; }
+        if (amount && parsed.items[0] && !parsed.items[0].amount) {
+          parsed.items[0].amount = amount;
+          const scale = globalThis.RebuildersQuickEntry?.scaleFood;
+          if (scale) parsed.items[0].food = scale(parsed.items[0]);
+        }
+        await applyChatFoods(parsed);
+        return;
+      }
+      const Intent = globalThis.RebuildersChatIntent;
+      const hit = opt.entry;
+      const item = { name: hit.name, baseName: hit.name, data: hit.data, known: Boolean(hit.data), amount, origin: hit.origin };
+      if (globalThis.RebuildersQuickEntry?.scaleFood) item.food = RebuildersQuickEntry.scaleFood(item);
+      await applyChatFoods({
+        mealId: mealId || Intent?.mealIdFrom?.(text) || currentMeal || 'snack',
+        mealExplicit: Boolean(mealId || Intent?.mealIdFrom?.(text)),
+        date: dateKey(currentDate),
+        dateExplicit: false,
+        time: null,
+        timeExplicit: false,
+        recordIntent: true,
+        items: [item],
+        ambiguous: null,
+        phrase: text,
+      });
+    },
+  })));
+  return true;
+}
+
 function interpretItemsToParsed(result, catalogs, text) {
   const Intent = globalThis.RebuildersChatIntent;
   const QE = globalThis.RebuildersQuickEntry;
   const mealDefault = result.items.find(item => item.meal)?.meal
+    || Intent?.mealIdFrom?.(text)
     || QE?.mealForTime?.(new Date())
     || 'snack';
+  const ambiguous = [];
   const items = result.items.map(item => {
-    const hit = Intent?.exactCatalogHit(item.name, catalogs)
+    const query = [item.brand, item.name].filter(Boolean).join(' ');
+    const exact = Intent?.exactCatalogHit(item.name, catalogs)
       || (item.brand ? Intent.exactCatalogHit(`${item.brand} ${item.name}`, catalogs) : null);
+    const fuzzy = exact ? null : Intent?.findCatalogMatches?.(query, catalogs);
+    if (fuzzy?.ambiguous) {
+      ambiguous.push({ query, matches: fuzzy.matches });
+    }
+    const hit = exact || fuzzy?.best || null;
     const amount = item.amount && (item.amount.value != null || item.amount.text)
       ? item.amount
-      : null;
+      : (typeof item.amount === 'number' ? { value: item.amount, unit: item.unit || '개', text: String(item.amount) } : null);
     let entry = {
       name: hit?.name || item.name,
       baseName: hit?.baseName || hit?.name || item.name,
@@ -8279,6 +8423,7 @@ function interpretItemsToParsed(result, catalogs, text) {
       known: Boolean(hit?.data),
       amount,
       origin: hit?.origin,
+      packageGrams: item.packageGrams || item.grams || null,
     };
     if (!entry.amount && hit) {
       const rec = (catalogs?.recent || []).find(row => Intent.compactName(row.name) === Intent.compactName(entry.name));
@@ -8295,14 +8440,15 @@ function interpretItemsToParsed(result, catalogs, text) {
   const time = result.items.find(item => item.time)?.time || null;
   return {
     mealId: mealDefault,
-    mealExplicit: result.items.some(item => item.meal),
+    mealExplicit: result.items.some(item => item.meal) || Boolean(Intent?.mealIdFrom?.(text)),
     date: dateKey(currentDate),
     dateExplicit: false,
-    time,
-    timeExplicit: Boolean(time),
+    time: null, // 끼니 시각은 기록으로 덮지 않음
+    timeExplicit: false,
     recordIntent: true,
     items,
     ambiguous: null,
+    ambiguousCandidates: ambiguous[0]?.matches || null,
     phrase: text,
   };
 }
@@ -8367,6 +8513,10 @@ async function applyInterpretResult(result, { message, text, catalogs } = {}) {
   }
   if (message?.parentNode) message.remove();
   const parsed = interpretItemsToParsed(result, catalogs || localMatchCatalogs(), text);
+  if (parsed.ambiguousCandidates?.length >= 2) {
+    await showFoodCandidateButtons(text, parsed.ambiguousCandidates, { mealId: parsed.mealId, amount: parsed.items[0]?.amount });
+    return;
+  }
   if (!parsed.items.length) {
     appendAgentMessage(en
       ? 'Tell me the meal and food, such as “breakfast banana.”'
@@ -8429,15 +8579,10 @@ async function interpretOrFallback(text, { candidates, catalogs } = {}) {
   const Intent = globalThis.RebuildersChatIntent;
   const message = appendAgentMessage(en ? 'Figuring that out…' : '알아보는 중…');
   setAgentSearching(message, true);
-  const payload = Intent.buildInterpretPayload(text, {
-    date: dateKey(currentDate),
-    meal: currentMeal || globalThis.RebuildersQuickEntry?.mealForTime?.(new Date()) || 'snack',
-    time: `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`,
-    lastBatch: lastChatBatchContext(),
-    candidates: candidates || Intent.candidateNames?.(text, catalogs || localMatchCatalogs()) || [],
-  });
+  const payload = Intent.buildInterpretPayload(text, interpretContextFor(text, catalogs, candidates));
   try {
     const raw = await RebuildersBridge.interpretAndWait(payload);
+    lastInterpretMs = raw.elapsedMs || lastInterpretMs;
     const result = Intent.parseInterpretResult(raw);
     if (!result) throw new RebuildersBridge.BridgeError('bad_request');
     await applyInterpretResult(result, { message, text, catalogs: catalogs || localMatchCatalogs() });
@@ -8465,6 +8610,28 @@ async function handleAgentCommand() {
           await interpretOrFallback(`${original}\n(사용자 답: ${text})`, { catalogs, candidates: Intent?.candidateNames?.(original, catalogs) });
           return;
         }
+        if (pendingClarify.source === 'candidates') {
+          const original = pendingClarify.text;
+          const options = pendingClarify.options || [];
+          pendingClarify = null;
+          const catalogs = addExactOfficialHits(localMatchCatalogs(), text);
+          const picked = options.find(label => Intent?.foldName?.(label) === Intent?.foldName?.(text) || String(label).includes(text) || String(text).includes(label));
+          const query = picked || text;
+          const local = Intent?.matchLocalFood?.(query, catalogs, { now: new Date() });
+          if (local?.ok && local.parsed?.items?.length) {
+            const mealId = Intent?.mealIdFrom?.(original);
+            if (mealId && !local.parsed.mealExplicit) { local.parsed.mealId = mealId; local.parsed.mealExplicit = true; }
+            const amount = Intent?.parsePortionPhrase?.(original);
+            if (amount && local.parsed.items[0] && !local.parsed.items[0].amount) {
+              local.parsed.items[0].amount = amount;
+              if (globalThis.RebuildersQuickEntry?.scaleFood) local.parsed.items[0].food = RebuildersQuickEntry.scaleFood(local.parsed.items[0]);
+            }
+            await applyChatFoods(local.parsed);
+            return;
+          }
+          await interpretOrFallback(`${original}\n(사용자 답: ${text})`, { catalogs, candidates: options });
+          return;
+        }
         await applyClarifyChoice(classified.choice);
         return;
       }
@@ -8473,28 +8640,52 @@ async function handleAgentCommand() {
     await ensureMfdsReady();
     const catalogs = addExactOfficialHits(localMatchCatalogs(), text);
     const classified = Intent?.classifyChat(text, { pendingClarify }) || { type: 'food' };
-    const local = Intent?.matchLocalInstant(text, catalogs, { now: new Date() }) || { ok: false, candidates: [] };
-    if (classified.type === 'food') {
+    if (classified.type === 'edit') {
+      const targets = findTargetFoods(classified.foodHint, classified.targetId);
+      if (targets.length) {
+        await applyEditIntent(classified);
+        return;
+      }
+    }
+    if (classified.type === 'question') {
+      const hint = classified.foodHint || '';
+      const localHit = hint ? (Intent?.exactCatalogHit?.(hint, catalogs) || Intent?.fuzzyCatalogHit?.(hint, catalogs)) : null;
+      const knownCal = localHit && !localHit.ambiguous && typeof localHit.data?.cal === 'number';
+      const recentCal = findTargetFoods(hint).some(item => typeof item.food?.cal === 'number');
+      if (knownCal || recentCal || !globalThis.RebuildersBridge?.isConfigured()) {
+        await answerQuestion(text, classified);
+        return;
+      }
+    }
+    const local = Intent?.matchLocalFood?.(text, catalogs, { now: new Date() })
+      || Intent?.matchLocalInstant(text, catalogs, { now: new Date() })
+      || { ok: false, candidates: [] };
+    if (classified.type === 'food' || classified.type === 'edit') {
+      if (local.ambiguousCandidates?.length >= 2) {
+        const mealId = Intent?.mealIdFrom?.(text) || local.parsed?.mealId;
+        const amount = Intent?.parsePortionPhrase?.(text) || local.parsed?.items?.[0]?.amount;
+        await showFoodCandidateButtons(text, local.ambiguousCandidates, { mealId, amount });
+        return;
+      }
       if (local.ok && local.parsed?.items?.length) {
         await applyChatFoods(local.parsed);
         return;
       }
-      if (!local.instruction) {
+      if (!local.instruction && !globalThis.RebuildersBridge?.isConfigured()) {
         const parsed = local.parsed || parseQuickFoodText(text);
         if (parsed?.ambiguous && parsed.items.length) {
-          if (!globalThis.RebuildersBridge?.isConfigured()) {
-            pendingClarify = { parsed, text };
-            const phrase = parsed.ambiguous.phrase || parsed.items.map(item => item.name).join(' ');
-            const reply = appendAgentMessage(ACTIVE_LOCALE === 'en'
-              ? `Is “${phrase}” one product, or two foods?`
-              : `'${phrase}' 한 제품이에요, 두 개예요?`);
-            appendChoiceButtons(reply, [
-              { label: ACTIVE_LOCALE === 'en' ? 'One product' : '한 제품', onClick: () => applyClarifyChoice('one') },
-              { label: ACTIVE_LOCALE === 'en' ? 'Two foods' : '두 개', onClick: () => applyClarifyChoice('two') },
-            ]);
-            return;
-          }
-        } else if (parsed?.items?.length) {
+          pendingClarify = { parsed, text };
+          const phrase = parsed.ambiguous.phrase || parsed.items.map(item => item.name).join(' ');
+          const reply = appendAgentMessage(ACTIVE_LOCALE === 'en'
+            ? `Is “${phrase}” one product, or two foods?`
+            : `'${phrase}' 한 제품이에요, 두 개예요?`);
+          appendChoiceButtons(reply, [
+            { label: ACTIVE_LOCALE === 'en' ? 'One product' : '한 제품', onClick: () => applyClarifyChoice('one') },
+            { label: ACTIVE_LOCALE === 'en' ? 'Two foods' : '두 개', onClick: () => applyClarifyChoice('two') },
+          ]);
+          return;
+        }
+        if (parsed?.items?.length) {
           await applyChatFoods(parsed);
           return;
         }
@@ -10122,6 +10313,22 @@ function fillFoodsFromBridge(list, found, records = []) {
 }
 
 /* 이름만 저장됐던 최근 음식을 AI가 채운 값으로 바꿈(같은 이름 중복은 정리) */
+async function mergeResolvedCustomFoods(records) {
+  for (const record of records || []) {
+    if (!record?.name || isNutritionMissing(record)) continue;
+    const placeholder = record.inputName;
+    if (placeholder && placeholder !== record.name && CUSTOM_FOODS[placeholder] && isNutritionMissing(CUSTOM_FOODS[placeholder])) {
+      try { await deleteCustomFood(placeholder); } catch (error) { console.warn('drop placeholder food', error); }
+    }
+    if (FOOD_DB[record.name]) continue;
+    const { id, _isNew, slot, loggedVia, inputName, ...rest } = record;
+    void id; void _isNew; void slot; void loggedVia; void inputName;
+    try {
+      await saveCustomFood(record.name, { ...rest, discoveryOrigin: rest.discoveryOrigin || 'bridge', unlocked: true });
+    } catch (error) { console.warn('remember resolved food', error); }
+  }
+}
+
 async function refreshRecentAfterBridge(records) {
   if (!records.length) return;
   let list = RECENT_FOODS.map(food => ({ ...food }));
@@ -10155,6 +10362,7 @@ async function applyBridgeResult(job, result) {
       await persistMealsOrRestore(before);
       if (activeMealPageContext) renderMealPage();
       await refreshRecentAfterBridge(records);
+      await mergeResolvedCustomFoods(records);
       announceBridgeFill(job, records);
     }
     return filled;
@@ -10168,6 +10376,7 @@ async function applyBridgeResult(job, result) {
     await storageRepository.saveDay(job.date, next);
     if (statsCache) statsCache[job.date] = next;
     await refreshRecentAfterBridge(records);
+    await mergeResolvedCustomFoods(records);
     announceBridgeFill(job, records);
   }
   return filled;

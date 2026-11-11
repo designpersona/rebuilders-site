@@ -28,6 +28,125 @@
     return String(value || '').toLowerCase().normalize('NFC').replace(/[\s·.,()\[\]\-_/]+/g, '');
   }
 
+  // 줄임말·오타를 같은 글자로 맞춰 비교한다. 스벅=스타벅스, 케익=케이크, 브륄래=브륄레.
+  function foldName(value) {
+    let s = compactName(value);
+    s = s.replace(/스타벅스|스타박스|starbucks/g, '\0STAR\0');
+    s = s.replace(/스벅/g, '\0STAR\0');
+    s = s.replace(/\0STAR\0/g, '스타벅스');
+    s = s.replace(/브륄래|브릴레|brulee|brûlée/g, '브륄레');
+    s = s.replace(/케익|케잌/g, '케이크');
+    return s;
+  }
+
+  function nameTokens(value) {
+    const raw = String(value || '').toLowerCase().normalize('NFC');
+    const parts = raw.split(/[\s·.,()\[\]\-_/]+/).filter(Boolean);
+    const tokens = parts.map(part => foldName(part)).filter(t => t.length >= 1);
+    const folded = foldName(value);
+    // 붙여 쓴 '스타벅스치즈케이크'처럼 브랜드가 앞에 있으면 나눔
+    const brands = ['스타벅스', '버거킹', '맥도날드', '롯데리아', '파리바게뜨', '파리바게트'];
+    brands.forEach(brand => {
+      if (folded.startsWith(brand) && folded.length > brand.length) {
+        tokens.push(brand);
+        // 붙여 쓴 이름만 나머지를 토큰으로 추가. 이미 띄어 쓴 말의 나머지를 붙이면
+        // '브륄레치즈케이크'가 되어 '브륄레 쿠키 치즈케이크'와 안 맞는다.
+        if (parts.length <= 1) tokens.push(folded.slice(brand.length));
+      }
+    });
+    return [...new Set(tokens)];
+  }
+
+  function tokenInTarget(tok, targetFold, targetTokens) {
+    if (!tok) return false;
+    if (targetFold.includes(tok)) return true;
+    return targetTokens.some(t => t === tok || (t.length >= tok.length && t.includes(tok)));
+  }
+
+  function tokenOverlap(queryTokens, targetFold, targetTokens) {
+    if (!queryTokens.length) return 0;
+    let hit = 0;
+    queryTokens.forEach(tok => { if (tokenInTarget(tok, targetFold, targetTokens)) hit += 1; });
+    return hit / queryTokens.length;
+  }
+
+  function unmatchedQueryTokens(queryTokens, targetFold, targetTokens) {
+    return queryTokens.filter(tok => tok && tok.length >= 2 && !tokenInTarget(tok, targetFold, targetTokens));
+  }
+
+  function scoreNameMatch(query, entry) {
+    const qFold = foldName(query);
+    if (!qFold) return 0;
+    const names = [entry?.name, entry?.brand, entry?.data?.brand, entry?.data?.maker, ...(entry?.aliases || [])].filter(Boolean);
+    let best = 0;
+    const qTokens = nameTokens(query);
+    names.forEach(name => {
+      const tFold = foldName(name);
+      if (!tFold) return;
+      if (qFold === tFold) { best = 1; return; }
+      let score = 0;
+      if (tFold.includes(qFold) || qFold.includes(tFold)) {
+        score = Math.min(qFold.length, tFold.length) / Math.max(qFold.length, tFold.length);
+      }
+      const overlap = tokenOverlap(qTokens, tFold, nameTokens(name));
+      score = Math.max(score, overlap);
+      const brand = foldName(entry?.brand || entry?.data?.brand || entry?.data?.maker || '');
+      let usedFold = tFold;
+      let usedTokens = nameTokens(name);
+      if (brand) {
+        const combined = foldName(`${entry.brand || entry.data?.brand || entry.data?.maker || ''} ${name}`);
+        if (combined && (combined === qFold || combined.includes(qFold) || qFold.includes(combined))) {
+          score = Math.max(score, Math.min(qFold.length, combined.length) / Math.max(qFold.length, combined.length));
+        }
+        const overlap2 = tokenOverlap(qTokens, combined, nameTokens(`${entry.brand || ''} ${name}`));
+        if (overlap2 >= overlap) { usedFold = combined; usedTokens = nameTokens(`${entry.brand || ''} ${name}`); }
+        score = Math.max(score, overlap2);
+      }
+      // 쿼리에만 있는 뚜렷한 단어(사과, 신제품 등)가 있으면 같은 제품으로 단정하지 않음.
+      const leftover = unmatchedQueryTokens(qTokens, usedFold, usedTokens);
+      if (leftover.length && qFold !== tFold && !usedFold.includes(qFold)) score = Math.min(score, 0.6);
+      if (score > best) best = score;
+    });
+    return best;
+  }
+
+  function findCatalogMatches(query, catalogs, options = {}) {
+    const q = String(query || '').trim();
+    const minScore = options.minScore ?? 0.72;
+    const ambiguousMin = options.ambiguousMin ?? 0.55;
+    const uniqueGap = options.uniqueGap ?? 0.12;
+    const scored = [];
+    const seen = new Set();
+    catalogList(catalogs).forEach(entry => {
+      const key = `${foldName(entry.name)}|${foldName(entry.brand || entry.data?.brand || entry.data?.maker || '')}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const score = scoreNameMatch(q, entry);
+      if (score >= ambiguousMin) scored.push({ entry, score });
+    });
+    scored.sort((a, b) => b.score - a.score || String(a.entry.name).length - String(b.entry.name).length);
+    const best = scored[0];
+    const second = scored[1];
+    const close = scored.filter(item => item.score >= ambiguousMin && best && item.score >= best.score - 0.18 && item.score >= Math.min(0.7, best.score - 0.02));
+    // 쿼리의 핵심 토큰을 모두 포함한 후보가 둘 이상이면 고르지 않음(스타벅스 치즈케이크 → 더블 vs 브륄레).
+    const qTokens = nameTokens(q).filter(t => t.length >= 2 && t !== foldName(q));
+    const strong = scored.filter(item => {
+      const tFold = foldName([item.entry.name, item.entry.brand || item.entry.data?.brand || item.entry.data?.maker || ''].join(' '));
+      const overlap = tokenOverlap(nameTokens(q), tFold, nameTokens(item.entry.name));
+      return overlap >= 0.99 && item.score >= ambiguousMin;
+    });
+    if (strong.length >= 2 && !(best && best.score >= 0.97 && (!second || best.score - second.score >= 0.2))) {
+      return { matches: strong.map(item => item.entry), ambiguous: true, best: null };
+    }
+    if (best && best.score >= minScore && (!second || best.score - second.score >= uniqueGap || best.score >= 0.96)) {
+      return { matches: scored.map(item => item.entry), ambiguous: false, best: best.entry, score: best.score };
+    }
+    if (close.length >= 2) {
+      return { matches: close.map(item => item.entry), ambiguous: true, best: null };
+    }
+    return { matches: scored.map(item => item.entry), ambiguous: false, best: null, score: best?.score || 0 };
+  }
+
   function isQuestion(text) {
     const t = normalize(text);
     if (!t) return false;
@@ -56,6 +175,64 @@
     const value = Number(m[1]);
     if (!Number.isFinite(value) || value <= 0) return null;
     return { value, unit, text: `${value}${unit === '줌' && /한줌/u.test(m[2]) ? '줌' : m[2]}`.replace(/한줌$/u, '한줌') };
+  }
+
+  function parsePortionPhrase(text) {
+    const t = normalize(text);
+    if (!t) return null;
+    const frac = (eaten, total, unit = '개') => {
+      const e = Number(eaten), n = Number(total);
+      if (!(n > 0) || !(e > 0) || e > 10000 || n > 10000) return null;
+      const value = Math.round((e / n) * 10000) / 10000;
+      return { value, unit, text: `${e}/${n}`, parts: { eaten: e, total: n } };
+    };
+    let m = t.match(/(\d+)\s*(?:조각|등분)\s*(?:중|으로\s*나눠서|해서)\s*(\d+)\s*조각/u);
+    if (m) return frac(m[2], m[1]);
+    m = t.match(/(\d+)\s*조각으로\s*(?:나눠서|나누(?:어|어)?서)\s*(\d+)\s*조각/u);
+    if (m) return frac(m[2], m[1]);
+    m = t.match(/(\d+)\s*분의\s*(\d+)/u);
+    if (m) return frac(m[2], m[1]);
+    m = t.match(/(?:^|[^\d])(\d+)\s*\/\s*(\d+)(?!\d)/);
+    if (m) return frac(m[1], m[2]);
+    if (/(^|[\s,])(절반|반\s*만|반만|반)(?:\s*(을|를|만))?(?:\s*(먹|이야|야|으로|로)|$)/u.test(t)
+      && !/\d/.test(t.replace(/\d+\s*(kcal|칼로리)/giu, ''))) {
+      // "반 먹었어" / "절반" — 음식 이름이 함께 있어도 비율만 읽음
+      if (/(반|절반)/u.test(t)) return { value: 0.5, unit: '개', text: '1/2', parts: { eaten: 1, total: 2 } };
+    }
+    m = t.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*(g|그램|ml|밀리|밀리리터)(?:\s|$)/iu);
+    if (m) {
+      const unit = /ml|밀리/i.test(m[2]) ? 'ml' : 'g';
+      const value = Number(m[1]);
+      if (Number.isFinite(value) && value > 0) return { value, unit, text: `${value}${unit}` };
+    }
+    return parseAmountPhrase(t);
+  }
+
+  function stripPortionWords(text) {
+    let t = normalize(text);
+    t = t.replace(/(\d+)\s*(?:조각|등분)\s*(?:중|으로\s*나눠서|해서)\s*(\d+)\s*조각(?:만)?/gu, ' ');
+    t = t.replace(/(\d+)\s*조각으로\s*(?:나눠서|나누(?:어|어)?서)\s*(\d+)\s*조각(?:만)?/gu, ' ');
+    t = t.replace(/(\d+)\s*분의\s*(\d+)/gu, ' ');
+    t = t.replace(/(\d+)\s*\/\s*(\d+)/g, ' ');
+    t = t.replace(/(절반|반\s*만|반만|(?:^|\s)반)(?:\s*(을|를|만))?/gu, ' ');
+    t = t.replace(/(\d+(?:\.\d+)?)\s*(g|그램|ml|밀리|밀리리터)/giu, ' ');
+    t = t.replace(/(\d+(?:\.\d+)?)\s*(개|조각)(?:만)?/gu, ' ');
+    t = t.replace(/(나눠서|나누어|등분|조각만|먹었어|먹었음|먹음|만\s*먹)/gu, ' ');
+    return t.replace(/\s+/g, ' ').trim();
+  }
+
+  function isPortionOnlyFollowUp(text) {
+    const portion = parsePortionPhrase(text);
+    if (!portion) return null;
+    let rest = stripPortionWords(text);
+    rest = rest.replace(/(아까|방금|그거|이거|그것|그걸|이걸|저거|방금\s*거|아까\s*거|그\s*기록|이\s*기록)/gu, ' ');
+    rest = rest.replace(/(아침|점심|저녁|간식|조식|중식|석식|야식)(으로|에)?/gu, ' ');
+    rest = rest.replace(/(으로|로)?\s*(바꿔|고쳐|수정|적어|해)(?:\s*(줘|주세요|달라|요))?/gu, ' ');
+    rest = rest.replace(/(먹었어|먹었음|먹음|만|요|줘|해|좀|오늘)/gu, ' ');
+    rest = rest.replace(/\s+/g, ' ').trim();
+    rest = rest.replace(/(은|는|이|가|을|를|에|의|으로|로)\s*$/u, '').trim();
+    if (rest && rest.length > 1 && !/^(그거|이거|그|이)$/u.test(rest)) return null;
+    return portion;
   }
 
   function extractFoodHint(text) {
@@ -106,6 +283,8 @@
       const amount = parseAmountPhrase(t);
       if (amount) return { action: 'set-amount', amount, foodHint: extractFoodHint(t) };
     }
+    const portionOnly = isPortionOnlyFollowUp(t);
+    if (portionOnly) return { action: 'set-amount', amount: portionOnly, foodHint: extractFoodHint(stripPortionWords(t)) };
     return null;
   }
 
@@ -155,6 +334,14 @@
       }
     }
     return null;
+  }
+
+  function fuzzyCatalogHit(name, catalogs, options = {}) {
+    const exact = exactCatalogHit(name, catalogs);
+    if (exact) return exact;
+    const found = findCatalogMatches(name, catalogs, options);
+    if (found.ambiguous) return { ambiguous: true, matches: found.matches };
+    return found.best || null;
   }
 
   function withLastServing(hit, catalogs) {
@@ -234,11 +421,16 @@
     if (!parsed?.items?.length || parsed.ambiguous) return { ...empty, parsed };
     const resolved = [];
     for (const item of parsed.items) {
-      const hit = withLastServing(exactCatalogHit(item.name, catalogs) || (item.known && item.data ? { name: item.name, data: item.data, origin: 'parsed' } : null), catalogs);
+      let hit = withLastServing(exactCatalogHit(item.name, catalogs) || (item.known && item.data ? { name: item.name, data: item.data, origin: 'parsed' } : null), catalogs);
+      if (!hit || !hit.data) {
+        const fuzzy = fuzzyCatalogHit(item.name, catalogs);
+        if (fuzzy?.ambiguous) return { ...empty, parsed, ambiguousCandidates: fuzzy.matches };
+        if (fuzzy && fuzzy.data) hit = withLastServing(fuzzy, catalogs);
+      }
       if (!hit || !hit.data) return { ...empty, parsed };
-      // 파서가 공식 별칭으로만 맞춘 경우도 data 가 있으면 허용(계란→삶은 달걀). 부분 일치로 새로 지어낸 이름은 거절.
+      // 파서가 공식 별칭으로만 맞춘 경우도 data 가 있으면 허용(계란→삶은 달걀). 퍼지 확정 매칭도 허용.
       const exact = exactCatalogHit(item.name, catalogs) || exactCatalogHit(hit.name, catalogs);
-      if (!exact && !item.known) return { ...empty, parsed };
+      if (!exact && !item.known && !hit.origin) return { ...empty, parsed };
       const next = applyDefaultAmount({ ...item, name: hit.name, baseName: hit.baseName || hit.name, data: hit.data, known: true, origin: hit.origin || exact?.origin }, hit);
       if (QE.scaleFood) next.food = QE.scaleFood(next);
       resolved.push(next);
@@ -251,6 +443,64 @@
     };
   }
 
+  function logFoodQuery(text) {
+    let t = normalize(text);
+    t = t.replace(/(아침|점심|저녁|간식|조식|중식|석식|야식)(으로|에|은|는)?/gu, ' ');
+    t = stripPortionWords(t);
+    t = t.replace(/(먹었어|먹었음|먹음|먹을게|먹을래|기록해|적어)(?:요|줘|주세요)?/gu, ' ');
+    t = t.replace(/\s+/g, ' ').trim();
+    t = t.replace(/(은|는|이|가|을|를|에|의|으로|로)\s*$/u, '').trim();
+    return t;
+  }
+
+  /**
+   * 내 음식·최근·공식과 이름이 딱 맞거나, 줄임말·오타를 고쳐 후보가 하나로 좁혀질 때만 바로 기록.
+   * 후보가 여럿이면 ok:false 와 ambiguousCandidates.
+   */
+  function matchLocalFood(text, catalogs, options = {}) {
+    const instant = matchLocalInstant(text, catalogs, options);
+    if (instant.ok || instant.instruction) return instant;
+    const query = logFoodQuery(text);
+    if (!query || query.length < 2) return instant;
+    const found = findCatalogMatches(query, catalogs);
+    if (found.ambiguous) {
+      return { ok: false, candidates: found.matches.map(entry => entry.name), ambiguousCandidates: found.matches, parsed: instant.parsed };
+    }
+    if (!found.best || !found.best.data) return instant;
+    const QE = global.RebuildersQuickEntry;
+    const parsed = instant.parsed || (QE?.parseQuickEntry ? QE.parseQuickEntry(normalize(text), { foods: catalogsToFoods(catalogs), now: options.now || new Date() }) : null);
+    const portion = parsePortionPhrase(text);
+    const amount = portion || parsed?.items?.[0]?.amount || null;
+    const hit = withLastServing(found.best, catalogs);
+    const item = applyDefaultAmount({
+      name: hit.name,
+      baseName: hit.baseName || hit.name,
+      data: hit.data,
+      known: true,
+      amount,
+      origin: hit.origin,
+    }, hit);
+    if (QE?.scaleFood) item.food = QE.scaleFood(item);
+    const mealId = parsed?.mealId || mealIdFrom(text) || options.mealId || null;
+    return {
+      ok: true,
+      items: [item],
+      parsed: {
+        mealId: mealId || parsed?.mealId,
+        mealExplicit: Boolean(parsed?.mealExplicit || mealIdFrom(text)),
+        date: parsed?.date,
+        dateExplicit: Boolean(parsed?.dateExplicit),
+        time: parsed?.time || null,
+        timeExplicit: Boolean(parsed?.timeExplicit),
+        recordIntent: true,
+        items: [item],
+        ambiguous: null,
+        phrase: text,
+      },
+      candidates: found.matches.map(entry => entry.name),
+    };
+  }
+
   function buildInterpretPayload(text, context = {}) {
     const payload = {
       text: String(text || '').trim().slice(0, 500),
@@ -260,6 +510,22 @@
       lastBatch: context.lastBatch || null,
       candidates: Array.isArray(context.candidates) ? context.candidates.slice(0, 12) : [],
     };
+    if (Array.isArray(context.todayRecords) && context.todayRecords.length) {
+      payload.todayRecords = context.todayRecords.slice(0, 24).map(row => ({
+        id: String(row.id || '').slice(0, 40),
+        name: String(row.name || '').trim().slice(0, 80),
+        brand: String(row.brand || '').trim().slice(0, 40),
+        meal: row.meal || '',
+        amount: String(row.amount || '').trim().slice(0, 40),
+        kcal: typeof row.kcal === 'number' ? row.kcal : null,
+      })).filter(row => row.name);
+    }
+    if (Array.isArray(context.savedFoods) && context.savedFoods.length) {
+      payload.savedFoods = context.savedFoods.slice(0, 40).map(row => ({
+        name: String(row.name || '').trim().slice(0, 80),
+        brand: String(row.brand || '').trim().slice(0, 40),
+      })).filter(row => row.name);
+    }
     // 영양표 사진 등록은 이 작업에 넣지 않음. 나중에 image 필드를 채워 같은 길로 보낼 수 있게 자리만 둠.
     if (context.image) payload.image = context.image;
     return payload;
@@ -303,8 +569,13 @@
       } else if (unit) {
         out.unit = unit;
       }
-      const grams = numOrNull(item.grams, 20000);
+      const grams = numOrNull(item.grams ?? item.package_grams ?? item.packageGrams, 20000);
       if (grams != null) out.grams = grams;
+      const pkg = numOrNull(item.package_grams ?? item.packageGrams, 20000);
+      if (pkg != null) out.packageGrams = pkg;
+      if (item.amount && typeof item.amount === 'number' && item.amount > 0 && item.amount < 1 && !out.amount) {
+        out.amount = { value: item.amount, unit: unit || '개', text: String(item.amount) };
+      }
       if (item.meal && MEAL_WORD[item.meal] || ['breakfast', 'lunch', 'dinner', 'snack'].includes(item.meal)) {
         out.meal = MEAL_WORD[item.meal] || item.meal;
       }
@@ -371,8 +642,14 @@
     mealIdFrom,
     compactName,
     exactCatalogHit,
+    fuzzyCatalogHit,
+    findCatalogMatches,
+    foldName,
     candidateNames,
     matchLocalInstant,
+    matchLocalFood,
+    parsePortionPhrase,
+    isPortionOnlyFollowUp,
     buildInterpretPayload,
     parseInterpretResult,
     editFromInterpret,

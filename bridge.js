@@ -324,6 +324,22 @@
       };
     }
     if (Array.isArray(payload?.candidates)) out.candidates = payload.candidates.map(n => String(n || '').trim().slice(0, 80)).filter(Boolean).slice(0, 12);
+    if (Array.isArray(payload?.todayRecords) && payload.todayRecords.length) {
+      out.todayRecords = payload.todayRecords.slice(0, 24).map(row => ({
+        id: String(row?.id || '').slice(0, 40),
+        name: String(row?.name || '').trim().slice(0, 80),
+        brand: String(row?.brand || '').trim().slice(0, 40),
+        meal: String(row?.meal || '').slice(0, 16),
+        amount: String(row?.amount || '').trim().slice(0, 40),
+        kcal: typeof row?.kcal === 'number' ? row.kcal : null,
+      })).filter(row => row.name);
+    }
+    if (Array.isArray(payload?.savedFoods) && payload.savedFoods.length) {
+      out.savedFoods = payload.savedFoods.slice(0, 40).map(row => ({
+        name: String(row?.name || '').trim().slice(0, 80),
+        brand: String(row?.brand || '').trim().slice(0, 40),
+      })).filter(row => row.name);
+    }
     // 영양표 사진(image)은 이 버전에서 보내지 않음. 필드 자리만 열어 둠.
     if (payload?.image) out.image = payload.image;
     return out;
@@ -361,12 +377,14 @@
   }
 
   async function interpretAndWait(payload, { maxMs = 100000, intervalMs = 2500 } = {}) {
-    const end = Date.now() + maxMs;
+    const started = Date.now();
+    const end = started + maxMs;
     let result = await interpret(payload);
     while (!result.done && result.remoteId && Date.now() < end) {
       await new Promise(resolve => setTimeout(resolve, intervalMs));
       result = await interpret({ ...payload, remoteId: result.remoteId });
     }
+    result.elapsedMs = Date.now() - started;
     if (!result.done && result.remoteId) throw new BridgeError('timeout');
     return result;
   }

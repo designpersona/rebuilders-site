@@ -13795,6 +13795,50 @@ body.ai-sheet-open .phone-frame > .bridge-pending {
   cursor: pointer;
 }
 .food-amount-portion:active { transform: scale(0.96); }
+.food-amount-split {
+  margin: 0;
+  padding: 0;
+}
+.food-amount-split > summary {
+  list-style: none;
+  cursor: pointer;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6a6762;
+  padding: 2px 0 4px;
+}
+.food-amount-split > summary::-webkit-details-marker { display: none; }
+.food-amount-split-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 0 0 6px;
+  font-size: 11px;
+  color: #3f3f46;
+}
+.food-amount-split-row input {
+  width: 44px;
+  height: 28px;
+  border: 1px solid rgba(17, 18, 22, 0.12);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+.food-amount-split-apply {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(17, 18, 22, 0.12);
+  border-radius: 999px;
+  background: #18181b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
 .food-amount-weight-hint {
   margin: 0;
   font-size: 11px;

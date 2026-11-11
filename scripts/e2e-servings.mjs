@@ -1,4 +1,4 @@
-// 먹은 양 표시·−/+ 수정, 끼니 카드는 순서만 바꾸기, 기록 시간은 실제 시각.
+// 먹은 양 표시·−/+ 수정, 끼니 카드는 순서만 바꾸기, 기록해도 끼니 시각은 그대로.
 // Headless Chrome(CDP), Node 22. 사용법: (저장소 루트) 정적 서버 8765 → node scripts/e2e-servings.mjs
 import { spawn } from 'node:child_process';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
@@ -45,17 +45,16 @@ try {
   await evaluate(`await saveSettings({ locale: 'ko' }); return 1;`);
   await load();
 
-  // 1. 기록 시간은 실제 시각(12:30 고정이 아님)
+  // 1. 음식을 넣어도 점심 시각(12:30)은 그대로
   const r1 = await evaluate(`
     setActiveView('home');
     for (const m of ['breakfast','lunch','dinner','snack']) meals[m].foods = [];
     mealTimes = defaultMealTimes();
-    const before = currentClockTime();
+    const before = mealTimes.lunch.value;
     await addFoods('lunch', [{ name: '밥', cal: 273, carbs: 60.1, protein: 5, fat: 0.4, serving: '1공기', servingAmount: 1, servingUnit: '공기', servingGrams: 210 }]);
-    const after = currentClockTime();
-    return { time: mealTimes.lunch.value, before, after, manual: mealTimes.lunch.manual };
+    return { time: mealTimes.lunch.value, before, clock: currentClockTime(), manual: mealTimes.lunch.manual };
   `);
-  check('점심 첫 기록 시간은 실제 시각(12:30 고정 아님)', r1.time === r1.before || r1.time === r1.after, JSON.stringify(r1));
+  check('점심에 음식을 넣어도 시각은 12:30 그대로', r1.time === '12:30' && r1.before === '12:30', JSON.stringify(r1));
 
   // 2. 홈 목록에 양이 보이고, −/+ 로 바로 다시 계산
   const r2setup = await evaluate(`

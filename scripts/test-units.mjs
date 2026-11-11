@@ -31,7 +31,7 @@ check('사과 182g · 귤 88g', U.gramsForUnit('사과', '개').grams === 182 &&
 check('밥·쌀밥·백미밥 1공기 210g', U.typicalServing('밥').grams === 210 && U.typicalServing('쌀밥').grams === 210 && U.typicalServing('백미밥').unit === '공기');
 check('믹스너트 1봉 20g', U.typicalServing('믹스너트').grams === 20);
 check('김치찌개 1그릇 400g', U.typicalServing('김치찌개').grams === 400);
-check('스텝: 개=1, 공기=0.5, g=10', U.stepFor('개') === 1 && U.stepFor('공기') === 0.5 && U.stepFor('g') === 10);
+check('스텝: 개=1, 공기=0.5, g=5', U.stepFor('개') === 1 && U.stepFor('공기') === 0.5 && U.stepFor('g') === 5);
 
 const banana = U.applyAmount({
   name: '바나나', cal: 89, carbs: 23, protein: 1.1, fat: 0.3,
@@ -203,6 +203,15 @@ const restored95 = U.applyAmount(restored, { value: 95, unit: 'g' }, restored);
 check('기준을 복구한 뒤 95g은 350kcal',
   restored95.cal === 350 && restored95.carbs === 25.8 && restored95.protein === 3.3 && restored95.fat === 26
   && restored95.servingGrams === 95, restored95);
+
+check('g −/+ 는 5g씩', U.nudgeAmount('g', 95, 1) === 100 && U.nudgeAmount('g', 95, -1) === 90, { up: U.nudgeAmount('g', 95, 1), down: U.nudgeAmount('g', 95, -1) });
+check('ml −/+ 도 5ml씩', U.nudgeAmount('ml', 200, 1) === 205, U.nudgeAmount('ml', 200, 1));
+const fifth = U.portionFromParts(brulee, 1, 5);
+const fifthApplied = U.applyAmount(brulee, fifth, brulee);
+check('5등분 중 1조각 = 280kcal, 76g',
+  fifth?.value === 0.2 && fifth?.unit === '개' && fifthApplied.cal === 280 && fifthApplied.servingGrams === 76,
+  { fifth, fifthApplied });
+check('등분 문구 파싱 4등분 중 1조각', U.parseServing('4등분 중 1조각')?.value === 0.25, U.parseServing('4등분 중 1조각'));
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

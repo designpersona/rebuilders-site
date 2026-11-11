@@ -129,7 +129,7 @@ try {
   const callsAfterMine = await evaluate(`return window.__bridgeCalls.slice();`);
   check('내 음식 재사용은 /interpret·/jobs·/log 를 부르지 않음', !callsAfterMine.some(c => /\/(interpret|jobs|log)/.test(c)), JSON.stringify(callsAfterMine));
 
-  // 8b. 기존에 없는 짧은 음식은 바로 저장하고 찾는 중 (interpret를 기다리지 않음)
+  // 8b. 기존에 없는 음식은 문장 통째로 /interpret 에 보내고, 나온 이름으로 저장한 뒤 영양을 찾음
   r = await evaluate(`
     window.__bridgeCalls = [];
     window.__lastInterpretBody = null;
@@ -144,16 +144,35 @@ try {
       }
       if (path === '/interpret' && method === 'POST') {
         window.__lastInterpretBody = JSON.parse(opts.body || '{}');
-        return new Response(JSON.stringify({ ok: true, job_id: 'e'.repeat(32), done: true, pending: [], intent: 'log', items: [], edits: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ ok: true, job_id: 'e'.repeat(32), done: true, pending: [], intent: 'log', items: [{ name: '기존없는음식xyz테스트' }], edits: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       return prev(url, opts);
     };
     return 1;
   `);
   r = await evaluate(chat('기존없는음식xyz테스트'));
-  const unknownCalls = await evaluate(`return { calls: window.__bridgeCalls.slice(), interpret: window.__lastInterpretBody, searching: [...document.querySelectorAll('#agent-log .agent-message.is-agent')].pop()?.classList.contains('is-searching') };`);
-  check('기존에 없는 음식은 바로 저장되고 찾는 중이 보임', r.foods.some(f => f.name === '기존없는음식xyz테스트') && /저장했어요/.test(r.reply) && /기존 데이터에 없어서 찾는 중/.test(r.reply), JSON.stringify(r));
-  check('짧은 음식 기록은 /interpret 를 기다리지 않음', !unknownCalls.interpret && !unknownCalls.calls.some(c => c === 'POST /interpret') && unknownCalls.searching, JSON.stringify(unknownCalls));
+  const unknownCalls = await evaluate(`return { calls: window.__bridgeCalls.slice(), interpret: window.__lastInterpretBody, searching: [...document.querySelectorAll('#agent-log .agent-message.is-agent')].pop()?.classList.contains('is-searching'), custom: Object.keys(CUSTOM_FOODS || {}), missing: (CUSTOM_FOODS['기존없는음식xyz테스트'] ? 'has' : 'none') };`);
+  check('기존에 없는 음식은 /interpret 로 보낸 뒤 저장되고 찾는 중이 보임', r.foods.some(f => f.name === '기존없는음식xyz테스트') && /저장했어요/.test(r.reply) && /기존 데이터에 없어서 찾는 중/.test(r.reply) && unknownCalls.calls.some(c => c === 'POST /interpret') && unknownCalls.interpret?.text === '기존없는음식xyz테스트', JSON.stringify({ r, unknownCalls }));
+  const resolved = await evaluate(`
+    const job = RebuildersBridge.getQueue()[0];
+    const item = {
+      name: '기존없는음식xyz테스트',
+      display_name: '공식테스트음식xyz',
+      kcal: 200, carbs_g: 20, protein_g: 5, fat_g: 8,
+      source_type: '공식', serving: '1개', package_grams: 100,
+    };
+    const filled = await applyBridgeResult(job || { date: dateKey(currentDate), meal: 'dinner' }, { items: [item], pending: [] });
+    return {
+      filled,
+      custom: Object.keys(CUSTOM_FOODS || {}),
+      hasPlaceholder: !!CUSTOM_FOODS['기존없는음식xyz테스트'],
+      hasOfficial: !!CUSTOM_FOODS['공식테스트음식xyz'],
+      foods: meals.dinner.foods.filter(f => /기존없는음식xyz테스트|공식테스트음식xyz/.test(f.name || f.inputName || '')).map(f => ({ name: f.name, inputName: f.inputName || '', cal: f.cal })),
+    };
+  `);
+  check('찾기가 다른 공식 이름으로 끝나면 빈 자리 이름은 내 음식에서 사라지고 공식 이름으로 합쳐짐',
+    resolved.hasOfficial && !resolved.hasPlaceholder && resolved.foods.some(f => f.name === '공식테스트음식xyz' && f.cal === 200),
+    JSON.stringify(resolved));
 
   // 9. 애매한 말은 원문 통째로 /interpret
   r = await evaluate(`
@@ -202,6 +221,70 @@ try {
     };
   `);
   check('interpret clarify 는 선택 버튼을 보여 줌', /한 제품이에요, 두 개예요\?/.test(r.reply) && r.choices.slice(-2).join('|') === '한 제품|두 개', JSON.stringify(r));
+
+  // 10b. 저장된 브륄레는 줄임말로 바로 넣고, 이어서 말한 1/4은 AI 없이 수정. 점심 시각은 그대로.
+  r = await evaluate(`
+    window.__bridgeCalls = [];
+    await saveCustomFood('스타벅스 브륄레 쿠키 치즈케이크', {
+      cal: 1400, carbs: 103, protein: 13, fat: 104,
+      serving: '1개', servingAmount: 1, servingUnit: '개',
+      packageGrams: 380, unitGrams: { '개': 380 }, servingGrams: 380,
+      brand: '스타벅스', sourceTrust: 'user', sourceLabel: '내 음식',
+      basisNutrients: { cal: 1400, carbs: 103, protein: 13, fat: 104 },
+      basisGrams: 380, basis: '380g',
+    });
+    await saveCustomFood('스타벅스 더블치즈케이크', {
+      cal: 503, carbs: 40, protein: 8, fat: 30,
+      serving: '1개', servingAmount: 1, servingUnit: '개',
+      brand: '스타벅스', sourceTrust: 'user', sourceLabel: '내 음식',
+    });
+    mealTimes = defaultMealTimes();
+    return { lunch: mealTimes.lunch.value, calls: window.__bridgeCalls.slice() };
+  `);
+  const timeBefore = await evaluate(`return mealTimes.lunch.value;`);
+  r = await evaluate(chat('점심에 스벅 브륄레 치즈 케익 먹었어'));
+  const afterFirst = await evaluate(`
+    const lunch = meals.lunch.foods.map(f => ({ id: f.id, name: f.name, cal: f.cal, serving: f.serving, amount: f.servingAmount, unit: f.servingUnit }));
+    return { lunch, time: mealTimes.lunch.value, calls: window.__bridgeCalls.slice(), custom: Object.keys(CUSTOM_FOODS || {}) };
+  `);
+  const bruleeFirst = afterFirst.lunch.filter(f => f.name === '스타벅스 브륄레 쿠키 치즈케이크');
+  check('저장된 브륄레는 줄임말로 바로 1개 1400kcal, /interpret 없음',
+    bruleeFirst.length === 1 && bruleeFirst[0].cal === 1400
+      && /저장했어요/.test(r.reply) && !afterFirst.calls.some(c => /\/(interpret|jobs|log)/.test(c)),
+    JSON.stringify({ r, afterFirst }));
+  check('점심 시각은 음식을 넣어도 그대로', afterFirst.time === timeBefore && timeBefore === '12:30', JSON.stringify({ timeBefore, after: afterFirst.time }));
+
+  r = await evaluate(chat('4조각으로 나눠서 1조각만 먹었어'));
+  const afterQuarter = await evaluate(`
+    const lunch = meals.lunch.foods.map(f => ({ name: f.name, cal: f.cal, serving: f.serving, amount: f.servingAmount, unit: f.servingUnit, grams: f.servingGrams }));
+    return { lunch, time: mealTimes.lunch.value, calls: window.__bridgeCalls.slice() };
+  `);
+  const bruleeQ = afterQuarter.lunch.filter(f => f.name === '스타벅스 브륄레 쿠키 치즈케이크');
+  check('이어서 1/4 말하면 한 기록이 350kcal로 바뀌고 새 음식을 넣지 않음',
+    bruleeQ.length === 1 && bruleeQ[0].cal === 350 && (bruleeQ[0].amount === 0.25 || bruleeQ[0].grams === 95)
+      && !afterQuarter.calls.some(c => /\/(interpret|jobs|log)/.test(c)),
+    JSON.stringify({ r, afterQuarter }));
+
+  // 10c. 애매한 이름은 아무 메뉴나 고르지 않고 후보 버튼을 보여 줌
+  r = await evaluate(`window.__bridgeCalls = []; return 1;`);
+  r = await evaluate(chat('스타벅스 치즈케이크'));
+  const amb = await evaluate(`
+    return {
+      reply: [...document.querySelectorAll('#agent-log .agent-message.is-agent .agent-bubble-text')].pop()?.textContent || '',
+      choices: [...document.querySelectorAll('#agent-log .agent-choice')].map(b => b.textContent),
+      foods: ${allFoods},
+      calls: window.__bridgeCalls.slice(),
+    };
+  `);
+  check('스타벅스 치즈케이크는 더블과 브륄레 후보 버튼을 보여 주고 자동으로 고르지 않음',
+    /어떤 음식이에요?/.test(amb.reply) && amb.choices.some(l => /브륄레/.test(l)) && amb.choices.some(l => /더블/.test(l))
+      && !amb.foods.some(f => f.name === '스타벅스 더블치즈케이크' && f.meal !== 'lunch' ? false : false)
+      && !amb.calls.some(c => /\/interpret/.test(c)),
+    JSON.stringify(amb));
+  // 후보를 고르기 전에는 새 기록이 없어야 함(점심 브륄레 1개만 유지)
+  check('후보를 고르기 전에는 새 기록을 넣지 않음',
+    amb.foods.filter(f => /치즈케이크/.test(f.name)).length === 1 && amb.foods.some(f => f.name === '스타벅스 브륄레 쿠키 치즈케이크' && f.cal === 350),
+    JSON.stringify(amb.foods));
 
   // 11. 브리지가 꺼지면 기존 규칙으로 넣고 짧게 알림
   r = await evaluate(`

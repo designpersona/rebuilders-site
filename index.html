@@ -1201,6 +1201,16 @@
           <button type="button" class="food-amount-portion" data-portion="0.5">1/2</button>
           <button type="button" class="food-amount-portion" data-portion="1">1</button>
         </div>
+        <details class="food-amount-split food-dex-amount-split">
+          <summary>등분</summary>
+          <div class="food-amount-split-row">
+            <input class="food-amount-split-total" type="number" inputmode="numeric" min="2" step="1" value="4" aria-label="몇 등분">
+            <span>등분 중</span>
+            <input class="food-amount-split-eaten" type="number" inputmode="numeric" min="1" step="1" value="1" aria-label="몇 조각">
+            <span>조각</span>
+            <button type="button" class="food-amount-split-apply">적용</button>
+          </div>
+        </details>
         <div class="food-dex-amount-row">
           <button type="button" class="food-amount-step" data-dir="-1" aria-label="-">−</button>
           <div class="food-dex-amount-copy">

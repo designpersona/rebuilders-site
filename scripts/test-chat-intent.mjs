@@ -11,7 +11,7 @@ vm.createContext(ctx);
 vm.runInContext(readFileSync(join(root, 'units.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'quick-entry.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'chat-intent.js'), 'utf8'), ctx);
-const { classifyChat, isQuestion, isInstructionOnly, parseEditIntent, parseClarifyReply, extractFoodHint, matchLocalInstant, exactCatalogHit, parseInterpretResult, editFromInterpret, buildInterpretPayload } = ctx.RebuildersChatIntent;
+const { classifyChat, isQuestion, isInstructionOnly, parseEditIntent, parseClarifyReply, extractFoodHint, matchLocalInstant, matchLocalFood, exactCatalogHit, findCatalogMatches, parsePortionPhrase, parseInterpretResult, editFromInterpret, buildInterpretPayload } = ctx.RebuildersChatIntent;
 
 let failed = 0;
 function check(name, cond, info) { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : ' — ' + JSON.stringify(info)}`); if (!cond) failed++; }
@@ -76,6 +76,68 @@ const withImage = buildInterpretPayload('영양표', { image: 'reserved' });
 check('image 필드를 넘기면 그대로 자리를 연다', withImage.image === 'reserved', withImage);
 
 check('exact catalog hit prefers mine', exactCatalogHit('너트한줌럭셔리', catalogs)?.origin === 'mine' && exactCatalogHit('너트한줌럭셔리', catalogs).data.cal === 99);
+
+const bruleeFood = {
+  name: '스타벅스 브륄레 쿠키 치즈케이크',
+  data: { cal: 1400, carbs: 103, protein: 13, fat: 104, serving: '1개', servingAmount: 1, servingUnit: '개', packageGrams: 380, unitGrams: { '개': 380 }, servingGrams: 380, brand: '스타벅스', sourceTrust: 'user' },
+  aliases: ['브륄레 쿠키 치즈케이크', '브륄래 치즈케익'],
+};
+const doubleFood = {
+  name: '스타벅스 더블치즈케이크',
+  data: { cal: 503, carbs: 40, protein: 8, fat: 30, serving: '1개', servingAmount: 1, servingUnit: '개', brand: '스타벅스', sourceTrust: 'user' },
+  aliases: ['더블치즈케이크'],
+};
+const savedCatalogs = { mine: [bruleeFood, doubleFood], recent: [], db: [] };
+
+r = parsePortionPhrase('4조각으로 나눠서 1조각만 먹었어');
+check('4조각으로 나눠서 1조각 = 1/4', r?.value === 0.25 && r?.parts?.total === 4 && r?.parts?.eaten === 1, r);
+r = parsePortionPhrase('반 먹었어');
+check('반 먹었어 = 1/2', r?.value === 0.5, r);
+r = parsePortionPhrase('5조각 중 2조각');
+check('5조각 중 2조각 = 2/5', r?.value === 0.4 && r?.parts?.eaten === 2 && r?.parts?.total === 5, r);
+r = parsePortionPhrase('95g');
+check('95g 은 그램', r?.value === 95 && r?.unit === 'g', r);
+r = classifyChat('4조각으로 나눠서 1조각만 먹었어');
+check('양만 이어서 말하면 edit(set-amount 1/4)', r.type === 'edit' && r.action === 'set-amount' && r.amount?.value === 0.25, r);
+check('점심 이삭 햄치즈는 여전히 음식 문장', classifyChat('점심 이삭 햄치즈').type === 'food', classifyChat('점심 이삭 햄치즈'));
+
+let localFood = matchLocalFood('점심에 스벅 브륄레 치즈 케익 먹었어', savedCatalogs);
+check('스벅 브륄레 치즈 케익은 저장된 브륄레 케이크와 바로 매칭(AI 없음)',
+  localFood.ok && localFood.items?.[0]?.name === '스타벅스 브륄레 쿠키 치즈케이크' && localFood.items[0].food?.cal === 1400,
+  localFood.items?.[0] || localFood);
+localFood = matchLocalFood('스타벅스 치즈케이크', savedCatalogs);
+check('스타벅스 치즈케이크는 후보가 둘이면 고르지 않음',
+  !localFood.ok && localFood.ambiguousCandidates?.length >= 2
+    && localFood.ambiguousCandidates.some(e => e.name.includes('브륄레'))
+    && localFood.ambiguousCandidates.some(e => e.name.includes('더블')),
+  localFood.ambiguousCandidates?.map(e => e.name) || localFood);
+
+const found = findCatalogMatches('브륄래 케익', savedCatalogs);
+check('브륄래/케익 오타도 브륄레 케이크로 매칭', found.best?.name === '스타벅스 브륄레 쿠키 치즈케이크' && !found.ambiguous, found);
+const loose = findCatalogMatches('너트한줌 럭셔리신제품', { mine: catalogs.mine, recent: [], db: [] });
+check('비슷한 짧은 이름에 단어를 더한 신제품은 자동으로 같은 음식으로 보지 않음', !loose.best, loose);
+
+
+const payload2 = buildInterpretPayload('4조각으로 나눠서 1조각만 먹었어', {
+  meal: 'lunch',
+  lastBatch: { ids: ['food-1'], names: ['스타벅스 브륄레 쿠키 치즈케이크'] },
+  todayRecords: [{ id: 'food-1', name: '스타벅스 브륄레 쿠키 치즈케이크', meal: 'lunch', amount: '1개', kcal: 1400 }],
+  savedFoods: [{ name: '스타벅스 브륄레 쿠키 치즈케이크', brand: '스타벅스' }],
+});
+check('interpret 요청에 오늘 기록과 내 음식이 들어감',
+  payload2.todayRecords?.[0]?.id === 'food-1' && payload2.savedFoods?.[0]?.brand === '스타벅스' && payload2.lastBatch?.ids?.[0] === 'food-1',
+  payload2);
+
+const parsedEdit = parseInterpretResult({
+  intent: 'edit',
+  items: [],
+  edits: [{ field: 'amount', value: 0.25, targetId: 'food-1', targetName: '스타벅스 브륄레 쿠키 치즈케이크' }],
+});
+check('interpret edit amount 0.25',
+  parsedEdit?.intent === 'edit' && editFromInterpret(parsedEdit.edits[0])?.action === 'set-amount'
+    && editFromInterpret(parsedEdit.edits[0]).amount?.value === 0.25
+    && editFromInterpret(parsedEdit.edits[0]).targetId === 'food-1',
+  parsedEdit);
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);
