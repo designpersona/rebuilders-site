@@ -2507,6 +2507,10 @@ function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
   return div;
 }
 
+function isHomeDaySwiping() {
+  return document.getElementById('view-home')?.classList.contains('day-swiping') === true;
+}
+
 function renderMeal(mealId) {
   const meal = meals[mealId];
   const cal = getMealCal(mealId);
@@ -2537,7 +2541,7 @@ function renderMeal(mealId) {
   const itemsEl = document.getElementById(`${mealId}-items`);
   const isDragSource = itemsEl.querySelector('.food-item.is-dragging') !== null;
 
-  if (!isDragSource) {
+  if (!isDragSource && !isHomeDaySwiping()) {
     itemsEl.innerHTML = '';
     foods.forEach((food, idx) => {
       itemsEl.appendChild(createFoodItemEl(
@@ -2710,6 +2714,7 @@ function renderSnackSlot(slot) {
   // 안 먹은 간식 슬롯은 평소 타임라인에 숨기고, 음식 드래그 중에는 드롭 자리로만 보인다.
   // 숨긴 슬롯은 elementsFromPoint에 잡히지 않으므로, 드래그가 시작되면 빈 슬롯을 모두 드롭 자리로 펼친다.
   if (!entries.length) {
+    if (isHomeDaySwiping()) return; // 날짜 밀기 중에는 손가락이 닿은 간식 줄을 숨기거나 지우지 않음
     const showPlaceholder = document.body.classList.contains('food-drag-active');
     slotEl.hidden = !showPlaceholder;
     slotEl.classList.toggle('drop-placeholder', showPlaceholder);
@@ -2729,7 +2734,7 @@ function renderSnackSlot(slot) {
   if (kcalEl) kcalEl.textContent = `${Math.round(totalKcal)}kcal`;
   foodsEl.textContent = entries.map(({ food }) => displayFoodName(food)).join(', ');
 
-  if (!isDragSource) {
+  if (!isDragSource && !isHomeDaySwiping()) {
     itemsEl.innerHTML = '';
     entries.forEach(({ food, idx }) => {
       itemsEl.appendChild(createFoodItemEl(
@@ -7510,18 +7515,27 @@ let slideDayTo = null;
     busy = true;
     place(commit ? -st.dir * st.W : 0, dur ? `transform ${dur}ms ${EASE}` : 'none');
     const done = async () => {
-      if (commit) {
-        updateDateDisplay();
+      try {
+        if (commit) {
+          updateDateDisplay();
+          cleanup();
+          // 밀고 있는 동안은 손가락이 닿은 음식 줄을 지우지 않았으니, 끝난 뒤에 목록을 맞춘다
+          renderAll(true);
+          if (activeView === 'search') renderSearchHub();
+        } else {
+          const base = st?.base;
+          cleanup();
+          if (base) await renderDay(base);
+          updateDateDisplay();
+        }
+      } catch (error) {
+        console.warn('date swipe settle', error);
         cleanup();
-        if (activeView === 'search') renderSearchHub();
-      } else {
-        const base = st.base;
-        cleanup();
-        await renderDay(base);
-        updateDateDisplay();
+      } finally {
+        if (st) cleanup();
+        busy = false;
+        resolve();
       }
-      busy = false;
-      resolve();
     };
     if (dur) setTimeout(done, dur + 20); else done();
   });
@@ -7534,9 +7548,21 @@ let slideDayTo = null;
     return pageSwipeBlocked(target, x);
   };
   let sx = 0; let sy = 0; let mode = null; let tracking = false; let samples = []; let lastDx = 0;
+  const abandon = () => {
+    if (!tracking) return;
+    tracking = false;
+    if (st) settle(false);
+  };
+  const recoverStuckSwipe = () => {
+    if (!st || busy) return;
+    const commit = !!st.dir && Math.abs(lastDx) >= st.W * 0.25;
+    tracking = false;
+    settle(commit);
+  };
   home.addEventListener('touchstart', event => {
+    if (st && !busy) recoverStuckSwipe();
     tracking = false; mode = null; samples = []; lastDx = 0;
-    if (event.touches.length !== 1 || st) return;
+    if (event.touches.length !== 1 || st || busy) return;
     const t = event.touches[0];
     if (blocked(event.target, t.clientX)) return;
     tracking = true; sx = t.clientX; sy = t.clientY;
@@ -7574,7 +7600,10 @@ let slideDayTo = null;
     settle(commit);
   };
   home.addEventListener('touchend', finish, { passive: true });
-  home.addEventListener('touchcancel', () => { if (!tracking) return; tracking = false; if (st) settle(false); }, { passive: true });
+  home.addEventListener('touchcancel', abandon, { passive: true });
+  // 밀기 도중 닿은 노드가 사라져도(다음 날 다시 그리기 등) 제스처가 끝나게
+  document.addEventListener('touchend', finish, { capture: true, passive: true });
+  document.addEventListener('touchcancel', abandon, { capture: true, passive: true });
   // 버튼·날짜 누름: 지금 날은 빠지고 새 날이 같은 쪽에서 들어옴
   slideDayTo = async (date, dir) => {
     if (busy || st || reduceMotion() || activeView !== 'home' || !dir) return false;
