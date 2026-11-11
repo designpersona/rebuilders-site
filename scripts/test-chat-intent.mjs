@@ -11,7 +11,8 @@ vm.createContext(ctx);
 vm.runInContext(readFileSync(join(root, 'units.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'quick-entry.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'chat-intent.js'), 'utf8'), ctx);
-const { classifyChat, isQuestion, isInstructionOnly, parseEditIntent, parseClarifyReply, extractFoodHint, matchLocalInstant, matchLocalFood, exactCatalogHit, findCatalogMatches, parsePortionPhrase, parseInterpretResult, foodDataFromInterpretItem, editFromInterpret, buildInterpretPayload } = ctx.RebuildersChatIntent;
+vm.runInContext(readFileSync(join(root, 'food-catalog.js'), 'utf8'), ctx);
+const { classifyChat, isQuestion, isInstructionOnly, parseEditIntent, parseClarifyReply, extractFoodHint, matchLocalInstant, matchLocalFood, exactCatalogHit, findCatalogMatches, parsePortionPhrase, parseInterpretResult, foodDataFromInterpretItem, editFromInterpret, buildInterpretPayload, foldName, sourceFromInterpret } = ctx.RebuildersChatIntent;
 
 let failed = 0;
 function check(name, cond, info) { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : ' — ' + JSON.stringify(info)}`); if (!cond) failed++; }
@@ -171,6 +172,43 @@ check('interpret 영양은 1개 380g 1400kcal 기준으로 저장할 수 있음'
   fromItem?.cal === 1400 && fromItem.packageGrams === 380 && fromItem.unitGrams?.['개'] === 380
     && fromItem.sourceLabel === '공식' && fromItem.sourceTrust === 'reference' && fromItem.brand === '스타벅스',
   fromItem);
+
+check('별다방→스타벅스, 스벅→스타벅스, 버킹→버거킹',
+  foldName('별다방 라떼') === '스타벅스라떼' && foldName('스벅 아메리카노') === '스타벅스아메리카노' && foldName('버킹 와퍼') === '버거킹와퍼');
+
+const latteCatalogs = {
+  mine: [{ name: '라떼', data: { cal: 180, serving: '1잔 355ml' }, aliases: [] }],
+  recent: [],
+  db: [{ name: '아메리카노', data: { cal: 3, carbs: 0.3, protein: 0.1, fat: 0, serving: '100ml' }, aliases: [] }],
+};
+let brandLocal = matchLocalFood('별다방 라떼 먹었어', latteCatalogs);
+check('별다방 라떼는 일반 라떼로 떨어지지 않음', !brandLocal.ok, brandLocal.items?.[0] || brandLocal);
+brandLocal = matchLocalFood('라떼 먹었어', latteCatalogs);
+check('라떼만 말하면 일반 라떼와 바로 매칭', brandLocal.ok && brandLocal.items?.[0]?.name === '라떼' && brandLocal.items[0].food?.cal === 180, brandLocal.items?.[0] || brandLocal);
+brandLocal = matchLocalFood('스벅 아메리카노 먹었어', latteCatalogs);
+check('스벅 아메리카노는 일반 아메리카노로 떨어지지 않음', !brandLocal.ok, brandLocal.items?.[0] || brandLocal);
+brandLocal = matchLocalFood('아메리카노 먹었어', latteCatalogs);
+check('아메리카노만 말하면 바로 매칭', brandLocal.ok && brandLocal.items?.[0]?.name === '아메리카노', brandLocal.items?.[0] || brandLocal);
+
+const emptyLatte = { mine: [{ name: '스타벅스 카페라떼', data: { brand: '스타벅스' }, aliases: ['카페라떼', '라떼'] }], recent: [], db: [] };
+brandLocal = matchLocalFood('별다방 라떼 먹었어', emptyLatte);
+check('영양 없는 브랜드 라떼는 바로 매칭하지 않고 AI로 넘김', !brandLocal.ok, brandLocal.items?.[0] || brandLocal);
+
+const pie = ctx.NILIRI_FOOD_CATALOG['버거킹 애플파이 로얄'];
+check('베이스에 버거킹 애플파이 로얄 61g 188kcal 추정이 들어 있음',
+  pie?.cal === 188 && pie.servingGrams === 61 && pie.packageGrams === 61 && pie.protein === 2 && pie.sugar === 6
+    && pie.sodium === 120 && pie.saturatedFat === 2.5 && pie.brand === '버거킹' && pie.sourceType === '추정' && pie.sourceTrust === 'estimate'
+    && !('carbs' in pie) && !('fat' in pie), pie);
+const pieCatalogs = { mine: [], recent: [], db: [{ name: '버거킹 애플파이 로얄', data: pie, brand: pie.brand, aliases: pie.aliases }] };
+brandLocal = matchLocalFood('점심에 버거킹 애플파이 먹었어', pieCatalogs);
+check('버거킹 애플파이는 로얄 188kcal과 바로 매칭',
+  brandLocal.ok && brandLocal.items?.[0]?.name === '버거킹 애플파이 로얄' && brandLocal.items[0].food?.cal === 188,
+  brandLocal.items?.[0] || brandLocal);
+
+const officialFromType = sourceFromInterpret({ source_type: '공식', source_url: 'https://example.com/nutrition.pdf', kcal: 188 });
+check('source_type 공식은 공식', officialFromType?.sourceType === '공식' && officialFromType.sourceTrust === 'reference', officialFromType);
+const memoryEstimate = sourceFromInterpret({ source_type: '추정', source_note: '공식 영양표처럼 기억남', kcal: 290 });
+check('모델 기억은 추정(노트에 공식이 있어도 격상하지 않음)', memoryEstimate?.sourceType === '추정' && memoryEstimate.sourceTrust === 'estimate', memoryEstimate);
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

@@ -153,16 +153,19 @@ try {
   r = await evaluate(chat('기존없는음식xyz테스트'));
   const unknownCalls = await evaluate(`return { calls: window.__bridgeCalls.slice(), interpret: window.__lastInterpretBody, searching: [...document.querySelectorAll('#agent-log .agent-message.is-agent')].pop()?.classList.contains('is-searching'), custom: Object.keys(CUSTOM_FOODS || {}), missing: (CUSTOM_FOODS['기존없는음식xyz테스트'] ? 'has' : 'none') };`);
   const unknownUi = await evaluate(`return { searching: [...document.querySelectorAll('#agent-log .agent-message.is-agent')].pop()?.classList.contains('is-searching'), inline: !!document.querySelector('.agent-inline-nutrients') };`);
-  check('기존에 없는 음식은 /interpret 로 보낸 뒤 저장되고, 영양이 없으면 kcal·중량 칸만 보이며 찾는 중·/jobs 는 없음', r.foods.some(f => f.name === '기존없는음식xyz테스트') && /저장했어요/.test(r.reply) && /kcal과 중량/.test(r.reply) && unknownCalls.calls.some(c => c === 'POST /interpret') && !unknownCalls.calls.some(c => c === 'POST /jobs') && unknownCalls.interpret?.text === '기존없는음식xyz테스트' && !unknownCalls.searching && !unknownUi.searching && unknownUi.inline, JSON.stringify({ r, unknownCalls, unknownUi }));
+  check('기존에 없는 음식은 /interpret 로 보내고, 영양이 없으면 저장하지 않은 채 kcal·중량 칸만 보이며 찾는 중·/jobs 는 없음', !r.foods.some(f => f.name === '기존없는음식xyz테스트') && !/저장했어요/.test(r.reply) && /kcal과 중량/.test(r.reply) && unknownCalls.calls.some(c => c === 'POST /interpret') && !unknownCalls.calls.some(c => c === 'POST /jobs') && unknownCalls.interpret?.text === '기존없는음식xyz테스트' && unknownCalls.missing === 'none' && !unknownCalls.searching && !unknownUi.searching && unknownUi.inline, JSON.stringify({ r, unknownCalls, unknownUi }));
   const resolved = await evaluate(`
-    const job = RebuildersBridge.getQueue()[0];
+    // 검색 화면 /jobs 경로: 이미 넣어 둔 빈 자리를 공식 이름으로 갈아 끼움
+    await saveCustomFood('기존없는음식xyz테스트', { serving: '1개' });
+    meals.dinner.foods = [...(meals.dinner.foods || []), { id: 'placeholder-xyz', name: '기존없는음식xyz테스트', serving: '1개', servingAmount: 1, servingUnit: '개' }];
+    const job = { date: dateKey(currentDate), meal: 'dinner', names: ['기존없는음식xyz테스트'] };
     const item = {
       name: '기존없는음식xyz테스트',
       display_name: '공식테스트음식xyz',
       kcal: 200, carbs_g: 20, protein_g: 5, fat_g: 8,
       source_type: '공식', serving: '1개', package_grams: 100,
     };
-    const filled = await applyBridgeResult(job || { date: dateKey(currentDate), meal: 'dinner' }, { items: [item], pending: [] });
+    const filled = await applyBridgeResult(job, { items: [item], pending: [] });
     return {
       filled,
       custom: Object.keys(CUSTOM_FOODS || {}),
@@ -335,7 +338,7 @@ try {
   `);
   r = await evaluate(chat('해석실패테스트바나나'));
   const fallbackNotes = await evaluate(`return [...document.querySelectorAll('#agent-log .agent-message.is-agent .agent-bubble-text')].slice(-3).map(el => el.textContent);`);
-  check('브리지가 꺼져도 기존에 없는 음식은 바로 저장됨', r.foods.some(f => /해석실패테스트바나나|바나나/.test(f.name)) && fallbackNotes.some(t => /저장했어요/.test(t)), JSON.stringify({ fallbackNotes, foods: r.foods, reply: r.reply }));
+  check('브리지가 꺼져도 영양 없는 새 음식은 저장하지 않고 kcal 칸을 보여 줌', !r.foods.some(f => /해석실패테스트바나나/.test(f.name)) && fallbackNotes.some(t => /kcal과 중량/.test(t)), JSON.stringify({ fallbackNotes, foods: r.foods, reply: r.reply }));
 
   // 12. 검색 순서·중복 제거
   r = await evaluate(`

@@ -624,11 +624,12 @@ function inferSourceLabel(food, name = food?.name) {
   }
   if (isNutritionMissing(food)) return '없음';
   if (food.sourceTrust === 'user' || food.nutritionCustom || food.source === 'user-entry') return '내 음식';
+  if (['추정', '공식', '공공DB', '내 음식'].includes(food.sourceType)) return food.sourceType;
   if (food.aiEstimate || food.sourceTrust === 'estimate' || food.source === 'openclaw') return '추정';
   if (food.sourceTrust === 'reference' || food.source === 'Open Food Facts') return '공식';
   const provider = String(food.nutritionSource?.provider || '');
   if (food.source === '식약처' || food.mfdsKind || /식품의약품안전처|식약처/.test(provider)) return '공공DB';
-  if (/USDA/i.test(provider) || (name && FOOD_DB[name])) return '공공DB';
+  if (/USDA/i.test(provider) || (name && FOOD_DB[name] && food.sourceType !== '추정' && food.sourceTrust !== 'estimate')) return '공공DB';
   if (name && CUSTOM_FOODS[name] && !FOOD_DB[name]) return '내 음식';
   return '없음';
 }
@@ -1889,7 +1890,7 @@ function isBlankNutrient(value) {
   return value === undefined || value === null || value === '' || (typeof value === 'number' && !Number.isFinite(value));
 }
 function isNutritionMissing(food) {
-  return Boolean(food) && NUTRITION_CORE_FIELDS.some(field => isBlankNutrient(food[field]));
+  return Boolean(food) && isBlankNutrient(food.cal);
 }
 function missingNutritionEntries() {
   const entries = [];
@@ -7605,6 +7606,94 @@ function withKoreanObjectParticle(text) {
   return `${value}${hasFinalConsonant ? '을' : '를'}`;
 }
 
+function appendDraftNutritionInputs(message, parsed, drafts) {
+  if (!message || !drafts?.length) return;
+  const en = ACTIVE_LOCALE === 'en';
+  const mealId = parsed.mealId;
+  const wrap = document.createElement('div');
+  wrap.className = 'agent-inline-nutrients';
+  const rows = drafts.map(food => {
+    const block = document.createElement('div');
+    const name = document.createElement('div');
+    name.textContent = (typeof displayFoodName === 'function' ? displayFoodName(food) : food.name) || food.name;
+    const kcalInput = document.createElement('input');
+    kcalInput.type = 'number';
+    kcalInput.inputMode = 'decimal';
+    kcalInput.min = '0';
+    kcalInput.step = '1';
+    kcalInput.placeholder = 'kcal';
+    kcalInput.setAttribute('aria-label', 'kcal');
+    const gramsInput = document.createElement('input');
+    gramsInput.type = 'number';
+    gramsInput.inputMode = 'decimal';
+    gramsInput.min = '0';
+    gramsInput.step = '1';
+    gramsInput.placeholder = en ? 'Weight (g)' : '중량(g)';
+    gramsInput.setAttribute('aria-label', en ? 'Weight in grams' : '중량 그램');
+    const kcalLabel = document.createElement('label');
+    kcalLabel.append('kcal ', kcalInput);
+    const gramsLabel = document.createElement('label');
+    gramsLabel.append(en ? 'g ' : '중량(g) ', gramsInput);
+    block.append(name, kcalLabel, gramsLabel);
+    wrap.append(block);
+    return { food, kcalInput, gramsInput };
+  });
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'agent-confirm';
+  save.textContent = en ? 'Save' : '저장';
+  wrap.append(save);
+  save.addEventListener('click', async () => {
+    if (save.disabled) return;
+    const prepared = [];
+    for (const row of rows) {
+      const kcal = Number(row.kcalInput.value);
+      const grams = Number(row.gramsInput.value);
+      if (!Number.isFinite(kcal) || kcal < 0 || kcal > 5000) {
+        row.kcalInput.focus();
+        return;
+      }
+      const U = globalThis.RebuildersUnits;
+      let next = { ...row.food, cal: Math.round(kcal * 10) / 10, sourceTrust: 'user', nutritionCustom: true, aiEstimate: false, estimate: false };
+      if (Number.isFinite(grams) && grams > 0) {
+        if (U?.applyPackageWeight) next = U.applyPackageWeight({ ...next, servingAmount: next.servingAmount || 1, servingUnit: next.servingUnit || '개' }, grams);
+        else {
+          next.packageGrams = grams;
+          next.servingGrams = grams;
+          next.unitGrams = { ...(next.unitGrams || {}), [next.servingUnit || '개']: grams };
+        }
+        const amount = Number(next.servingAmount);
+        if (amount > 0 && amount !== 1 && typeof next.cal === 'number') {
+          next.cal = Math.round(kcal * amount * 10) / 10;
+          if (next.packageGrams && next.servingUnit && !['g', 'ml'].includes(String(next.servingUnit).toLowerCase())) {
+            next.servingGrams = Math.round(amount * grams * 10) / 10;
+          }
+        }
+      }
+      prepared.push(applySourceLabel(next));
+    }
+    save.disabled = true;
+    try {
+      const before = snapshotMeals();
+      const indexes = await addFoods(mealId, prepared, parsed.time);
+      rememberChatBatch(parsed, mealId, prepared, indexes);
+      await registerLoggedFoods(prepared);
+      await persistMealsOrRestore(before);
+      renderAll(true);
+      const summary = prepared.map(food => formatFoodChange(food)).join(', ');
+      setAgentMessageText(message, en
+        ? `Saved to ${mealLabel(mealId)}: ${summary}.`
+        : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.`);
+      wrap.remove();
+      appendUndoSaveButton(message, before);
+    } catch (error) {
+      save.disabled = false;
+      showStorageFailure(error);
+    }
+  });
+  appendToAgentMessage(message, wrap);
+}
+
 function appendInlineNutritionInputs(message, mealId, idx) {
   if (!message || !meals[mealId]?.foods[idx]) return;
   const en = ACTIVE_LOCALE === 'en';
@@ -7843,7 +7932,7 @@ async function applyChatFoods(parsed) {
   let foods = await foodsFromParsed(parsed);
   if (typeof LOCAL_MODE !== 'undefined' && LOCAL_MODE) {
     foods = await Promise.all(foods.map(async (food, i) => {
-      if (!isNutritionMissing(food)) return food;
+      if (typeof food.cal === 'number') return food;
       const item = parsed.items[i];
       try {
         const result = await storageRepository.resolveFood({ name: item.name }, { register: false });
@@ -7858,25 +7947,35 @@ async function applyChatFoods(parsed) {
   const mealId = parsed.mealId;
   await goToEntryDate(parsed);
   if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
-  const undoSnapshot = snapshotMeals();
-  const indexes = await addFoods(mealId, foods, parsed.time);
-  rememberChatBatch(parsed, mealId, foods, indexes);
-  await registerLoggedFoods(foods);
-  const missing = foods.map((food, i) => ({ food, idx: indexes[i] })).filter(({ food }) => isNutritionMissing(food));
-  const summary = foods.map(food => {
-    if (!isNutritionMissing(food)) return formatFoodChange(food);
-    return quickItemSummary(food);
-  }).join(', ');
-  const later = !missing.length ? ''
-    : (ACTIVE_LOCALE === 'en' ? ' Enter kcal and weight.' : ' kcal과 중량을 적어 주세요.');
-  const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
-    ? `Saved to ${mealLabel(mealId)}: ${summary}.${later}`
-    : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.${later}`);
-  setAgentSearching(message, false);
-  appendUndoSaveButton(message, undoSnapshot);
-  missing.forEach(({ idx }) => appendInlineNutritionInputs(message, mealId, idx));
-  if (missing.length) appendFillNutritionButton(message, mealId, missing[0].idx);
+  const ready = [];
+  const drafts = [];
+  foods.forEach(food => {
+    if (typeof food.cal === 'number' && Number.isFinite(food.cal)) ready.push(food);
+    else drafts.push(food);
+  });
+  let undoSnapshot = null;
+  if (ready.length) {
+    undoSnapshot = snapshotMeals();
+    const indexes = await addFoods(mealId, ready, parsed.time);
+    rememberChatBatch(parsed, mealId, ready, indexes);
+    await registerLoggedFoods(ready);
+    const summary = ready.map(food => formatFoodChange(food)).join(', ');
+    const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
+      ? `Saved to ${mealLabel(mealId)}: ${summary}.`
+      : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.`);
+    setAgentSearching(message, false);
+    appendUndoSaveButton(message, undoSnapshot);
+  }
+  if (drafts.length) {
+    const names = drafts.map(food => (typeof displayFoodName === 'function' ? displayFoodName(food) : food.name) || food.name).join(', ');
+    const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
+      ? `I don't have nutrition for ${names} yet. Enter kcal and weight and I'll save it.`
+      : `${names}의 영양정보를 찾지 못했어요. kcal과 중량을 적으면 저장할게요.`);
+    setAgentSearching(message, false);
+    appendDraftNutritionInputs(message, parsed, drafts);
+  }
 }
+
 
 async function applyClarifyChoice(choice) {
   const pending = pendingClarify;
@@ -8287,28 +8386,33 @@ function localMatchCatalogs() {
     if (data?.nameEn) extra.push(data.nameEn);
     if (typeof FOOD_NAME_EN !== 'undefined' && FOOD_NAME_EN[name]) extra.push(FOOD_NAME_EN[name]);
     if (typeof FOOD_NAME_ALIASES !== 'undefined' && Array.isArray(FOOD_NAME_ALIASES[name])) extra.push(...FOOD_NAME_ALIASES[name]);
+    if (Array.isArray(data?.aliases)) extra.push(...data.aliases);
     return [...new Set(extra.filter(Boolean))];
   };
+  const toEntry = (name, data, extra = {}) => ({
+    name,
+    data,
+    brand: data?.brand || data?.maker || '',
+    aliases: aliasesOf(name, data),
+    ...extra,
+  });
   const Rank = globalThis.RebuildersFoodSearchRank;
   const mine = [];
   const estimate = [];
   Object.entries(CUSTOM_FOODS || {}).forEach(([name, data]) => {
-    const entry = { name, data, aliases: aliasesOf(name, data) };
+    const entry = toEntry(name, data);
     if (Rank?.isEstimateFood(data) && !Rank?.isUserFood(data)) estimate.push(entry);
     else mine.push(entry);
   });
   const recent = (RECENT_FOODS || []).filter(food => food?.name).map(food => {
     const data = CUSTOM_FOODS[food.name] || FOOD_DB[food.name] || food;
-    return {
-      name: food.name,
-      data,
-      aliases: aliasesOf(food.name, data),
+    return toEntry(food.name, data, {
       lastServing: food.serving || data.serving,
       lastAmount: food.servingAmount,
       lastUnit: food.servingUnit,
-    };
+    });
   });
-  const db = Object.entries(FOOD_DB || {}).map(([name, data]) => ({ name, data, aliases: aliasesOf(name, data) }));
+  const db = Object.entries(FOOD_DB || {}).map(([name, data]) => toEntry(name, data));
   return { mine, recent, db, estimate };
 }
 

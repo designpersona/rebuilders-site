@@ -19,6 +19,50 @@
   );
   const INTERPRET_INTENTS = ['log', 'edit', 'question', 'clarify'];
   const EDIT_FIELDS = ['kcal', 'amount', 'unit', 'meal', 'delete', 'merge', 'split'];
+  const BRAND_ALIASES = {
+    '스타벅스': ['별다방', '스벅', '스타박스', 'starbucks'],
+    '맥도날드': ['맥날', '맥도널드', '맥도나드', "mcdonald's", 'mcdonalds', '맥도날즈'],
+    '버거킹': ['버킹', 'burgerking', 'burger king'],
+    '투썸플레이스': ['투썸', 'twosome'],
+    '메가커피': ['메가커피'],
+    '빽다방': ['빠다방'],
+    '이디야': ['이디야커피', 'ediya'],
+    '컴포즈커피': ['컴포즈'],
+    '할리스': ['hollys', '할리스커피'],
+    '커피빈': ['coffeebean', 'coffee bean'],
+    '폴바셋': ['paulbassett', 'paul bassett'],
+    '공차': ['gongcha'],
+    '롯데리아': ['lotteria'],
+    '맘스터치': ['momstouch', "mom's touch"],
+    '케이에프씨': ['kfc'],
+    '서브웨이': ['subway'],
+    '파리바게뜨': ['파리바게트', 'parisbaguette', 'paris baguette'],
+    '던킨': ['던킨도너츠', 'dunkin'],
+    '배스킨라빈스': ['베스킨라빈스', '배스킨', '배라', 'baskin'],
+  };
+
+  function escapeRe(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function brandAliasNames() {
+    const names = [];
+    Object.entries(BRAND_ALIASES).forEach(([canon, aliases]) => {
+      names.push(canon, ...aliases);
+    });
+    return names;
+  }
+
+  function canonicalBrand(token) {
+    const compactTok = compactName(token);
+    if (!compactTok) return '';
+    if (compactTok === '메가') return '메가커피';
+    for (const [canon, aliases] of Object.entries(BRAND_ALIASES)) {
+      if ([canon, ...aliases].some(name => compactName(name) === compactTok)) return canon;
+    }
+    return '';
+  }
+
 
   function normalize(text) {
     return String(text || '').replace(/\s+/g, ' ').trim();
@@ -28,12 +72,18 @@
     return String(value || '').toLowerCase().normalize('NFC').replace(/[\s·.,()\[\]\-_/]+/g, '');
   }
 
-  // 줄임말·오타를 같은 글자로 맞춰 비교한다. 스벅=스타벅스, 케익=케이크, 브륄래=브륄레.
+  // 줄임말·오타를 같은 글자로 맞춰 비교한다. 스벅=스타벅스, 별다방=스타벅스, 케익=케이크, 브륄래=브륄레.
   function foldName(value) {
     let s = compactName(value);
-    s = s.replace(/스타벅스|스타박스|starbucks/g, '\0STAR\0');
-    s = s.replace(/스벅/g, '\0STAR\0');
-    s = s.replace(/\0STAR\0/g, '스타벅스');
+    const replacements = [];
+    Object.entries(BRAND_ALIASES).forEach(([canon, aliases]) => {
+      [canon, ...aliases].forEach(name => replacements.push({ name: compactName(name), canon: compactName(canon) }));
+    });
+    replacements.sort((a, b) => b.name.length - a.name.length);
+    for (const { name, canon } of replacements) {
+      if (name.length < 2) continue;
+      s = s.replace(new RegExp(escapeRe(name), 'g'), canon);
+    }
     s = s.replace(/브륄래|브릴레|brulee|brûlée/g, '브륄레');
     s = s.replace(/케익|케잌/g, '케이크');
     return s;
@@ -45,7 +95,8 @@
     const tokens = parts.map(part => foldName(part)).filter(t => t.length >= 1);
     const folded = foldName(value);
     // 붙여 쓴 '스타벅스치즈케이크'처럼 브랜드가 앞에 있으면 나눔
-    const brands = ['스타벅스', '버거킹', '맥도날드', '롯데리아', '파리바게뜨', '파리바게트'];
+    const brands = [...new Set(brandAliasNames().map(compactName).filter(name => name.length >= 2))]
+      .sort((a, b) => b.length - a.length);
     brands.forEach(brand => {
       if (folded.startsWith(brand) && folded.length > brand.length) {
         tokens.push(brand);
@@ -73,6 +124,35 @@
   function unmatchedQueryTokens(queryTokens, targetFold, targetTokens) {
     return queryTokens.filter(tok => tok && tok.length >= 2 && !tokenInTarget(tok, targetFold, targetTokens));
   }
+
+  function hasCalorie(data) {
+    const cal = data?.cal ?? data?.kcal;
+    return typeof cal === 'number' && Number.isFinite(cal);
+  }
+
+  function catalogSearchText(entry) {
+    if (!entry) return '';
+    return [entry.brand, entry.data?.brand, entry.data?.maker, entry.name, ...(entry.aliases || []), ...(entry.data?.aliases || [])]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  function leftoverUnmatched(query, entry) {
+    const qTokens = nameTokens(logFoodQuery(query) || query);
+    const text = catalogSearchText(entry);
+    return unmatchedQueryTokens(qTokens, foldName(text), nameTokens(text));
+  }
+
+  /** 브랜드·설명에 남는 말이 있으면 일반 이름으로 떨어지지 않는다. */
+  function rejectsGenericFallback(query, entry) {
+    if (!entry) return true;
+    return leftoverUnmatched(query, entry).some(tok => tok.length >= 2);
+  }
+
+  function usableLocalEntry(query, entry) {
+    return Boolean(entry && entry.data && hasCalorie(entry.data) && !rejectsGenericFallback(query, entry));
+  }
+
 
   function scoreNameMatch(query, entry) {
     const qFold = foldName(query);
@@ -428,7 +508,7 @@
         if (fuzzy?.ambiguous) return { ...empty, parsed, ambiguousCandidates: fuzzy.matches };
         if (fuzzy && fuzzy.data) hit = withLastServing(fuzzy, catalogs);
       }
-      if (!hit || !hit.data) return { ...empty, parsed };
+      if (!usableLocalEntry(raw, hit)) return { ...empty, parsed };
       // 파서가 공식 별칭으로만 맞춘 경우도 data 가 있으면 허용(계란→삶은 달걀). 퍼지 확정 매칭도 허용.
       const exact = exactCatalogHit(item.name, catalogs) || exactCatalogHit(hit.name, catalogs);
       if (!exact && !item.known && !hit.origin) return { ...empty, parsed };
@@ -467,7 +547,7 @@
     if (found.ambiguous) {
       return { ok: false, candidates: found.matches.map(entry => entry.name), ambiguousCandidates: found.matches, parsed: instant.parsed };
     }
-    if (!found.best || !found.best.data) return instant;
+    if (!usableLocalEntry(text, found.best)) return instant;
     const QE = global.RebuildersQuickEntry;
     const parsed = instant.parsed || (QE?.parseQuickEntry ? QE.parseQuickEntry(normalize(text), { foods: catalogsToFoods(catalogs), now: options.now || new Date() }) : null);
     const portion = parsePortionPhrase(text);
@@ -631,7 +711,7 @@
   function sourceFromInterpret(item) {
     const raw = normalize(item?.sourceType || item?.source_type || item?.source || '').replace(/\s+/g, '');
     const note = normalize(item?.sourceNote || item?.source_note);
-    if (['공식', '포장지', '라벨', '제품라벨', '영양표', '공식값'].includes(raw) || /포장지|라벨|공식/.test(note)) {
+    if (['공식', '포장지', '라벨', '제품라벨', '영양표', '공식값'].includes(raw)) {
       return { sourceType: '공식', sourceLabel: '공식', sourceTrust: 'reference', estimate: false, aiEstimate: false };
     }
     if (['공공DB', '식약처', '공공'].includes(raw) || /식약처/.test(note)) {
@@ -725,7 +805,12 @@
     buildInterpretPayload,
     parseInterpretResult,
     foodDataFromInterpretItem,
+    sourceFromInterpret,
     editFromInterpret,
+    hasCalorie,
+    rejectsGenericFallback,
+    leftoverUnmatched,
+    BRAND_ALIASES,
   };
   global.RebuildersChatIntent = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
