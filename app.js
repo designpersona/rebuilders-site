@@ -1521,10 +1521,6 @@ function applyExtendedStaticCopy() {
   label('.player-measurements', '신체 정보', 'Body information');
   document.querySelectorAll('.vital-label[data-en]').forEach(el => { el.textContent = ACTIVE_LOCALE === 'en' ? el.dataset.en : el.dataset.ko; });
   label('.main-avatar', '사용자 픽셀 캐릭터', 'User pixel character');
-  const macroAria = [t('carbs'), t('protein'), t('fat')];
-  document.querySelectorAll('#view-home .macro-bar-track').forEach((item, index) => {
-    item.setAttribute('aria-label', macroAria[index] || '');
-  });
   label('.meals-section', '식사 기록', 'Meal records');
   set('#data-transfer-title', '내 데이터', 'My data');
   set('.data-transfer-sub', '기록을 파일로 백업하고 복원해요', 'Back up and restore your records with a file.');
@@ -2122,42 +2118,13 @@ let displayedMacros = { carbs: 0, protein: 0, fat: 0 };
 
 function setMacroVisual(t) {
   [
-    { key: 'carbs', barId: 'bar-carbs', valId: 'val-carbs', target: TARGETS.carbs },
-    { key: 'protein', barId: 'bar-protein', valId: 'val-protein', target: TARGETS.protein },
-    { key: 'fat', barId: 'bar-fat', valId: 'val-fat', target: TARGETS.fat },
-  ].forEach(({ key, barId, valId, target }) => {
+    { key: 'carbs', valId: 'val-carbs', target: TARGETS.carbs },
+    { key: 'protein', valId: 'val-protein', target: TARGETS.protein },
+    { key: 'fat', valId: 'val-fat', target: TARGETS.fat },
+  ].forEach(({ key, valId, target }) => {
     const val = Math.round(t[key] * 10) / 10;
-    const isOver = val > target;
-    const displayMax = isOver ? Math.max(val, target + 0.1) : target;
-    const progressPercent = displayMax > 0 ? Math.min((val / displayMax) * 100, 100) : 0;
-    const targetPercent = displayMax > 0 ? Math.min((target / displayMax) * 100, 100) : 0;
-    const bar = document.getElementById(barId);
-    bar.style.width = `${Math.min(progressPercent, targetPercent)}%`;
-    const track = bar.closest('[role="progressbar"]');
-    if (track) {
-      let overFill = track.querySelector('.macro-over-fill');
-      let marker = track.querySelector('.macro-target-marker');
-      if (!overFill) {
-        overFill = document.createElement('span');
-        overFill.className = 'macro-over-fill';
-        track.appendChild(overFill);
-      }
-      if (!marker) {
-        marker = document.createElement('span');
-        marker.className = 'macro-target-marker';
-        track.appendChild(marker);
-      }
-      track.classList.toggle('is-over', isOver);
-      overFill.hidden = !isOver;
-      overFill.style.left = 'auto';
-      overFill.style.right = '0';
-      overFill.style.width = `${Math.max(0, progressPercent - targetPercent)}%`;
-      marker.hidden = !isOver;
-      marker.style.left = `${targetPercent}%`;
-    }
-    track?.setAttribute('aria-valuenow', String(Math.round((val / target) * 100)));
-    track?.setAttribute('aria-valuetext', `${val}g / ${target}g`);
-    document.getElementById(valId).textContent = `${val}/${target}g`;
+    const el = document.getElementById(valId);
+    if (el) el.textContent = `${val}/${target}g`;
   });
 }
 

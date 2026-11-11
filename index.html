@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=f46" />
+  <link rel="stylesheet" href="style.css?v=f47" />
 </head>
 
 <body>
@@ -105,7 +105,7 @@
             <img class="pixel-avatar" src="assets/character/01%20jamie_hungry.jpg" width="778" height="1152" alt="" />
           </div>
 
-          <!-- 위: 반원 게이지(왼쪽) + 탄단지 막대 세로(오른쪽) -->
+          <!-- 위: 반원 게이지(왼쪽) + 탄단지 숫자(오른쪽) -->
           <div class="dash-top">
               <!-- 캐릭터 자리: 반원 칼로리 게이지. 탭하면 먹은 ↔ 남은 칼로리 -->
               <button type="button" class="kcal-gauge" id="kcal-gauge" data-mode="eaten" aria-pressed="false" aria-label="먹은 칼로리 0kcal">
@@ -122,27 +122,15 @@
             <div class="macros-panel">
               <div class="macro-row">
                 <span class="macro-label">탄</span>
-                <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
-                  aria-label="탄수화물">
-                  <div class="macro-bar carbs" id="bar-carbs" style="width: 0%"></div>
-                </div>
-                <span class="macro-val" id="val-carbs">0 / 130g</span>
+                <span class="macro-val" id="val-carbs">0/130g</span>
               </div>
               <div class="macro-row">
                 <span class="macro-label">단</span>
-                <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
-                  aria-label="단백질">
-                  <div class="macro-bar protein" id="bar-protein" style="width: 0%"></div>
-                </div>
-                <span class="macro-val" id="val-protein">0 / 81g</span>
+                <span class="macro-val" id="val-protein">0/81g</span>
               </div>
               <div class="macro-row">
                 <span class="macro-label">지</span>
-                <div class="macro-bar-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"
-                  aria-label="지방">
-                  <div class="macro-bar fat" id="bar-fat" style="width: 0%"></div>
-                </div>
-                <span class="macro-val" id="val-fat">0 / 51g</span>
+                <span class="macro-val" id="val-fat">0/51g</span>
               </div>
             </div>
           </div>
@@ -1373,7 +1361,7 @@
   <script src="bridge.js?v=8"></script>
   <script src="chat-intent.js?v=5"></script>
   <script src="food-search-rank.js?v=1"></script>
-  <script src="app.js?v=f48"></script>
+  <script src="app.js?v=f49"></script>
 </body>
 
 </html>
