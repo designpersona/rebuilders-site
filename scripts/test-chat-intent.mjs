@@ -10,6 +10,7 @@ ctx.globalThis = ctx;
 vm.createContext(ctx);
 vm.runInContext(readFileSync(join(root, 'units.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'quick-entry.js'), 'utf8'), ctx);
+vm.runInContext(readFileSync(join(root, 'food-base.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'chat-intent.js'), 'utf8'), ctx);
 vm.runInContext(readFileSync(join(root, 'food-catalog.js'), 'utf8'), ctx);
 const { classifyChat, isQuestion, isInstructionOnly, parseEditIntent, parseClarifyReply, extractFoodHint, matchLocalInstant, matchLocalFood, exactCatalogHit, findCatalogMatches, parsePortionPhrase, parseInterpretResult, foodDataFromInterpretItem, editFromInterpret, buildInterpretPayload, foldName, sourceFromInterpret } = ctx.RebuildersChatIntent;
@@ -312,6 +313,41 @@ check('interpret 결과의 묶인 이름도 나누고 지시문은 뺀다', pack
 check('간식 923kcal 추정은 거절', nutritionSanity({ cal: 923, servingGrams: 355, serving: '1잔', sourceType: '추정' }, { mealId: 'snack' }).ok === false);
 check('g당 5kcal 초과 추정은 거절', nutritionSanity({ cal: 400, servingGrams: 50, serving: '50g', sourceType: '추정' }).ok === false);
 check('칼국수 650kcal 추정은 통과', nutritionSanity({ cal: 650, servingGrams: 500, serving: '한그릇', sourceType: '추정' }, { mealId: 'breakfast' }).ok === true);
+
+
+const { parseCasualFoods } = ctx.RebuildersChatIntent;
+const Base = ctx.RebuildersFoodBase;
+const QE = ctx.RebuildersQuickEntry;
+function scaleBase(name) {
+  const hit = Base.lookup(name);
+  if (!hit) return null;
+  const amount = ctx.RebuildersChatIntent.amountNearName(name, name) || ctx.RebuildersChatIntent.explicitMassAmount(name);
+  return QE.scaleFood({ name: hit.name, baseName: hit.name, data: hit.data, amount });
+}
+const kimbapCasual = parseCasualFoods('점심에 김밥 한줄이랑 라면 먹음');
+check('이랑으로 이어진 한 줄도 나눈다', splitFoodPhrases('에 김밥 한줄이랑 라면 먹음').join('|') === '김밥 한줄|라면', splitFoodPhrases('에 김밥 한줄이랑 라면 먹음'));
+check('아무 말 김밥+라면은 점심 두 개로 나뉜다', kimbapCasual.ok && kimbapCasual.items.length === 2
+  && kimbapCasual.items[0].name.includes('김밥') && kimbapCasual.items[1].name.includes('라면')
+  && kimbapCasual.items.every(it => it.mealId === 'lunch'), kimbapCasual.items);
+const latteCasual = parseCasualFoods('스벅 라떼 톨');
+check('스벅 라떼 톨은 한 항목', latteCasual.ok && latteCasual.items.length === 1 && /라떼/.test(latteCasual.items[0].name), latteCasual.items);
+const banana = scaleBase('바나나 120g');
+check('바나나 120g은 식약처 92kcal대', banana && banana.source === '식약처' && Math.round(banana.cal) === 92 && banana.servingGrams === 120, banana);
+const egg = scaleBase('계란 1알 50g');
+check('계란 50g은 식약처 73kcal대', egg && egg.source === '식약처' && Math.round(egg.cal) === 73, egg);
+const rice = scaleBase('밥 160g');
+check('밥 160g은 식약처 값으로 환산', rice && rice.source === '식약처' && rice.cal > 250 && rice.cal < 280 && rice.servingGrams === 160, rice);
+const yogurt = scaleBase('요즘 그릭 요거트 100g');
+check('요즘 그릭 요거트 100g은 식약처 116kcal', yogurt && yogurt.cal === 116 && yogurt.source === '식약처', yogurt);
+const kalguksu = scaleBase('등촌 칼국수 한그릇');
+check('칼국수 한그릇은 식약처 539kcal', kalguksu && kalguksu.cal === 539 && kalguksu.servingGrams === 700, kalguksu);
+const latte = scaleBase('스벅 라떼 톨');
+check('스벅 라떼 톨은 식약처 181kcal', latte && latte.cal === 181 && latte.servingGrams === 355, latte);
+const kimbap = scaleBase('김밥 한줄');
+check('김밥 한줄은 식약처 322kcal', kimbap && kimbap.cal === 322 && kimbap.servingGrams === 230, kimbap);
+check('진라면 소컵은 일반 라면 표에 넣지 않는다', Base.lookup('진라면 소컵 순한맛') == null);
+check('지시문은 캐주얼 파서에도 음식이 아니다', parseCasualFoods('여러 음식이 한 줄에 있으면 items로 나눠 기록하고, 각 항목의 meal을 유지해.').ok === false);
+
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

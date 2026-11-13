@@ -345,7 +345,16 @@
 
   /** '요즘 그릭 요거트 100g 바나나 120g'처럼 이름+양 덩어리로 나눈다. */
   function splitFoodPhrases(text) {
-    const raw = String(text || '').trim();
+    const raw0 = String(text || '').trim()
+      .replace(/^(에|은|는)\s+/, '')
+      .replace(/(먹었(?:어요|습니다|다|어)?|먹음|먹을게|마셨(?:어요|습니다|다|어)?|마심|마신)\s*$/, '')
+      .trim();
+    if (!raw0 || isInstructionLine(raw0)) return [];
+    const clauses = raw0.split(/\s*(?:이랑|하고|그리고|,|\/)\s*/).map(s => s.trim()).filter(Boolean);
+    if (clauses.length > 1) {
+      return clauses.flatMap(clause => splitFoodPhrases(clause)).filter(Boolean);
+    }
+    const raw = raw0;
     if (!raw || isInstructionLine(raw)) return [];
     const prepared = normalizeBrandText(applyBareGrams(raw));
     const tokens = prepared.split(/\s+/).filter(Boolean);
@@ -1083,6 +1092,49 @@
     return null;
   }
 
+
+  const TRAILING_EAT_RE = /(먹었(?:어요|습니다|다|어)?|먹음|먹을게|마셨(?:어요|습니다|다|어)?|마심|마신|마셨어요)\s*$/u;
+  const CASUAL_SPLIT_RE = /\s*(?:이랑|랑|하고|그리고|,|\/)\s*/u;
+
+  function parseCasualFoods(text, { now } = {}) {
+    const raw0 = String(text || '').replace(/\r\n/g, '\n').trim();
+    if (!raw0 || isInstructionLine(raw0)) return { ok: false, items: [] };
+    const day = parseDayLog(raw0, { now });
+    if (day?.ok) {
+      return {
+        ok: true,
+        fromDayLog: true,
+        mealExplicit: true,
+        items: day.lines.map(line => ({
+          name: line.text,
+          meal: line.mealId,
+          mealId: line.mealId,
+          amount: amountNearName(line.text, line.text) || explicitMassAmount(line.text) || defaultCapsuleAmount(line.text),
+        })),
+      };
+    }
+    let raw = raw0.replace(/^오늘거\s+/, '');
+    const mealHit = mealIdFrom(raw);
+    const meal = mealHit || globalThis.RebuildersQuickEntry?.mealForTime?.(now || new Date()) || 'snack';
+    let body = raw.replace(/^(아침|조식|점심|중식|저녁|석식|간식|야식)\s*(에|은|는|으로)?\s*/u, '');
+    body = body.replace(TRAILING_EAT_RE, '').trim();
+    if (!body) return { ok: false, items: [] };
+    const parts = body.split(CASUAL_SPLIT_RE).map(s => s.trim()).filter(Boolean)
+      .flatMap(part => splitFoodPhrases(part));
+    const items = [];
+    parts.forEach(part => {
+      if (!part || isInstructionLine(part)) return;
+      const name = applyBareGrams(part);
+      items.push({
+        name,
+        meal,
+        mealId: meal,
+        amount: amountNearName(name, name) || explicitMassAmount(name) || defaultCapsuleAmount(name),
+      });
+    });
+    return { ok: items.length > 0, mealId: meal, mealExplicit: Boolean(mealHit), items };
+  }
+
   const api = {
     classifyChat,
     isQuestion,
@@ -1122,6 +1174,7 @@
     nutritionSanity,
     stripInsaneNutrition,
     expandPackedItems,
+    parseCasualFoods,
     defaultCapsuleAmount,
     amountNearName,
   };

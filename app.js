@@ -613,7 +613,7 @@ function foodSourceMeta(data, name) {
   return { label: ACTIVE_LOCALE === 'en' ? 'Local' : '로컬', cls: 'source-local' };
 }
 
-const SOURCE_LABEL_KEYS = ['공식', '공공DB', '내 음식', '추정', '없음'];
+const SOURCE_LABEL_KEYS = ['공식', '공공DB', '식약처', '내 음식', '추정', '확인 필요', '없음'];
 function sourceNorm(value) {
   return String(value || '').toLowerCase().normalize('NFC').replace(/[\s·.,()\[\]\-_/]+/g, '');
 }
@@ -622,7 +622,7 @@ function inferSourceLabel(food, name = food?.name) {
   if (SOURCE_LABEL_KEYS.includes(food.sourceLabel)) {
     if (food.sourceLabel !== '없음' || isNutritionMissing(food)) return food.sourceLabel;
   }
-  if (isNutritionMissing(food)) return '없음';
+  if (isNutritionMissing(food)) return '확인 필요';
   if (food.sourceTrust === 'user' || food.nutritionCustom || food.source === 'user-entry') return '내 음식';
   if (['추정', '공식', '공공DB', '내 음식'].includes(food.sourceType)) return food.sourceType;
   if (food.aiEstimate || food.sourceTrust === 'estimate' || food.source === 'openclaw') return '추정';
@@ -641,7 +641,7 @@ function applySourceLabel(food) {
 function sourceLabelText(food) {
   const key = inferSourceLabel(food, food?.name);
   if (ACTIVE_LOCALE === 'en') {
-    return { '공식': 'Official', '공공DB': 'Public DB', '내 음식': 'Mine', '추정': 'Estimate', '없음': 'None' }[key] || key;
+    return { '공식': 'Official', '공공DB': 'Public DB', '식약처': 'MFDS', '내 음식': 'Mine', '추정': 'Estimate', '확인 필요': 'Needs check', '없음': 'None' }[key] || key;
   }
   return key;
 }
@@ -649,7 +649,8 @@ function sourceLabelTag(food) {
   const key = inferSourceLabel(food, food?.name);
   if (key === '없음') return '';
   if (key === '추정' && isAiEstimate(food)) return '';
-  return `<span class="macro-tag source-label-tag source-label-${key === '공공DB' ? 'public' : key === '내 음식' ? 'mine' : key === '공식' ? 'official' : 'estimate'}">${escapeHtml(sourceLabelText(food))}</span>`;
+  const cls = key === '공공DB' || key === '식약처' ? 'public' : key === '내 음식' ? 'mine' : key === '공식' ? 'official' : key === '확인 필요' ? 'estimate' : 'estimate';
+  return `<span class="macro-tag source-label-tag source-label-${cls}">${escapeHtml(sourceLabelText(food))}</span>`;
 }
 
 
@@ -3230,6 +3231,8 @@ function pickConfidentMatch(query) {
       return { name: food.name, data, origin: CUSTOM_FOODS[food.name] ? 'mine' : (FOOD_DB[food.name] ? 'public' : 'recent') };
     }
   }
+  const baseHit = globalThis.RebuildersFoodBase?.lookup?.(query);
+  if (baseHit?.data) return baseHit;
   for (const name of Object.keys(FOOD_DB || {})) {
     if (eq(name)) return { name, data: FOOD_DB[name], origin: 'public' };
   }
@@ -7919,33 +7922,40 @@ async function applyChatFoods(parsed) {
     const itemMeal = parsed.items?.[i]?.mealId || parsed.items?.[i]?.meal || mealId;
     return Intent?.stripInsaneNutrition ? Intent.stripInsaneNutrition(food, { mealId: itemMeal }) : food;
   });
-  const ready = [];
-  const drafts = [];
-  foods.forEach(food => {
-    if (typeof food.cal === 'number' && Number.isFinite(food.cal)) ready.push(food);
-    else drafts.push(food);
+  const pending = [];
+  foods = foods.map(food => {
+    if (typeof food.cal === 'number' && Number.isFinite(food.cal)) return food;
+    const next = { ...food, sourceType: '확인 필요', sourceLabel: '확인 필요', sourceTrust: 'pending' };
+    pending.push(next);
+    return next;
   });
-  let undoSnapshot = null;
-  if (ready.length) {
-    undoSnapshot = snapshotMeals();
-    const indexes = await addFoods(mealId, ready, parsed.time);
-    rememberChatBatch(parsed, mealId, ready, indexes);
-    await registerLoggedFoods(ready);
-    const summary = ready.map(food => formatFoodChange(food)).join(', ');
-    const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? `Saved to ${mealLabel(mealId)}: ${summary}.`
-      : `${entryDateLabel(parsed)}${mealLabel(mealId)}에 저장했어요: ${summary}.`);
-    setAgentSearching(message, false);
-    appendUndoSaveButton(message, undoSnapshot);
+  if (!foods.length) return;
+  const undoSnapshot = snapshotMeals();
+  // 끼니가 여러 개면 항목별로 나눠 저장한다.
+  const groups = new Map();
+  foods.forEach((food, i) => {
+    const mid = parsed.items?.[i]?.mealId || parsed.items?.[i]?.meal || mealId;
+    if (!groups.has(mid)) groups.set(mid, []);
+    groups.get(mid).push(food);
+  });
+  let firstIndexes = [];
+  let firstMeal = mealId;
+  for (const [mid, list] of groups) {
+    if (mid === 'snack') currentSnackSlot = getDefaultSnackSlot();
+    const indexes = await addFoods(mid, list, parsed.time);
+    if (!firstIndexes.length) { firstIndexes = indexes; firstMeal = mid; }
+    await registerLoggedFoods(list);
   }
-  if (drafts.length) {
-    const names = drafts.map(food => (typeof displayFoodName === 'function' ? displayFoodName(food) : food.name) || food.name).join(', ');
-    const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? `I don't have nutrition for ${names} yet. Enter kcal and weight and I'll save it.`
-      : `${names}의 영양정보를 찾지 못했어요. kcal과 중량을 적으면 저장할게요.`);
-    setAgentSearching(message, false);
-    appendDraftNutritionInputs(message, parsed, drafts);
-  }
+  rememberChatBatch(parsed, firstMeal, foods, firstIndexes);
+  const summary = foods.map(food => formatFoodChange(food)).join(', ');
+  const pendingNote = pending.length
+    ? (ACTIVE_LOCALE === 'en' ? ` ${pending.length} need a check.` : ` ${pending.length}개는 확인 필요.`)
+    : '';
+  const message = appendAgentMessage(ACTIVE_LOCALE === 'en'
+    ? `Saved to ${mealLabel(firstMeal)}: ${summary}.${pendingNote}`
+    : `${entryDateLabel(parsed)}${groups.size > 1 ? '' : mealLabel(firstMeal)}에 저장했어요: ${summary}.${pendingNote}`);
+  setAgentSearching(message, false);
+  appendUndoSaveButton(message, undoSnapshot);
 }
 
 
@@ -8384,7 +8394,8 @@ function localMatchCatalogs() {
       lastUnit: food.servingUnit,
     });
   });
-  const db = Object.entries(FOOD_DB || {}).map(([name, data]) => toEntry(name, data));
+  const base = (globalThis.RebuildersFoodBase?.entries?.() || []).map(row => toEntry(row.name, row.data, { aliases: row.aliases || [], brand: row.brand || '' }));
+  const db = base.concat(Object.entries(FOOD_DB || {}).map(([name, data]) => toEntry(name, data)));
   return { mine, recent, db, estimate };
 }
 
@@ -8549,11 +8560,14 @@ function interpretItemsToParsed(result, catalogs, text) {
     const query = [item.brand, item.name].filter(Boolean).join(' ');
     const exact = Intent?.exactCatalogHit(item.name, catalogs)
       || (item.brand ? Intent.exactCatalogHit(`${item.brand} ${item.name}`, catalogs) : null);
-    const fuzzy = exact ? null : Intent?.findCatalogMatches?.(query, catalogs);
+    const baseHit = (!exact && globalThis.RebuildersFoodBase?.lookup)
+      ? (globalThis.RebuildersFoodBase.lookup(item.name) || globalThis.RebuildersFoodBase.lookup(query))
+      : null;
+    const fuzzy = (exact || baseHit) ? null : Intent?.findCatalogMatches?.(query, catalogs);
     if (fuzzy?.ambiguous) {
       ambiguous.push({ query, matches: fuzzy.matches });
     }
-    const hit = exact || fuzzy?.best || null;
+    const hit = exact || baseHit || fuzzy?.best || null;
     let amount = item.amount && (item.amount.value != null || item.amount.text)
       ? item.amount
       : (typeof item.amount === 'number' ? { value: item.amount, unit: item.unit || '개', text: String(item.amount) } : null);
@@ -8753,6 +8767,12 @@ async function handleAgentCommandFallback(text, { message, reason, silent } = {}
     return;
   }
   if (!parsed || !parsed.items.length) {
+    const casual = globalThis.RebuildersChatIntent?.parseCasualFoods?.(text, { now: new Date() });
+    if (casual?.ok && casual.items?.length) {
+      const fromCasual = interpretItemsToParsed({ intent: 'log', items: casual.items }, localMatchCatalogs(), text);
+      await applyChatFoods(fromCasual);
+      return;
+    }
     appendAgentMessage(ACTIVE_LOCALE === 'en'
       ? 'Tell me the meal and food, such as “breakfast banana” or “lunch toast, iced americano.”'
       : '“아침 바나나”, “점심 햄치즈 토스트, 아아”처럼 끼니와 음식을 적어주세요.');
@@ -8771,7 +8791,7 @@ async function interpretOrFallback(text, { candidates, catalogs, meal, mixedMeal
   else if (meal) ctx.meal = meal;
   const payload = Intent.buildInterpretPayload(text, ctx);
   try {
-    const raw = await RebuildersBridge.interpretAndWait(payload, { maxMs: maxMs || 45000, intervalMs: 1500 });
+    const raw = await RebuildersBridge.interpretAndWait(payload, { maxMs: maxMs || 25000, intervalMs: 1500 });
     lastInterpretMs = raw.elapsedMs || lastInterpretMs;
     const result = Intent.parseInterpretResult(raw);
     if (!result) throw new RebuildersBridge.BridgeError('bad_request');
@@ -8789,10 +8809,13 @@ async function handleDayLogPaste(text, catalogs, { skipInterpret } = {}) {
   const Intent = globalThis.RebuildersChatIntent;
   const log = Intent?.parseDayLog?.(text, { now: new Date() });
   if (!log?.ok) return false;
+  const localParsed = () => {
+    const casual = Intent.parseCasualFoods?.(text, { now: new Date() });
+    const items = (casual?.items || log.lines.map(line => ({ name: line.text, meal: line.mealId, mealId: line.mealId })));
+    return interpretItemsToParsed({ intent: 'log', items }, catalogs || localMatchCatalogs(), text);
+  };
   if (skipInterpret || !globalThis.RebuildersBridge?.isConfigured()) {
-    appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? 'This day log needs the Mac mini, so I skipped it this time.'
-      : '하루치 기록은 맥 미니 확인이 필요해서 이번에는 넣지 않았어요.');
+    await applyChatFoods(localParsed());
     return true;
   }
   const interpretText = Intent.formatDayLogForInterpret(log.lines);
@@ -8801,7 +8824,7 @@ async function handleDayLogPaste(text, catalogs, { skipInterpret } = {}) {
     catalogs,
     mixedMeals: meals.length > 1,
     meal: meals.length === 1 ? meals[0] : null,
-    maxMs: 90000,
+    maxMs: 25000,
     saveAll: true,
   });
   return true;
