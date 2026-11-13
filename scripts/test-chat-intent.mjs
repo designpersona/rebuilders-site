@@ -246,9 +246,9 @@ check('interpret용 문구도 끼니 헤더를 유지', formatDayLogForInterpret
 const oneLine = '오늘거 아침 등촌 칼국수 한그릇 간식 네스프레소 캡슐 말차모찌 점심 요즘 그릭 요거트 100g 바나나 120 계란 1알 50g 저녁 떡갈비 60 계란말이 40 밥 160 진라면 소컵 순한맛';
 const oneLog = parseDayLog(oneLine);
 const oneMeals = Object.fromEntries(['breakfast','snack','lunch','dinner'].map(m => [m, oneLog.lines.filter(l => l.mealId === m).map(l => l.text)]));
-check('한 줄+오늘거도 끼니·음식 단위로 나뉜다', oneLog.ok && oneLog.lines.length === 10
+check('한 줄+오늘거도 끼니·음식 단위로 나뉜다', oneLog.ok && oneLog.lines.length === 9
   && oneMeals.breakfast.join('|') === '등촌 칼국수 한그릇'
-  && oneMeals.snack.join('|') === '네스프레소 캡슐|말차모찌'
+  && oneMeals.snack.join('|') === '네스프레소 캡슐 말차모찌'
   && oneMeals.lunch.join('|') === '요즘 그릭 요거트 100g|바나나 120g|계란 1알 50g'
   && oneMeals.dinner.join('|') === '떡갈비 60g|계란말이 40g|밥 160g|진라면 소컵 순한맛', oneMeals);
 check('한 줄도 interpret 문구가 음식마다 줄바꿈된다', formatDayLogForInterpret(oneLog.lines).includes('점심\n요즘 그릭 요거트 100g\n바나나 120g\n계란 1알 50g'), formatDayLogForInterpret(oneLog.lines));
@@ -292,9 +292,11 @@ check('네스프레소 캡슐은 저장된 100g가 아니라 1잔',
 const { splitFoodPhrases, isInstructionLine, nutritionSanity, expandPackedItems } = ctx.RebuildersChatIntent;
 check('이름+양 덩어리로 나눈다', splitFoodPhrases('요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g').join('|') === '요즘 그릭 요거트 100g|바나나 120g|계란 1알 50g'
   && splitFoodPhrases('떡갈비 60g 계란말이 40g 밥 160g 진라면 소컵 순한맛').join('|') === '떡갈비 60g|계란말이 40g|밥 160g|진라면 소컵 순한맛'
-  && splitFoodPhrases('네스프레소 캡슐 말차모찌').join('|') === '네스프레소 캡슐|말차모찌', {
+  && splitFoodPhrases('네스프레소 캡슐 말차모찌').join('|') === '네스프레소 캡슐 말차모찌'
+  && splitFoodPhrases('네스프레소 캡슐 말차모찌 1잔 스벅 라떼 톨').join('|') === '네스프레소 캡슐 말차모찌 1잔|스타벅스 라떼 톨'
+  && splitFoodPhrases('너트한줌 럭셔리').join('|') === '너트한줌 럭셔리', {
     lunch: splitFoodPhrases('요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g'),
-    snack: splitFoodPhrases('네스프레소 캡슐 말차모찌'),
+    snack: splitFoodPhrases('네스프레소 캡슐 말차모찌 1잔 스벅 라떼 톨'),
   });
 check('지시문 줄은 음식이 아니다', isInstructionLine('여러 음식이 한 줄에 있으면 items로 나눠 기록하고, 각 항목의 meal을 유지해.') && splitFoodPhrases('여러 음식이 한 줄에 있으면 items로 나눠 기록하고, 각 항목의 meal을 유지해.').length === 0);
 const packed = parseInterpretResult({
@@ -339,14 +341,37 @@ const rice = scaleBase('밥 160g');
 check('밥 160g은 식약처 값으로 환산', rice && rice.source === '식약처' && rice.cal > 250 && rice.cal < 280 && rice.servingGrams === 160, rice);
 const yogurt = scaleBase('요즘 그릭 요거트 100g');
 check('요즘 그릭 요거트 100g은 식약처 116kcal', yogurt && yogurt.cal === 116 && yogurt.source === '식약처', yogurt);
-const kalguksu = scaleBase('등촌 칼국수 한그릇');
+const kalguksu = scaleBase('칼국수 한그릇');
 check('칼국수 한그릇은 식약처 539kcal', kalguksu && kalguksu.cal === 539 && kalguksu.servingGrams === 700, kalguksu);
+check('등촌 칼국수는 일반 칼국수 값을 쓰지 않는다', Base.lookup('등촌 칼국수') == null && Base.lookup('등촌 칼국수 한그릇') == null);
 const latte = scaleBase('스벅 라떼 톨');
 check('스벅 라떼 톨은 식약처 181kcal', latte && latte.cal === 181 && latte.servingGrams === 355, latte);
 const kimbap = scaleBase('김밥 한줄');
 check('김밥 한줄은 식약처 322kcal', kimbap && kimbap.cal === 322 && kimbap.servingGrams === 230, kimbap);
 check('진라면 소컵은 일반 라면 표에 넣지 않는다', Base.lookup('진라면 소컵 순한맛') == null);
 check('지시문은 캐주얼 파서에도 음식이 아니다', parseCasualFoods('여러 음식이 한 줄에 있으면 items로 나눠 기록하고, 각 항목의 meal을 유지해.').ok === false);
+
+const { resolveItemNutrition } = ctx.RebuildersChatIntent;
+const bananaResolved = resolveItemNutrition({ name: '바나나', grams: 120, meal: 'breakfast' }, { mine: [], recent: [], db: [] });
+check('저장 없이 바나나는 식약처', bananaResolved?.data?.source === '식약처' && bananaResolved.data.cal === 77 && bananaResolved.name === '바나나', bananaResolved);
+const eunchon = resolveItemNutrition({ name: '등촌 칼국수', unit: '그릇', amount: { value: 1, unit: '그릇', text: '한그릇' }, meal: 'lunch' }, { mine: [], recent: [], db: [] });
+check('등촌 칼국수는 일반값을 안 쓰고 이름은 유지', eunchon?.name === '등촌 칼국수' && !eunchon?.data, eunchon);
+const savedYogurt = resolveItemNutrition(
+  { name: '요즘 그릭 요거트', grams: 100, meal: 'breakfast' },
+  { mine: [{ name: '요즘 그릭 요거트', brand: '요즘', data: { cal: 90, serving: '100g', servingGrams: 100, sourceLabel: '내 음식', sourceTrust: 'user' } }], recent: [], db: [] },
+);
+check('저장 음식이 식약처보다 앞선다', savedYogurt?.data?.cal === 90 && savedYogurt.data.sourceLabel === '저장' && savedYogurt.name === '요즘 그릭 요거트', savedYogurt);
+const officialJin = resolveItemNutrition(
+  { name: '진라면 소컵 순한맛', kcal: 275, carbs_g: 42, protein_g: 6, fat_g: 9, package_grams: 65, source_type: '공식', source_url: 'https://www.ottogi.co.kr/product' },
+  { mine: [], recent: [], db: [] },
+);
+check('공식 검색값은 브랜드 제품에 쓴다', officialJin?.data?.cal === 275 && officialJin.data.sourceLabel === '공식' && officialJin.name === '진라면 소컵 순한맛', officialJin);
+const estimateIgnored = resolveItemNutrition(
+  { name: '진라면 소컵 순한맛', kcal: 500, source_type: '추정' },
+  { mine: [], recent: [], db: [] },
+);
+check('AI 추정 칼로리는 쓰지 않는다', !estimateIgnored?.data, estimateIgnored);
+check('단위 없는 숫자는 g', ctx.RebuildersChatIntent.applyBareGrams('바나나 120 계란 1알') === '바나나 120g 계란 1알', ctx.RebuildersChatIntent.applyBareGrams('바나나 120 계란 1알'));
 
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');

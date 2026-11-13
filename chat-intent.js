@@ -340,7 +340,8 @@
   }
 
   function isQuantityToken(tok) {
-    return /^(?:\d+(?:\.\d+)?(?:g|kg|ml|l|개|알|그릇|공기|잔|컵|조각|봉|팩|인분|줌|스푼|큰술|작은술|캡슐)?|한(?:그릇|개|잔|컵|봉|팩|인분)|캡슐)$/i.test(String(tok || '').trim());
+    // 맨앞 '캡슐'은 제품명(네스프레소 캡슐 말차모찌)의 일부라 나누지 않는다. 1캡슐·1잔만 양이다.
+    return /^(?:\d+(?:\.\d+)?(?:g|kg|ml|l|개|알|그릇|공기|잔|컵|조각|봉|팩|인분|줌|스푼|큰술|작은술|캡슐|톨)?|한(?:그릇|개|잔|컵|봉|팩|인분)|톨|tall)$/i.test(String(tok || '').trim());
   }
 
   /** '요즘 그릭 요거트 100g 바나나 120g'처럼 이름+양 덩어리로 나눈다. */
@@ -1019,11 +1020,20 @@
   function sourceFromInterpret(item) {
     const raw = normalize(item?.sourceType || item?.source_type || item?.source || '').replace(/\s+/g, '');
     const note = normalize(item?.sourceNote || item?.source_note);
+    if (['확인필요', '확인 필요'].includes(raw) || item?.sourceTrust === 'pending') {
+      return { sourceType: '확인 필요', sourceLabel: '확인 필요', sourceTrust: 'pending', estimate: false, aiEstimate: false };
+    }
     if (['공식', '포장지', '라벨', '제품라벨', '영양표', '공식값'].includes(raw)) {
       return { sourceType: '공식', sourceLabel: '공식', sourceTrust: 'reference', estimate: false, aiEstimate: false };
     }
-    if (['공공DB', '식약처', '공공'].includes(raw) || /식약처/.test(note)) {
+    if (['식약처'].includes(raw) || /식약처/.test(note)) {
+      return { sourceType: '공공DB', sourceLabel: '식약처', sourceTrust: 'reference', estimate: false, aiEstimate: false };
+    }
+    if (['공공DB', '공공'].includes(raw)) {
       return { sourceType: '공공DB', sourceLabel: '공공DB', sourceTrust: 'reference', estimate: false, aiEstimate: false };
+    }
+    if (['저장', '내음식', '내 음식'].includes(raw)) {
+      return { sourceType: '저장', sourceLabel: '저장', sourceTrust: 'user', estimate: false, aiEstimate: false };
     }
     if (raw || item?.sourceUrl || item?.source_url || item?.kcal != null || item?.cal != null) {
       return { sourceType: '추정', sourceLabel: '추정', sourceTrust: 'estimate', estimate: true, aiEstimate: true };
@@ -1069,7 +1079,69 @@
     return out;
   }
 
+  function itemQuery(item) {
+    return [item?.brand, item?.name].filter(Boolean).join(' ').trim() || String(item?.name || '').trim();
+  }
+
+  function itemLooksBranded(item) {
+    const FoodBase = global.RebuildersFoodBase;
+    const query = itemQuery(item);
+    if (item?.brand) return true;
+    if (FoodBase?.hasBrandOrPlace?.(query) || FoodBase?.hasBrandOrPlace?.(item?.name)) return true;
+    return false;
+  }
+
+  /**
+   * 영양 순서: 저장 음식 → 식약처(브랜드·상호 없는 기본 음식, 또는 그 브랜드 전용 행) → 공식 검색 결과.
+   * 추정값은 쓰지 않는다. 없으면 data는 null(확인 필요).
+   * 사용자가 쓴 이름은 바꾸지 않는다.
+   */
+  function resolveItemNutrition(item, catalogs) {
+    if (!item || typeof item !== 'object') return { name: '', data: null, origin: undefined, branded: false };
+    const FoodBase = global.RebuildersFoodBase;
+    const query = itemQuery(item);
+    const branded = itemLooksBranded(item);
+    const storedCatalogs = { mine: catalogs?.mine, recent: catalogs?.recent };
+    const exact = exactCatalogHit(item.name, storedCatalogs)
+      || (item.brand ? exactCatalogHit(`${item.brand} ${item.name}`, storedCatalogs) : null)
+      || exactCatalogHit(query, storedCatalogs);
+    let baseHit = null;
+    if (!exact && FoodBase?.lookup) {
+      const hit = FoodBase.lookup(item.name) || FoodBase.lookup(query);
+      if (hit) {
+        const entryBrand = hit.data?.brand || hit.brand;
+        if (entryBrand) baseHit = hit;
+        else if (!branded) baseHit = hit;
+      }
+    }
+    const interpretData = foodDataFromInterpretItem(item);
+    const officialOk = interpretData && ['공식', '공공DB', '식약처'].includes(interpretData.sourceLabel || interpretData.sourceType);
+    let data = null;
+    let origin;
+    if (exact?.data && typeof exact.data.cal === 'number') {
+      data = { ...exact.data, sourceLabel: '저장', sourceType: exact.data.sourceType && exact.data.sourceType !== '없음' ? exact.data.sourceType : '저장', sourceTrust: exact.data.sourceTrust || 'user' };
+      if (data.sourceLabel !== '공식' && data.sourceLabel !== '식약처' && data.sourceLabel !== '공공DB') data.sourceLabel = '저장';
+      origin = exact.origin || 'mine';
+    } else if (baseHit?.data && typeof baseHit.data.cal === 'number') {
+      data = baseHit.data;
+      origin = 'mfds-base';
+    } else if (officialOk) {
+      data = interpretData;
+      origin = 'interpret';
+    }
+    return {
+      name: item.name,
+      baseName: (exact || baseHit)?.name || item.name,
+      data,
+      origin,
+      branded,
+      exact: exact || null,
+      baseHit: baseHit || null,
+    };
+  }
+
   function editFromInterpret(edit) {
+
     if (!edit) return null;
     const foodHint = edit.targetName || '';
     if (edit.field === 'delete') return { action: 'delete', foodHint, targetId: edit.targetId };
@@ -1157,6 +1229,8 @@
     parseInterpretResult,
     foodDataFromInterpretItem,
     sourceFromInterpret,
+    resolveItemNutrition,
+    itemLooksBranded,
     editFromInterpret,
     hasCalorie,
     rejectsGenericFallback,

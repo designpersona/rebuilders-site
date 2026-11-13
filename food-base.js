@@ -85,7 +85,7 @@
     {
       name: '칼국수',
       mfdsName: '칼국수',
-      aliases: ['등촌 칼국수', '등촌칼국수'],
+      aliases: [],
       per100: { cal: 77, carbs: 14.9, protein: 3.3, fat: 0.5 },
       servingGrams: 700,
       unitGrams: { '그릇': 700, '개': 700 },
@@ -124,6 +124,37 @@
     return String(value || '').toLowerCase().normalize('NFC').replace(/[\s·.,()\[\]\-_/]+/g, '');
   }
 
+  const BRAND_OR_PLACE_RE = /등촌|스벅|스타벅스|starbucks|네스프레소|nespresso|진라면|신라면|너구리|안성탕면|짜파게티|열라면|오뚜기|농심|삼양|팔도|비비고|풀무원|맥도날드|맥날|버거킹|롯데리아|맘스터치|파리바게뜨|배스킨|던킨|투썸|이디야|메가커피|컴포즈|빽다방|설빙|교촌|이삭|서브웨이|한솥|노브랜드|소컵|컵라면|용기면/i;
+
+  function hasBrandOrPlace(name, ownBrand) {
+    const q = String(name || '');
+    if (!q) return false;
+    if (/요즘/.test(q) && /요거트|요구르트|yogurt/i.test(q)) return true;
+    if (ownBrand) {
+      const folded = compact(q);
+      const brand = compact(ownBrand);
+      if (brand && folded.includes(brand)) {
+        const stripped = folded.split(brand).join('');
+        return BRAND_OR_PLACE_RE.test(stripped) && !compact(stripped).includes(brand);
+      }
+    }
+    return BRAND_OR_PLACE_RE.test(q);
+  }
+
+  function leftoverAfterKey(q, key) {
+    if (q === key) return '';
+    if (q.startsWith(key)) return q.slice(key.length);
+    if (key.length >= 2 && q.endsWith(key)) return q.slice(0, q.length - key.length);
+    return null;
+  }
+
+  function isAmountOrPrep(value) {
+    const x = compact(value);
+    if (!x) return true;
+    // '1알50g'처럼 양이 두 번 이어져도 허용.
+    return /^((한)?(\d+(?:\.\d+)?)?(g|ml|그램|개|알|그릇|공기|잔|컵|줄|조각|봉|팩|인분|줌|톨|tall|hot|아이스|ice|삶은것|삶은|흰|생것|생))+$/.test(x);
+  }
+
   function isIcedLatte(q) {
     return /아이스|ice|아샷추/.test(q);
   }
@@ -152,12 +183,14 @@
     const q = compact(raw);
     if (!q) return null;
     let best = null;
+    let bestKey = '';
     let bestLen = 0;
     for (const row of INDEX) {
       for (const key of row.keys) {
         if (q === key || q.startsWith(key) || (key.length >= 2 && q.endsWith(key))) {
           if (key.length > bestLen) {
             best = row.food;
+            bestKey = key;
             bestLen = key.length;
           }
         }
@@ -170,6 +203,14 @@
     if (n === compact('스타벅스 카페 라떼') && (isIcedLatte(q) || isFlavoredLatte(q))) return null;
     if (n === compact('계란') && /말이/.test(q)) return null;
     if (n === compact('요즘 그릭 요거트') && !/요즘/.test(q) && compact(raw) !== compact('플레인 그릭요거트')) return null;
+    const entryBrand = best.brand || '';
+    if (entryBrand) {
+      // 브랜드 전용 행은 그 브랜드가 이름에 있을 때만.
+    } else {
+      if (hasBrandOrPlace(raw)) return null;
+      const leftover = leftoverAfterKey(q, bestKey);
+      if (leftover && leftover !== '' && !isAmountOrPrep(leftover)) return null;
+    }
     return { name: best.name, data: best, origin: 'mfds-base' };
   }
 
@@ -177,7 +218,7 @@
     return FOODS.map(food => ({ name: food.name, data: food, aliases: food.aliases || [], brand: food.brand || '' }));
   }
 
-  const api = { FOODS, lookup, entries, sourceDate: SOURCE.date, sourceProvider: SOURCE.provider };
+  const api = { FOODS, lookup, entries, hasBrandOrPlace, sourceDate: SOURCE.date, sourceProvider: SOURCE.provider };
   global.RebuildersFoodBase = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

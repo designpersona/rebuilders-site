@@ -613,7 +613,7 @@ function foodSourceMeta(data, name) {
   return { label: ACTIVE_LOCALE === 'en' ? 'Local' : '로컬', cls: 'source-local' };
 }
 
-const SOURCE_LABEL_KEYS = ['공식', '공공DB', '식약처', '내 음식', '추정', '확인 필요', '없음'];
+const SOURCE_LABEL_KEYS = ['공식', '공공DB', '식약처', '저장', '내 음식', '추정', '확인 필요', '없음'];
 function sourceNorm(value) {
   return String(value || '').toLowerCase().normalize('NFC').replace(/[\s·.,()\[\]\-_/]+/g, '');
 }
@@ -623,8 +623,8 @@ function inferSourceLabel(food, name = food?.name) {
     if (food.sourceLabel !== '없음' || isNutritionMissing(food)) return food.sourceLabel;
   }
   if (isNutritionMissing(food)) return '확인 필요';
-  if (food.sourceTrust === 'user' || food.nutritionCustom || food.source === 'user-entry') return '내 음식';
-  if (['추정', '공식', '공공DB', '내 음식'].includes(food.sourceType)) return food.sourceType;
+  if (food.sourceTrust === 'user' || food.nutritionCustom || food.source === 'user-entry') return food.sourceLabel === '저장' ? '저장' : '내 음식';
+  if (['추정', '공식', '공공DB', '식약처', '저장', '내 음식'].includes(food.sourceType)) return food.sourceType === '내 음식' && food.sourceLabel === '저장' ? '저장' : food.sourceType;
   if (food.aiEstimate || food.sourceTrust === 'estimate' || food.source === 'openclaw') return '추정';
   if (food.sourceTrust === 'reference' || food.source === 'Open Food Facts') return '공식';
   const provider = String(food.nutritionSource?.provider || '');
@@ -641,7 +641,7 @@ function applySourceLabel(food) {
 function sourceLabelText(food) {
   const key = inferSourceLabel(food, food?.name);
   if (ACTIVE_LOCALE === 'en') {
-    return { '공식': 'Official', '공공DB': 'Public DB', '식약처': 'MFDS', '내 음식': 'Mine', '추정': 'Estimate', '확인 필요': 'Needs check', '없음': 'None' }[key] || key;
+    return { '공식': 'Official', '공공DB': 'Public DB', '식약처': 'MFDS', '저장': 'Saved', '내 음식': 'Mine', '추정': 'Estimate', '확인 필요': 'Needs check', '없음': 'None' }[key] || key;
   }
   return key;
 }
@@ -649,7 +649,7 @@ function sourceLabelTag(food) {
   const key = inferSourceLabel(food, food?.name);
   if (key === '없음') return '';
   if (key === '추정' && isAiEstimate(food)) return '';
-  const cls = key === '공공DB' || key === '식약처' ? 'public' : key === '내 음식' ? 'mine' : key === '공식' ? 'official' : key === '확인 필요' ? 'estimate' : 'estimate';
+  const cls = key === '공공DB' || key === '식약처' ? 'public' : (key === '내 음식' || key === '저장') ? 'mine' : key === '공식' ? 'official' : key === '확인 필요' ? 'estimate' : 'estimate';
   return `<span class="macro-tag source-label-tag source-label-${cls}">${escapeHtml(sourceLabelText(food))}</span>`;
 }
 
@@ -8558,19 +8558,24 @@ function interpretItemsToParsed(result, catalogs, text) {
   const items = result.items.map(item => {
     if (Intent?.isInstructionLine?.(item.name)) return null;
     const query = [item.brand, item.name].filter(Boolean).join(' ');
-    const exact = Intent?.exactCatalogHit(item.name, catalogs)
-      || (item.brand ? Intent.exactCatalogHit(`${item.brand} ${item.name}`, catalogs) : null);
-    const baseHit = (!exact && globalThis.RebuildersFoodBase?.lookup)
-      ? (globalThis.RebuildersFoodBase.lookup(item.name) || globalThis.RebuildersFoodBase.lookup(query))
-      : null;
-    const fuzzy = (exact || baseHit) ? null : Intent?.findCatalogMatches?.(query, catalogs);
+    const resolved = Intent?.resolveItemNutrition?.(item, catalogs) || null;
+    const branded = resolved?.branded || Boolean(item.brand);
+    const exact = resolved?.exact || null;
+    const baseHit = resolved?.baseHit || null;
+    const fuzzy = (exact || baseHit || branded) ? null : Intent?.findCatalogMatches?.(query, { mine: catalogs?.mine, recent: catalogs?.recent });
     if (fuzzy?.ambiguous) {
       ambiguous.push({ query, matches: fuzzy.matches });
     }
-    const hit = exact || baseHit || fuzzy?.best || null;
+    const hit = exact || baseHit || (!branded && fuzzy?.best) || null;
     let amount = item.amount && (item.amount.value != null || item.amount.text)
       ? item.amount
       : (typeof item.amount === 'number' ? { value: item.amount, unit: item.unit || '개', text: String(item.amount) } : null);
+    if (!amount && item.grams != null && Number(item.grams) > 0) {
+      amount = { value: Number(item.grams), unit: 'g', text: `${item.grams}g` };
+    }
+    if (!amount && item.unit && ['g', 'ml'].includes(String(item.unit).toLowerCase()) && item.amount == null && item.grams) {
+      amount = { value: Number(item.grams), unit: String(item.unit).toLowerCase(), text: `${item.grams}${item.unit}` };
+    }
     const fromText = Intent?.amountNearName?.(text, item.name) || Intent?.explicitMassAmount?.(query) || Intent?.defaultCapsuleAmount?.(query);
     // 사용자가 g을 적었거나 캡슐이면 저장된 최근 중량(100g 등)보다 그걸 쓴다.
     if (fromText) {
@@ -8579,16 +8584,16 @@ function interpretItemsToParsed(result, catalogs, text) {
       if (textIsMass || !amount || (fromText.unit === '잔' && !(amtIsMass && amount.value))) amount = fromText;
     }
     if (amount && amount.unit === '캡슐') amount = { value: amount.value, unit: '잔', text: `${amount.value}잔` };
-    const interpretData = Intent?.foodDataFromInterpretItem?.(item) || null;
-    const hitData = hit?.data && typeof hit.data.cal === 'number' ? hit.data : null;
-    const data = hitData || interpretData || hit?.data || null;
+    const data = (resolved && resolved.data && typeof resolved.data.cal === 'number')
+      ? resolved.data
+      : (hit?.data && typeof hit.data.cal === 'number' ? hit.data : null);
     let entry = {
-      name: hit?.name || item.name,
-      baseName: hit?.baseName || hit?.name || item.name,
+      name: item.name,
+      baseName: resolved?.baseName || hit?.name || item.name,
       data,
       known: Boolean(data && (typeof data.cal === 'number')),
       amount,
-      origin: hit?.origin || (interpretData ? 'interpret' : undefined),
+      origin: resolved?.origin || hit?.origin || undefined,
       packageGrams: (data && data.packageGrams) || item.packageGrams || null,
     };
     if (!entry.amount && hit && !Intent?.defaultCapsuleAmount?.(query)) {
@@ -8605,6 +8610,26 @@ function interpretItemsToParsed(result, catalogs, text) {
       if (capsule) entry.amount = capsule;
     }
     entry.food = QE?.scaleFood ? QE.scaleFood(entry) : { name: entry.name, ...(entry.data || {}), ...(entry.amount ? { serving: entry.amount.text } : {}) };
+    if (entry.food) {
+      entry.food.name = item.name;
+      if (item.brand && !entry.food.brand) entry.food.brand = item.brand;
+    }
+    if (Intent?.stripInsaneNutrition) entry.food = Intent.stripInsaneNutrition(entry.food, { mealId: item.meal || mealDefault });
+    if (!entry.food || typeof entry.food.cal !== 'number') {
+      const serving = entry.amount?.text || (item.grams != null ? `${item.grams}g` : undefined);
+      entry.food = {
+        name: item.name,
+        ...(item.brand ? { brand: item.brand } : {}),
+        ...(serving ? { serving } : {}),
+        ...(entry.amount?.unit ? { servingAmount: entry.amount.value, servingUnit: entry.amount.unit } : {}),
+        ...(entry.amount && ['g', 'ml'].includes(String(entry.amount.unit || '').toLowerCase()) ? { servingGrams: entry.amount.value } : {}),
+        ...(item.grams != null ? { servingGrams: item.grams } : {}),
+        sourceType: '확인 필요',
+        sourceLabel: '확인 필요',
+        sourceTrust: 'pending',
+      };
+      entry.known = false;
+    }
     entry.mealId = item.meal || mealDefault;
     return entry;
   }).filter(Boolean);
