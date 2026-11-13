@@ -210,5 +210,37 @@ check('source_type 공식은 공식', officialFromType?.sourceType === '공식' 
 const memoryEstimate = sourceFromInterpret({ source_type: '추정', source_note: '공식 영양표처럼 기억남', kcal: 290 });
 check('모델 기억은 추정(노트에 공식이 있어도 격상하지 않음)', memoryEstimate?.sourceType === '추정' && memoryEstimate.sourceTrust === 'estimate', memoryEstimate);
 
+
+const { parseDayLog, applyBareGrams, normalizeBrandText, isMealHeaderLine, leftoverUnmatched, formatDayLogForInterpret } = ctx.RebuildersChatIntent;
+check('끼니 헤더(앞에 - 있어도)를 인식', isMealHeaderLine('아침') === 'breakfast' && isMealHeaderLine('- 점심') === 'lunch' && isMealHeaderLine('저녁:') === 'dinner' && isMealHeaderLine('간식') === 'snack' && !isMealHeaderLine('아침 바나나'), { breakfast: isMealHeaderLine('아침'), lunch: isMealHeaderLine('- 점심') });
+check('단위 없는 끝 숫자는 g', applyBareGrams('바나나 120') === '바나나 120g' && applyBareGrams('계란 1알 50g') === '계란 1알 50g' && applyBareGrams('밥 160') === '밥 160g', { banana: applyBareGrams('바나나 120'), egg: applyBareGrams('계란 1알 50g') });
+check('별칭은 붙여넣기 문구에서 정규화', normalizeBrandText('별다방 라떼') === '스타벅스 라떼' && normalizeBrandText('맥날 불고기버거') === '맥도날드 불고기버거' && normalizeBrandText('버킹 와퍼') === '버거킹 와퍼', normalizeBrandText('별다방 라떼'));
+
+const memo = `아침
+등촌 칼국수 한그릇
+간식
+네스프레소 캡슐
+말차모찌
+점심
+요즘 그릭 요거트 100g
+바나나 120
+계란 1알 50g
+저녁
+떡갈비 60
+계란말이 40
+밥 160
+진라면 소컵 순한맛`;
+const dayLog = parseDayLog(memo);
+const meals = Object.fromEntries(['breakfast','snack','lunch','dinner'].map(m => [m, dayLog.lines.filter(l => l.mealId === m).map(l => l.text)]));
+check('하루치 붙여넣기는 끼니별로 나뉜다', dayLog.ok && dayLog.lines.length === 10
+  && meals.breakfast.join('|') === '등촌 칼국수 한그릇'
+  && meals.snack.join('|') === '네스프레소 캡슐|말차모찌'
+  && meals.lunch.join('|') === '요즘 그릭 요거트 100g|바나나 120g|계란 1알 50g'
+  && meals.dinner.join('|') === '떡갈비 60g|계란말이 40g|밥 160g|진라면 소컵 순한맛', meals);
+check('헤더 없는 여러 줄은 하루치로 보지 않음', !parseDayLog('바나나 120\n계란 1알').ok);
+const leftoverBanana = leftoverUnmatched('바나나 120g', { name: '바나나', data: { cal: 93 } });
+check('양 토큰은 로컬 매칭 잔여로 보지 않음', leftoverBanana.length === 0, leftoverBanana);
+check('interpret용 문구도 끼니 헤더를 유지', formatDayLogForInterpret(dayLog.lines).includes('아침\n등촌 칼국수 한그릇') && formatDayLogForInterpret(dayLog.lines).includes('저녁\n떡갈비 60g'), formatDayLogForInterpret(dayLog.lines));
+
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

@@ -8573,6 +8573,7 @@ function interpretItemsToParsed(result, catalogs, text) {
       }
     }
     entry.food = QE?.scaleFood ? QE.scaleFood(entry) : { name: entry.name, ...(entry.data || {}), ...(entry.amount ? { serving: entry.amount.text } : {}) };
+    entry.mealId = item.meal || mealDefault;
     return entry;
   });
   const time = result.items.find(item => item.time)?.time || null;
@@ -8661,7 +8662,19 @@ async function applyInterpretResult(result, { message, text, catalogs } = {}) {
       : '“아침 바나나”, “점심 햄치즈 토스트, 아아”처럼 끼니와 음식을 적어주세요.');
     return;
   }
-  await applyChatFoods(parsed);
+  const groups = new Map();
+  for (const item of parsed.items) {
+    const mealId = item.mealId || parsed.mealId;
+    if (!groups.has(mealId)) groups.set(mealId, []);
+    groups.get(mealId).push(item);
+  }
+  if (groups.size <= 1) {
+    await applyChatFoods(parsed);
+    return;
+  }
+  for (const [mealId, items] of groups) {
+    await applyChatFoods({ ...parsed, mealId, mealExplicit: true, items });
+  }
 }
 
 async function handleAgentCommandFallback(text, { message, reason, silent } = {}) {
@@ -8690,6 +8703,10 @@ async function handleAgentCommandFallback(text, { message, reason, silent } = {}
     await answerQuestion(text, classified);
     return;
   }
+  if (globalThis.RebuildersChatIntent?.parseDayLog?.(text)?.ok) {
+    await handleDayLogPaste(text, localMatchCatalogs(), { skipInterpret: true });
+    return;
+  }
   const parsed = parseQuickFoodText(text);
   if (parsed?.ambiguous && parsed.items.length) {
     pendingClarify = { parsed, text };
@@ -8712,14 +8729,17 @@ async function handleAgentCommandFallback(text, { message, reason, silent } = {}
   await applyChatFoods(parsed);
 }
 
-async function interpretOrFallback(text, { candidates, catalogs } = {}) {
+async function interpretOrFallback(text, { candidates, catalogs, meal, mixedMeals, maxMs } = {}) {
   const en = ACTIVE_LOCALE === 'en';
   const Intent = globalThis.RebuildersChatIntent;
   const message = appendAgentMessage(en ? 'Figuring that out…' : '알아보는 중…');
   setAgentSearching(message, true);
-  const payload = Intent.buildInterpretPayload(text, interpretContextFor(text, catalogs, candidates));
+  const ctx = interpretContextFor(text, catalogs, candidates);
+  if (mixedMeals) ctx.meal = null;
+  else if (meal) ctx.meal = meal;
+  const payload = Intent.buildInterpretPayload(text, ctx);
   try {
-    const raw = await RebuildersBridge.interpretAndWait(payload, { maxMs: 45000, intervalMs: 1500 });
+    const raw = await RebuildersBridge.interpretAndWait(payload, { maxMs: maxMs || 45000, intervalMs: 1500 });
     lastInterpretMs = raw.elapsedMs || lastInterpretMs;
     const result = Intent.parseInterpretResult(raw);
     if (!result) throw new RebuildersBridge.BridgeError('bad_request');
@@ -8731,6 +8751,57 @@ async function interpretOrFallback(text, { candidates, catalogs } = {}) {
   } finally {
     if (message?.classList.contains('is-searching')) setAgentSearching(message, false);
   }
+}
+
+async function handleDayLogPaste(text, catalogs, { skipInterpret } = {}) {
+  const Intent = globalThis.RebuildersChatIntent;
+  const log = Intent?.parseDayLog?.(text, { now: new Date() });
+  if (!log?.ok) return false;
+  const knownByMeal = new Map();
+  const unknownLines = [];
+  for (const line of log.lines) {
+    const local = Intent.matchLocalFood?.(line.text, catalogs, { now: new Date() })
+      || Intent.matchLocalInstant?.(line.text, catalogs, { now: new Date() });
+    if (local?.ok && local.parsed?.items?.length && !local.ambiguousCandidates?.length) {
+      if (local.parsed) {
+        local.parsed.mealId = line.mealId;
+        local.parsed.mealExplicit = true;
+      }
+      if (!knownByMeal.has(line.mealId)) knownByMeal.set(line.mealId, []);
+      knownByMeal.get(line.mealId).push(...local.parsed.items);
+    } else {
+      unknownLines.push(line);
+    }
+  }
+  for (const [mealId, items] of knownByMeal) {
+    await applyChatFoods({
+      mealId,
+      mealExplicit: true,
+      date: dateKey(currentDate),
+      dateExplicit: false,
+      time: null,
+      timeExplicit: false,
+      recordIntent: true,
+      items,
+      phrase: text,
+    });
+  }
+  if (!unknownLines.length) return true;
+  if (skipInterpret || !globalThis.RebuildersBridge?.isConfigured()) {
+    appendAgentMessage(ACTIVE_LOCALE === 'en'
+      ? 'Some foods need the Mac mini, so I skipped those lines.'
+      : '일부 음식은 맥 미니 확인이 필요해서 이번에는 넣지 않았어요.');
+    return true;
+  }
+  const interpretText = Intent.formatDayLogForInterpret(unknownLines);
+  const meals = [...new Set(unknownLines.map(line => line.mealId))];
+  await interpretOrFallback(interpretText, {
+    catalogs,
+    mixedMeals: meals.length > 1,
+    meal: meals.length === 1 ? meals[0] : null,
+    maxMs: 90000,
+  });
+  return true;
 }
 
 async function handleAgentCommand() {
@@ -8798,6 +8869,10 @@ async function handleAgentCommand() {
         await answerQuestion(text, classified);
         return;
       }
+    }
+    if (Intent?.parseDayLog?.(text)?.ok) {
+      await handleDayLogPaste(text, catalogs);
+      return;
     }
     const local = Intent?.matchLocalFood?.(text, catalogs, { now: new Date() })
       || Intent?.matchLocalInstant(text, catalogs, { now: new Date() })
@@ -8877,14 +8952,27 @@ if (!VOICE_ENABLED) document.getElementById('agent-voice')?.setAttribute('hidden
 
 /* 보내기 버튼은 항상 보이고, 글자가 없을 땐 흐리게(눌러도 아무 일 없음).
    iOS 한글 입력(조합 중)은 input 이벤트가 늦을 수 있어 여러 이벤트에서 확인 */
+function refreshAiDockInputSize() {
+  if (!agentInputEl || agentInputEl.tagName !== 'TEXTAREA') return;
+  agentInputEl.style.height = '0px';
+  agentInputEl.style.height = `${Math.min(132, Math.max(28, agentInputEl.scrollHeight))}px`;
+}
+
 function refreshAiDockSend() {
   if (!agentSendEl) return;
   const empty = !agentInputEl?.value.trim();
   agentSendEl.hidden = false;
   agentSendEl.classList.toggle('is-empty', empty);
   agentSendEl.setAttribute('aria-disabled', String(empty));
+  refreshAiDockInputSize();
 }
 ['input', 'compositionupdate', 'compositionend', 'keyup', 'change', 'focus', 'blur'].forEach(type => agentInputEl?.addEventListener(type, refreshAiDockSend));
+agentInputEl?.addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+  event.preventDefault();
+  if (!agentInputEl.value.trim()) return;
+  document.getElementById('ai-dock-form')?.requestSubmit();
+});
 // return 키·보내기 버튼 = form 제출(한글 조합 중 return 도 iOS가 조합을 끝낸 뒤 제출)
 // 식도감 아래 검색줄: 왼쪽 돋보기 = 입력칸으로, 오른쪽 검정 버튼·return = 검색하고 키보드 닫기
 document.getElementById('foodex-search-lead')?.addEventListener('click', () => document.getElementById('foodex-search-input')?.focus());

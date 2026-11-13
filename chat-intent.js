@@ -137,8 +137,12 @@
       .join(' ');
   }
 
+  function isAmountToken(tok) {
+    return /^(?:\d+(?:\.\d+)?)(?:g|kg|ml|l|개|알|그릇|공기|잔|컵|조각|봉|팩|인분|줌)?$/i.test(String(tok || ''));
+  }
+
   function leftoverUnmatched(query, entry) {
-    const qTokens = nameTokens(logFoodQuery(query) || query);
+    const qTokens = nameTokens(logFoodQuery(query) || query).filter(tok => !isAmountToken(tok));
     const text = catalogSearchText(entry);
     return unmatchedQueryTokens(qTokens, foldName(text), nameTokens(text));
   }
@@ -245,6 +249,78 @@
     const t = normalize(text);
     const m = t.match(/(아침|조식|점심|중식|저녁|석식|간식|야식|breakfast|lunch|dinner|snack)/iu);
     return m ? MEAL_WORD[m[1]] || MEAL_WORD[m[1].toLowerCase()] || null : null;
+  }
+
+  const MEAL_HEADER_RE = /^\s*-{0,3}\s*(아침|조식|점심|중식|저녁|석식|간식|야식|breakfast|lunch|dinner|snack)\s*:?\s*$/iu;
+  const MEAL_LABEL = { breakfast: '아침', lunch: '점심', dinner: '저녁', snack: '간식' };
+
+  function isMealHeaderLine(line) {
+    const m = String(line || '').trim().match(MEAL_HEADER_RE);
+    if (!m) return null;
+    return MEAL_WORD[m[1]] || MEAL_WORD[m[1].toLowerCase()] || null;
+  }
+
+  /** '바나나 120'처럼 끝에 단위 없는 숫자는 g. 이미 단위가 있으면 그대로. */
+  function applyBareGrams(line) {
+    const t = String(line || '').trim();
+    if (!t) return t;
+    if (/(?:^|\s)\d+(?:\.\d+)?\s*(?:g|kg|ml|l|개|알|그릇|공기|잔|컵|조각|봉|팩|인분|줌|스푼|큰술|작은술)\s*$/iu.test(t)) return t;
+    return t.replace(/(\d+(?:\.\d+)?)\s*$/u, '$1g');
+  }
+
+  function normalizeBrandText(text) {
+    let out = String(text || '');
+    const pairs = [];
+    Object.entries(BRAND_ALIASES).forEach(([canon, aliases]) => {
+      for (const alias of aliases) {
+        if (!alias || compactName(alias) === compactName(canon)) continue;
+        pairs.push([alias, canon]);
+      }
+    });
+    pairs.sort((a, b) => b[0].length - a[0].length);
+    for (const [alias, brand] of pairs) {
+      out = out.replace(new RegExp(escapeRe(alias), 'giu'), brand);
+    }
+    return out;
+  }
+
+  function parseDayLog(text, { now } = {}) {
+    const parts = String(text || '').replace(/\r\n/g, '\n').split('\n').map(s => s.trim()).filter(Boolean);
+    if (parts.length < 2) return { ok: false, lines: [] };
+    if (!parts.some(part => isMealHeaderLine(part))) return { ok: false, lines: [] };
+    const fallbackMeal = globalThis.RebuildersQuickEntry?.mealForTime?.(now || new Date()) || 'snack';
+    let current = null;
+    const lines = [];
+    for (const part of parts) {
+      const header = isMealHeaderLine(part);
+      if (header) { current = header; continue; }
+      const lineText = normalizeBrandText(applyBareGrams(part));
+      if (!lineText) continue;
+      lines.push({ mealId: current || fallbackMeal, text: lineText, raw: part });
+    }
+    return { ok: lines.length > 0, lines };
+  }
+
+  function formatDayLogForInterpret(lines) {
+    const order = ['breakfast', 'lunch', 'dinner', 'snack'];
+    const groups = new Map();
+    for (const line of lines || []) {
+      const meal = line.mealId || 'snack';
+      if (!groups.has(meal)) groups.set(meal, []);
+      groups.get(meal).push(line.text);
+    }
+    const out = [];
+    for (const meal of order) {
+      if (!groups.has(meal)) continue;
+      out.push(MEAL_LABEL[meal] || meal);
+      out.push(...groups.get(meal));
+    }
+    for (const [meal, items] of groups) {
+      if (order.includes(meal)) continue;
+      out.push(meal);
+      out.push(...items);
+    }
+    return out.join('\n');
   }
 
   function parseAmountPhrase(text) {
@@ -584,7 +660,7 @@
 
   function buildInterpretPayload(text, context = {}) {
     const payload = {
-      text: String(text || '').trim().slice(0, 500),
+      text: String(text || '').trim().slice(0, 2000),
       date: context.date || null,
       meal: context.meal || null,
       time: context.time || null,
@@ -634,7 +710,7 @@
     const intent = String(raw.intent || '').trim();
     if (!INTERPRET_INTENTS.includes(intent)) return null;
     const items = [];
-    (Array.isArray(raw.items) ? raw.items : []).slice(0, 8).forEach(item => {
+    (Array.isArray(raw.items) ? raw.items : []).slice(0, 24).forEach(item => {
       if (!item || typeof item !== 'object') return;
       const name = normalize(item.name).slice(0, 80);
       if (!name) return;
@@ -811,6 +887,11 @@
     rejectsGenericFallback,
     leftoverUnmatched,
     BRAND_ALIASES,
+    isMealHeaderLine,
+    applyBareGrams,
+    normalizeBrandText,
+    parseDayLog,
+    formatDayLogForInterpret,
   };
   global.RebuildersChatIntent = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
