@@ -242,5 +242,22 @@ const leftoverBanana = leftoverUnmatched('바나나 120g', { name: '바나나', 
 check('양 토큰은 로컬 매칭 잔여로 보지 않음', leftoverBanana.length === 0, leftoverBanana);
 check('interpret용 문구도 끼니 헤더를 유지', formatDayLogForInterpret(dayLog.lines).includes('아침\n등촌 칼국수 한그릇') && formatDayLogForInterpret(dayLog.lines).includes('저녁\n떡갈비 60g'), formatDayLogForInterpret(dayLog.lines));
 
+
+const eggData = {
+  cal: 156, carbs: 1, protein: 12, fat: 11,
+  serving: '1알 60g', servingGrams: 60, servingAmount: 1, servingUnit: '알',
+  unitGrams: { '알': 60 }, aliases: ['계란'], sourceType: '공공DB',
+};
+const eggCatalogs = {
+  mine: [],
+  recent: [{ name: '삶은 달걀', data: eggData, aliases: eggData.aliases, lastServing: '1알', lastAmount: 1, lastUnit: '알' }],
+  db: [],
+};
+const eggGram = matchLocalFood('계란 1알 50g', eggCatalogs);
+check('사용자가 g을 적으면 저장된 계란도 그 g으로 재계산',
+  eggGram.ok && eggGram.items?.[0]?.amount?.unit === 'g' && eggGram.items[0].amount.value === 50
+    && Math.round(eggGram.items[0].food?.cal) === Math.round(156 * 50 / 60),
+  eggGram.items?.[0] || eggGram);
+
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

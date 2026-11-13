@@ -260,6 +260,22 @@
     return MEAL_WORD[m[1]] || MEAL_WORD[m[1].toLowerCase()] || null;
   }
 
+  /** 사용자가 g/ml를 적으면 그 양을 쓴다(저장된 기본 단위보다 우선). */
+  function explicitMassAmount(text) {
+    const re = /(\d+(?:\.\d+)?)\s*(g|kg|ml|l)\b/giu;
+    let last = null;
+    let m;
+    const t = String(text || '');
+    while ((m = re.exec(t))) last = m;
+    if (!last) return null;
+    let value = Number(last[1]);
+    let unit = last[2].toLowerCase();
+    if (!Number.isFinite(value) || value <= 0) return null;
+    if (unit === 'kg') { value *= 1000; unit = 'g'; }
+    if (unit === 'l') { value *= 1000; unit = 'ml'; }
+    return { value, unit, text: `${last[1]}${last[2].toLowerCase()}` };
+  }
+
   /** '바나나 120'처럼 끝에 단위 없는 숫자는 g. 이미 단위가 있으면 그대로. */
   function applyBareGrams(line) {
     const t = String(line || '').trim();
@@ -589,6 +605,8 @@
       const exact = exactCatalogHit(item.name, catalogs) || exactCatalogHit(hit.name, catalogs);
       if (!exact && !item.known && !hit.origin) return { ...empty, parsed };
       const next = applyDefaultAmount({ ...item, name: hit.name, baseName: hit.baseName || hit.name, data: hit.data, known: true, origin: hit.origin || exact?.origin }, hit);
+      const grams = explicitMassAmount(raw);
+      if (grams) next.amount = grams;
       if (QE.scaleFood) next.food = QE.scaleFood(next);
       resolved.push(next);
     }
@@ -627,7 +645,8 @@
     const QE = global.RebuildersQuickEntry;
     const parsed = instant.parsed || (QE?.parseQuickEntry ? QE.parseQuickEntry(normalize(text), { foods: catalogsToFoods(catalogs), now: options.now || new Date() }) : null);
     const portion = parsePortionPhrase(text);
-    const amount = portion || parsed?.items?.[0]?.amount || null;
+    const grams = explicitMassAmount(text);
+    const amount = grams || portion || parsed?.items?.[0]?.amount || null;
     const hit = withLastServing(found.best, catalogs);
     const item = applyDefaultAmount({
       name: hit.name,
@@ -637,6 +656,7 @@
       amount,
       origin: hit.origin,
     }, hit);
+    if (grams) item.amount = grams;
     if (QE?.scaleFood) item.food = QE.scaleFood(item);
     const mealId = parsed?.mealId || mealIdFrom(text) || options.mealId || null;
     return {
@@ -889,6 +909,7 @@
     BRAND_ALIASES,
     isMealHeaderLine,
     applyBareGrams,
+    explicitMassAmount,
     normalizeBrandText,
     parseDayLog,
     formatDayLogForInterpret,
