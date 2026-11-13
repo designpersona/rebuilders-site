@@ -330,6 +330,107 @@
     return out;
   }
 
+  function isInstructionLine(text) {
+    const t = String(text || '').trim();
+    if (!t) return true;
+    if (/여러 음식이 한 줄에 있으면|items로 나눠|각 항목의 meal/.test(t)) return true;
+    if (/JSON 객체만|설명·코드블록|source_type은|공식 URL은|리빌더스 식단/.test(t)) return true;
+    if (t.length > 36 && /나눠 기록|유지해\.?$|바로 JSON|답해\.?$/.test(t)) return true;
+    return false;
+  }
+
+  function isQuantityToken(tok) {
+    return /^(?:\d+(?:\.\d+)?(?:g|kg|ml|l|개|알|그릇|공기|잔|컵|조각|봉|팩|인분|줌|스푼|큰술|작은술|캡슐)?|한(?:그릇|개|잔|컵|봉|팩|인분)|캡슐)$/i.test(String(tok || '').trim());
+  }
+
+  /** '요즘 그릭 요거트 100g 바나나 120g'처럼 이름+양 덩어리로 나눈다. */
+  function splitFoodPhrases(text) {
+    const raw = String(text || '').trim();
+    if (!raw || isInstructionLine(raw)) return [];
+    const prepared = normalizeBrandText(applyBareGrams(raw));
+    const tokens = prepared.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return [];
+    const groups = [];
+    let buf = [];
+    const flush = () => {
+      const s = buf.join(' ').trim();
+      if (s && !isInstructionLine(s)) groups.push(s);
+      buf = [];
+    };
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i];
+      if (isQuantityToken(tok) && buf.length) {
+        buf.push(tok);
+        while (i + 1 < tokens.length && isQuantityToken(tokens[i + 1])) {
+          i += 1;
+          buf.push(tokens[i]);
+        }
+        flush();
+        continue;
+      }
+      buf.push(tok);
+    }
+    flush();
+    return groups.length ? groups : [prepared];
+  }
+
+  function gramsOfFood(food) {
+    if (!food) return null;
+    if (Number(food.servingGrams) > 0) return Number(food.servingGrams);
+    if (food.servingUnit === 'g' && Number(food.servingAmount) > 0) return Number(food.servingAmount);
+    if (food.servingUnit === 'ml' && Number(food.servingAmount) > 0) return Number(food.servingAmount);
+    const m = String(food.serving || '').match(/(\d+(?:\.\d+)?)\s*g\b/i);
+    return m ? Number(m[1]) : null;
+  }
+
+  /** 공식 출처가 아닌 추정값이 터무니없으면 버린다. */
+  function nutritionSanity(food, { mealId } = {}) {
+    if (!food) return { ok: true };
+    const official = food.sourceType === '공식' || food.sourceTrust === 'reference';
+    const kcal = Number(food.cal);
+    if (!Number.isFinite(kcal)) return { ok: true };
+    if (kcal < 0 || kcal > 10000) return { ok: false, reason: 'range' };
+    if (official) return { ok: true };
+    const grams = gramsOfFood(food);
+    if (grams > 0 && kcal / grams > 5) return { ok: false, reason: 'density' };
+    if ((mealId === 'snack' || food.mealId === 'snack') && kcal > 700) return { ok: false, reason: 'snack_kcal' };
+    return { ok: true };
+  }
+
+  function stripInsaneNutrition(food, opts) {
+    const check = nutritionSanity(food, opts);
+    if (check.ok) return food;
+    const next = { ...food };
+    ['cal', 'carbs', 'protein', 'fat', 'sugar', 'sodium', 'fiber'].forEach(k => { delete next[k]; });
+    next.sourceType = undefined;
+    next.sourceTrust = undefined;
+    next.sanityRejected = check.reason;
+    return next;
+  }
+
+  function expandPackedItem(item) {
+    if (!item || typeof item !== 'object') return [];
+    const name = String(item.name || '').trim();
+    if (!name || isInstructionLine(name)) return [];
+    const pieces = splitFoodPhrases(name);
+    if (pieces.length <= 1) return [item];
+    return pieces.map(piece => {
+      const amount = amountNearName(piece, piece) || explicitMassAmount(piece) || defaultCapsuleAmount(piece) || item.amount;
+      const out = { name: piece, meal: item.meal, mealId: item.mealId };
+      if (amount) out.amount = amount;
+      if (item.unit && amount && !amount.unit) out.unit = item.unit;
+      return out;
+    });
+  }
+
+  function expandPackedItems(items) {
+    const out = [];
+    for (const item of items || []) {
+      out.push(...expandPackedItem(item));
+    }
+    return out;
+  }
+
   function parseDayLog(text, { now } = {}) {
     const rows = String(text || '').replace(/\r\n/g, '\n').split('\n');
     const fallbackMeal = globalThis.RebuildersQuickEntry?.mealForTime?.(now || new Date()) || 'snack';
@@ -353,9 +454,13 @@
         if (bit.mealId) current = bit.mealId;
         const body = bit.text;
         if (!body) continue;
+        if (isInstructionLine(body)) continue;
         const lineText = normalizeBrandText(applyBareGrams(body));
-        if (!lineText) continue;
-        lines.push({ mealId: current || fallbackMeal, text: lineText, raw: body });
+        if (!lineText || isInstructionLine(lineText)) continue;
+        const pieces = splitFoodPhrases(lineText);
+        for (const piece of pieces) {
+          lines.push({ mealId: current || fallbackMeal, text: piece, raw: piece });
+        }
       }
     }
     return { ok: Boolean(sawHeader && lines.length), lines };
@@ -425,7 +530,6 @@
       out.push(meal);
       out.push(...items);
     }
-    if (out) out.unshift('여러 음식이 한 줄에 있으면 items로 나눠 기록하고, 각 항목의 meal을 유지해.');
     return out.join('\n');
   }
 
@@ -829,7 +933,7 @@
     (Array.isArray(raw.items) ? raw.items : []).slice(0, 24).forEach(item => {
       if (!item || typeof item !== 'object') return;
       const name = normalize(item.name).slice(0, 80);
-      if (!name) return;
+      if (!name || isInstructionLine(name)) return;
       const out = { name };
       const brand = normalize(item.brand).slice(0, 40);
       if (brand) out.brand = brand;
@@ -874,6 +978,9 @@
       if (time) out.time = time;
       items.push(out);
     });
+    const unpacked = expandPackedItems(items);
+    items.length = 0;
+    items.push(...unpacked);
     const edits = [];
     (Array.isArray(raw.edits) ? raw.edits : []).slice(0, 8).forEach(edit => {
       if (!edit || typeof edit !== 'object') return;
@@ -1010,6 +1117,11 @@
     parseDayLog,
     formatDayLogForInterpret,
     splitInlineMealSections,
+    splitFoodPhrases,
+    isInstructionLine,
+    nutritionSanity,
+    stripInsaneNutrition,
+    expandPackedItems,
     defaultCapsuleAmount,
     amountNearName,
   };

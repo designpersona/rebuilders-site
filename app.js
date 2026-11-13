@@ -7914,6 +7914,11 @@ async function applyChatFoods(parsed) {
   const mealId = parsed.mealId;
   await goToEntryDate(parsed);
   if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
+  const Intent = globalThis.RebuildersChatIntent;
+  foods = foods.map((food, i) => {
+    const itemMeal = parsed.items?.[i]?.mealId || parsed.items?.[i]?.meal || mealId;
+    return Intent?.stripInsaneNutrition ? Intent.stripInsaneNutrition(food, { mealId: itemMeal }) : food;
+  });
   const ready = [];
   const drafts = [];
   foods.forEach(food => {
@@ -8540,6 +8545,7 @@ function interpretItemsToParsed(result, catalogs, text) {
     || 'snack';
   const ambiguous = [];
   const items = result.items.map(item => {
+    if (Intent?.isInstructionLine?.(item.name)) return null;
     const query = [item.brand, item.name].filter(Boolean).join(' ');
     const exact = Intent?.exactCatalogHit(item.name, catalogs)
       || (item.brand ? Intent.exactCatalogHit(`${item.brand} ${item.name}`, catalogs) : null);
@@ -8587,7 +8593,7 @@ function interpretItemsToParsed(result, catalogs, text) {
     entry.food = QE?.scaleFood ? QE.scaleFood(entry) : { name: entry.name, ...(entry.data || {}), ...(entry.amount ? { serving: entry.amount.text } : {}) };
     entry.mealId = item.meal || mealDefault;
     return entry;
-  });
+  }).filter(Boolean);
   const time = result.items.find(item => item.time)?.time || null;
   return {
     mealId: mealDefault,

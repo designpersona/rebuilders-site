@@ -245,12 +245,13 @@ check('interpret용 문구도 끼니 헤더를 유지', formatDayLogForInterpret
 const oneLine = '오늘거 아침 등촌 칼국수 한그릇 간식 네스프레소 캡슐 말차모찌 점심 요즘 그릭 요거트 100g 바나나 120 계란 1알 50g 저녁 떡갈비 60 계란말이 40 밥 160 진라면 소컵 순한맛';
 const oneLog = parseDayLog(oneLine);
 const oneMeals = Object.fromEntries(['breakfast','snack','lunch','dinner'].map(m => [m, oneLog.lines.filter(l => l.mealId === m).map(l => l.text)]));
-check('한 줄+오늘거도 끼니 섹션으로 나뉜다', oneLog.ok && oneLog.lines.length === 4
+check('한 줄+오늘거도 끼니·음식 단위로 나뉜다', oneLog.ok && oneLog.lines.length === 10
   && oneMeals.breakfast.join('|') === '등촌 칼국수 한그릇'
-  && oneMeals.snack.join('|') === '네스프레소 캡슐 말차모찌'
-  && oneMeals.lunch.join('|') === '요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g'
-  && oneMeals.dinner.join('|') === '떡갈비 60g 계란말이 40g 밥 160g 진라면 소컵 순한맛', oneMeals);
-check('한 줄 섹션 문구에 끼니 헤더가 유지된다', formatDayLogForInterpret(oneLog.lines).includes('점심\n요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g'), formatDayLogForInterpret(oneLog.lines));
+  && oneMeals.snack.join('|') === '네스프레소 캡슐|말차모찌'
+  && oneMeals.lunch.join('|') === '요즘 그릭 요거트 100g|바나나 120g|계란 1알 50g'
+  && oneMeals.dinner.join('|') === '떡갈비 60g|계란말이 40g|밥 160g|진라면 소컵 순한맛', oneMeals);
+check('한 줄도 interpret 문구가 음식마다 줄바꿈된다', formatDayLogForInterpret(oneLog.lines).includes('점심\n요즘 그릭 요거트 100g\n바나나 120g\n계란 1알 50g'), formatDayLogForInterpret(oneLog.lines));
+check('지시문은 음식 목록에 안 넣는다', !formatDayLogForInterpret(oneLog.lines).includes('여러 음식이 한 줄에 있으면') && !oneLog.lines.some(l => l.text.includes('items로 나눠')), formatDayLogForInterpret(oneLog.lines));
 check('가운데 맨숫자도 g로 붙는다', applyBareGrams('요즘 그릭 요거트 100g 바나나 120 계란 1알 50g') === '요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g');
 const { defaultCapsuleAmount, amountNearName } = ctx.RebuildersChatIntent;
 check('캡슐은 1잔', defaultCapsuleAmount('네스프레소 캡슐')?.unit === '잔' && defaultCapsuleAmount('네스프레소 캡슐')?.value === 1, defaultCapsuleAmount('네스프레소 캡슐'));
@@ -286,6 +287,31 @@ const capsuleHit = matchLocalFood('네스프레소 캡슐', capsuleCatalogs);
 check('네스프레소 캡슐은 저장된 100g가 아니라 1잔',
   capsuleHit.ok && capsuleHit.items?.[0]?.amount?.unit === '잔' && capsuleHit.items[0].amount.value === 1,
   capsuleHit.items?.[0] || capsuleHit);
+
+const { splitFoodPhrases, isInstructionLine, nutritionSanity, expandPackedItems } = ctx.RebuildersChatIntent;
+check('이름+양 덩어리로 나눈다', splitFoodPhrases('요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g').join('|') === '요즘 그릭 요거트 100g|바나나 120g|계란 1알 50g'
+  && splitFoodPhrases('떡갈비 60g 계란말이 40g 밥 160g 진라면 소컵 순한맛').join('|') === '떡갈비 60g|계란말이 40g|밥 160g|진라면 소컵 순한맛'
+  && splitFoodPhrases('네스프레소 캡슐 말차모찌').join('|') === '네스프레소 캡슐|말차모찌', {
+    lunch: splitFoodPhrases('요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g'),
+    snack: splitFoodPhrases('네스프레소 캡슐 말차모찌'),
+  });
+check('지시문 줄은 음식이 아니다', isInstructionLine('여러 음식이 한 줄에 있으면 items로 나눠 기록하고, 각 항목의 meal을 유지해.') && splitFoodPhrases('여러 음식이 한 줄에 있으면 items로 나눠 기록하고, 각 항목의 meal을 유지해.').length === 0);
+const packed = parseInterpretResult({
+  intent: 'log',
+  items: [
+    { name: '여러 음식이 한 줄에 있으면 items로 나눠 기록하고, 각 항목의 meal을 유지해.' },
+    { name: '요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g', meal: 'lunch', kcal: 45, amount: 50, unit: 'g' },
+  ],
+  edits: [],
+});
+check('interpret 결과의 묶인 이름도 나누고 지시문은 뺀다', packed && packed.items.length === 3
+  && packed.items[0].name === '요즘 그릭 요거트 100g'
+  && packed.items[1].name === '바나나 120g'
+  && packed.items[2].name === '계란 1알 50g'
+  && packed.items.every(it => it.kcal == null), packed?.items);
+check('간식 923kcal 추정은 거절', nutritionSanity({ cal: 923, servingGrams: 355, serving: '1잔', sourceType: '추정' }, { mealId: 'snack' }).ok === false);
+check('g당 5kcal 초과 추정은 거절', nutritionSanity({ cal: 400, servingGrams: 50, serving: '50g', sourceType: '추정' }).ok === false);
+check('칼국수 650kcal 추정은 통과', nutritionSanity({ cal: 650, servingGrams: 500, serving: '한그릇', sourceType: '추정' }, { mealId: 'breakfast' }).ok === true);
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);
