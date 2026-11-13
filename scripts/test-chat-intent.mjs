@@ -242,6 +242,24 @@ const leftoverBanana = leftoverUnmatched('바나나 120g', { name: '바나나', 
 check('양 토큰은 로컬 매칭 잔여로 보지 않음', leftoverBanana.length === 0, leftoverBanana);
 check('interpret용 문구도 끼니 헤더를 유지', formatDayLogForInterpret(dayLog.lines).includes('아침\n등촌 칼국수 한그릇') && formatDayLogForInterpret(dayLog.lines).includes('저녁\n떡갈비 60g'), formatDayLogForInterpret(dayLog.lines));
 
+const oneLine = '오늘거 아침 등촌 칼국수 한그릇 간식 네스프레소 캡슐 말차모찌 점심 요즘 그릭 요거트 100g 바나나 120 계란 1알 50g 저녁 떡갈비 60 계란말이 40 밥 160 진라면 소컵 순한맛';
+const oneLog = parseDayLog(oneLine);
+const oneMeals = Object.fromEntries(['breakfast','snack','lunch','dinner'].map(m => [m, oneLog.lines.filter(l => l.mealId === m).map(l => l.text)]));
+check('한 줄+오늘거도 끼니 섹션으로 나뉜다', oneLog.ok && oneLog.lines.length === 4
+  && oneMeals.breakfast.join('|') === '등촌 칼국수 한그릇'
+  && oneMeals.snack.join('|') === '네스프레소 캡슐 말차모찌'
+  && oneMeals.lunch.join('|') === '요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g'
+  && oneMeals.dinner.join('|') === '떡갈비 60g 계란말이 40g 밥 160g 진라면 소컵 순한맛', oneMeals);
+check('한 줄 섹션 문구에 끼니 헤더가 유지된다', formatDayLogForInterpret(oneLog.lines).includes('점심\n요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g'), formatDayLogForInterpret(oneLog.lines));
+check('가운데 맨숫자도 g로 붙는다', applyBareGrams('요즘 그릭 요거트 100g 바나나 120 계란 1알 50g') === '요즘 그릭 요거트 100g 바나나 120g 계란 1알 50g');
+const { defaultCapsuleAmount, amountNearName } = ctx.RebuildersChatIntent;
+check('캡슐은 1잔', defaultCapsuleAmount('네스프레소 캡슐')?.unit === '잔' && defaultCapsuleAmount('네스프레소 캡슐')?.value === 1, defaultCapsuleAmount('네스프레소 캡슐'));
+check('항목 옆 g만 읽는다', amountNearName(oneMeals.lunch.join(' '), '바나나')?.value === 120 && amountNearName(oneMeals.lunch.join(' '), '계란')?.value === 50 && amountNearName(oneMeals.lunch.join(' '), '요거트')?.value === 100, {
+  banana: amountNearName(oneMeals.lunch.join(' '), '바나나'),
+  egg: amountNearName(oneMeals.lunch.join(' '), '계란'),
+  yogurt: amountNearName(oneMeals.lunch.join(' '), '요거트'),
+});
+
 
 const eggData = {
   cal: 156, carbs: 1, protein: 12, fat: 11,
@@ -258,6 +276,16 @@ check('사용자가 g을 적으면 저장된 계란도 그 g으로 재계산',
   eggGram.ok && eggGram.items?.[0]?.amount?.unit === 'g' && eggGram.items[0].amount.value === 50
     && Math.round(eggGram.items[0].food?.cal) === Math.round(156 * 50 / 60),
   eggGram.items?.[0] || eggGram);
+
+const capsuleCatalogs = {
+  mine: [{ name: '네스프레소 캡슐커피', data: { cal: 0, serving: '100g', servingGrams: 100 }, lastServing: '100g', lastAmount: 100, lastUnit: 'g' }],
+  recent: [],
+  db: [],
+};
+const capsuleHit = matchLocalFood('네스프레소 캡슐', capsuleCatalogs);
+check('네스프레소 캡슐은 저장된 100g가 아니라 1잔',
+  capsuleHit.ok && capsuleHit.items?.[0]?.amount?.unit === '잔' && capsuleHit.items[0].amount.value === 1,
+  capsuleHit.items?.[0] || capsuleHit);
 
 console.log(failed ? `\n${failed}개 실패` : '\n모두 통과');
 process.exit(failed ? 1 : 0);

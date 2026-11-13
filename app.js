@@ -8548,9 +8548,17 @@ function interpretItemsToParsed(result, catalogs, text) {
       ambiguous.push({ query, matches: fuzzy.matches });
     }
     const hit = exact || fuzzy?.best || null;
-    const amount = item.amount && (item.amount.value != null || item.amount.text)
+    let amount = item.amount && (item.amount.value != null || item.amount.text)
       ? item.amount
       : (typeof item.amount === 'number' ? { value: item.amount, unit: item.unit || '개', text: String(item.amount) } : null);
+    const fromText = Intent?.amountNearName?.(text, item.name) || Intent?.explicitMassAmount?.(query) || Intent?.defaultCapsuleAmount?.(query);
+    // 사용자가 g을 적었거나 캡슐이면 저장된 최근 중량(100g 등)보다 그걸 쓴다.
+    if (fromText) {
+      const textIsMass = fromText.unit === 'g' || fromText.unit === 'ml';
+      const amtIsMass = amount && (amount.unit === 'g' || amount.unit === 'ml');
+      if (textIsMass || !amount || (fromText.unit === '잔' && !(amtIsMass && amount.value))) amount = fromText;
+    }
+    if (amount && amount.unit === '캡슐') amount = { value: amount.value, unit: '잔', text: `${amount.value}잔` };
     const interpretData = Intent?.foodDataFromInterpretItem?.(item) || null;
     const hitData = hit?.data && typeof hit.data.cal === 'number' ? hit.data : null;
     const data = hitData || interpretData || hit?.data || null;
@@ -8563,14 +8571,18 @@ function interpretItemsToParsed(result, catalogs, text) {
       origin: hit?.origin || (interpretData ? 'interpret' : undefined),
       packageGrams: (data && data.packageGrams) || item.packageGrams || null,
     };
-    if (!entry.amount && hit) {
+    if (!entry.amount && hit && !Intent?.defaultCapsuleAmount?.(query)) {
       const rec = (catalogs?.recent || []).find(row => Intent.compactName(row.name) === Intent.compactName(entry.name));
       const serving = rec?.lastServing || rec?.data?.serving;
       if (serving) {
         const tokens = String(serving).trim().split(/\s+/).filter(Boolean);
         const parsedAmt = QE?.parseAmountAt?.(tokens, 0)?.amount;
-        if (parsedAmt) entry.amount = parsedAmt;
+        if (parsedAmt && parsedAmt.unit !== '캡슐') entry.amount = parsedAmt;
       }
+    }
+    if (!entry.amount) {
+      const capsule = Intent?.defaultCapsuleAmount?.(query);
+      if (capsule) entry.amount = capsule;
     }
     entry.food = QE?.scaleFood ? QE.scaleFood(entry) : { name: entry.name, ...(entry.data || {}), ...(entry.amount ? { serving: entry.amount.text } : {}) };
     entry.mealId = item.meal || mealDefault;
@@ -8592,9 +8604,22 @@ function interpretItemsToParsed(result, catalogs, text) {
   };
 }
 
-async function applyInterpretResult(result, { message, text, catalogs } = {}) {
+async function applyInterpretResult(result, { message, text, catalogs, saveAll } = {}) {
   const en = ACTIVE_LOCALE === 'en';
   const Intent = globalThis.RebuildersChatIntent;
+  const hasItems = Array.isArray(result.items) && result.items.length > 0;
+  // 하루치·여러 항목은 되묻지 않고 모두 저장. clarify만 있고 항목이 없을 때만 질문.
+  if (result.intent === 'clarify' && hasItems) {
+    result = { ...result, intent: 'log' };
+  }
+  if (result.intent === 'clarify' && (saveAll || (text && Intent?.parseDayLog?.(text)?.ok))) {
+    if (hasItems) result = { ...result, intent: 'log' };
+    else {
+      if (message) setAgentMessageText(message, en ? 'I could not split those foods clearly, so I skipped this.' : '음식을 나눠 저장하지 못했어요. 한 줄씩 다시 적어 주세요.');
+      else appendAgentMessage(en ? 'I could not split those foods clearly, so I skipped this.' : '음식을 나눠 저장하지 못했어요. 한 줄씩 다시 적어 주세요.');
+      return;
+    }
+  }
   if (result.intent === 'clarify') {
     const question = result.clarifyQuestion || (en ? 'Is that one product, or two foods?' : '한 제품이에요, 두 개예요?');
     if (message) setAgentMessageText(message, question);
@@ -8652,7 +8677,8 @@ async function applyInterpretResult(result, { message, text, catalogs } = {}) {
   }
   if (message?.parentNode) message.remove();
   const parsed = interpretItemsToParsed(result, catalogs || localMatchCatalogs(), text);
-  if (parsed.ambiguousCandidates?.length >= 2) {
+  // 여러 항목이 남았을 때 되묻지 않고, AI 이름·영양으로 모두 저장(저장소 이름은 재사용).
+  if (!saveAll && !(text && Intent?.parseDayLog?.(text)?.ok) && parsed.items.length <= 1 && parsed.ambiguousCandidates?.length >= 2) {
     await showFoodCandidateButtons(text, parsed.ambiguousCandidates, { mealId: parsed.mealId, amount: parsed.items[0]?.amount });
     return;
   }
@@ -8729,7 +8755,7 @@ async function handleAgentCommandFallback(text, { message, reason, silent } = {}
   await applyChatFoods(parsed);
 }
 
-async function interpretOrFallback(text, { candidates, catalogs, meal, mixedMeals, maxMs } = {}) {
+async function interpretOrFallback(text, { candidates, catalogs, meal, mixedMeals, maxMs, saveAll } = {}) {
   const en = ACTIVE_LOCALE === 'en';
   const Intent = globalThis.RebuildersChatIntent;
   const message = appendAgentMessage(en ? 'Figuring that out…' : '알아보는 중…');
@@ -8744,7 +8770,7 @@ async function interpretOrFallback(text, { candidates, catalogs, meal, mixedMeal
     const result = Intent.parseInterpretResult(raw);
     if (!result) throw new RebuildersBridge.BridgeError('bad_request');
     setAgentSearching(message, false);
-    await applyInterpretResult(result, { message, text, catalogs: catalogs || localMatchCatalogs() });
+    await applyInterpretResult(result, { message, text, catalogs: catalogs || localMatchCatalogs(), saveAll });
   } catch (error) {
     setAgentSearching(message, false);
     await handleAgentCommandFallback(text, { message, reason: error, silent: false });
@@ -8757,49 +8783,20 @@ async function handleDayLogPaste(text, catalogs, { skipInterpret } = {}) {
   const Intent = globalThis.RebuildersChatIntent;
   const log = Intent?.parseDayLog?.(text, { now: new Date() });
   if (!log?.ok) return false;
-  const knownByMeal = new Map();
-  const unknownLines = [];
-  for (const line of log.lines) {
-    const local = Intent.matchLocalFood?.(line.text, catalogs, { now: new Date() })
-      || Intent.matchLocalInstant?.(line.text, catalogs, { now: new Date() });
-    if (local?.ok && local.parsed?.items?.length && !local.ambiguousCandidates?.length) {
-      if (local.parsed) {
-        local.parsed.mealId = line.mealId;
-        local.parsed.mealExplicit = true;
-      }
-      if (!knownByMeal.has(line.mealId)) knownByMeal.set(line.mealId, []);
-      knownByMeal.get(line.mealId).push(...local.parsed.items);
-    } else {
-      unknownLines.push(line);
-    }
-  }
-  for (const [mealId, items] of knownByMeal) {
-    await applyChatFoods({
-      mealId,
-      mealExplicit: true,
-      date: dateKey(currentDate),
-      dateExplicit: false,
-      time: null,
-      timeExplicit: false,
-      recordIntent: true,
-      items,
-      phrase: text,
-    });
-  }
-  if (!unknownLines.length) return true;
   if (skipInterpret || !globalThis.RebuildersBridge?.isConfigured()) {
     appendAgentMessage(ACTIVE_LOCALE === 'en'
-      ? 'Some foods need the Mac mini, so I skipped those lines.'
-      : '일부 음식은 맥 미니 확인이 필요해서 이번에는 넣지 않았어요.');
+      ? 'This day log needs the Mac mini, so I skipped it this time.'
+      : '하루치 기록은 맥 미니 확인이 필요해서 이번에는 넣지 않았어요.');
     return true;
   }
-  const interpretText = Intent.formatDayLogForInterpret(unknownLines);
-  const meals = [...new Set(unknownLines.map(line => line.mealId))];
+  const interpretText = Intent.formatDayLogForInterpret(log.lines);
+  const meals = [...new Set(log.lines.map(line => line.mealId))];
   await interpretOrFallback(interpretText, {
     catalogs,
     mixedMeals: meals.length > 1,
     meal: meals.length === 1 ? meals[0] : null,
     maxMs: 90000,
+    saveAll: true,
   });
   return true;
 }

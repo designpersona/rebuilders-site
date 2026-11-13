@@ -280,8 +280,12 @@
   function applyBareGrams(line) {
     const t = String(line || '').trim();
     if (!t) return t;
-    if (/(?:^|\s)\d+(?:\.\d+)?\s*(?:g|kg|ml|l|개|알|그릇|공기|잔|컵|조각|봉|팩|인분|줌|스푼|큰술|작은술)\s*$/iu.test(t)) return t;
-    return t.replace(/(\d+(?:\.\d+)?)\s*$/u, '$1g');
+    // 줄 끝이 아니어도 '바나나 120 계란'처럼 단독 숫자 토큰은 g.
+    return t.replace(/(^|\s)(\d+(?:\.\d+)?)(?=\s|$)/gu, (all, sp, num, offset) => {
+      const after = t.slice(offset + all.length);
+      if (/^\s*(?:g|kg|ml|l|개|알|그릇|공기|잔|컵|조각|봉|팩|인분|줌|스푼|큰술|작은술|캡슐)\b/iu.test(after)) return all;
+      return `${sp}${num}g`;
+    });
   }
 
   function normalizeBrandText(text) {
@@ -300,21 +304,106 @@
     return out;
   }
 
+  const MEAL_BOUNDARY_RE = /(?:^|\s)(아침|조식|점심|중식|저녁|석식|간식|야식|breakfast|lunch|dinner|snack)(?=\s|$|[:：])/giu;
+
+  function mealIdFromToken(token) {
+    const key = String(token || '').trim();
+    return MEAL_WORD[key] || MEAL_WORD[key.toLowerCase()] || null;
+  }
+
+  /** 한 줄 안에서도 아침/점심/저녁/간식 단어를 섹션 경계로 나눈다. 첫 헤더 앞 접두어(오늘거 등)는 무시. */
+  function splitInlineMealSections(line) {
+    const trimmed = String(line || '').trim();
+    if (!trimmed) return [];
+    const matches = [...trimmed.matchAll(MEAL_BOUNDARY_RE)];
+    if (!matches.length) return [{ mealId: null, text: trimmed, raw: trimmed, prefix: false }];
+    const out = [];
+    const before = trimmed.slice(0, matches[0].index).trim();
+    if (before) out.push({ mealId: null, text: before, raw: before, prefix: true });
+    for (let i = 0; i < matches.length; i++) {
+      const meal = mealIdFromToken(matches[i][1]);
+      const start = matches[i].index + matches[i][0].length;
+      const end = i + 1 < matches.length ? matches[i + 1].index : trimmed.length;
+      const body = trimmed.slice(start, end).replace(/^[:：]\s*/, '').trim();
+      out.push({ mealId: meal, text: body, raw: body, prefix: false });
+    }
+    return out;
+  }
+
   function parseDayLog(text, { now } = {}) {
-    const parts = String(text || '').replace(/\r\n/g, '\n').split('\n').map(s => s.trim()).filter(Boolean);
-    if (parts.length < 2) return { ok: false, lines: [] };
-    if (!parts.some(part => isMealHeaderLine(part))) return { ok: false, lines: [] };
+    const rows = String(text || '').replace(/\r\n/g, '\n').split('\n');
     const fallbackMeal = globalThis.RebuildersQuickEntry?.mealForTime?.(now || new Date()) || 'snack';
     let current = null;
+    let sawHeader = false;
     const lines = [];
-    for (const part of parts) {
-      const header = isMealHeaderLine(part);
-      if (header) { current = header; continue; }
-      const lineText = normalizeBrandText(applyBareGrams(part));
-      if (!lineText) continue;
-      lines.push({ mealId: current || fallbackMeal, text: lineText, raw: part });
+    for (const row of rows) {
+      const trimmed = row.trim();
+      if (!trimmed) continue;
+      const headerOnly = isMealHeaderLine(trimmed);
+      if (headerOnly) {
+        current = headerOnly;
+        sawHeader = true;
+        continue;
+      }
+      const bits = splitInlineMealSections(trimmed);
+      const hasInline = bits.some(bit => bit.mealId);
+      if (hasInline) sawHeader = true;
+      for (const bit of bits) {
+        if (bit.prefix && !current) continue; // '오늘거' 같은 접두어
+        if (bit.mealId) current = bit.mealId;
+        const body = bit.text;
+        if (!body) continue;
+        const lineText = normalizeBrandText(applyBareGrams(body));
+        if (!lineText) continue;
+        lines.push({ mealId: current || fallbackMeal, text: lineText, raw: body });
+      }
     }
-    return { ok: lines.length > 0, lines };
+    return { ok: Boolean(sawHeader && lines.length), lines };
+  }
+
+  /** 캡슐은 1잔으로 본다. 저장된 100g 최근 기록을 덮어쓰지 않는다. */
+  function defaultCapsuleAmount(text) {
+    const t = String(text || '');
+    if (!/캡슐/u.test(t)) return null;
+    if (explicitMassAmount(t)) return null;
+    const counted = t.match(/(\d+(?:\.\d+)?)\s*(?:캡슐|잔|컵|개)\b/u);
+    if (counted) {
+      const value = Number(counted[1]);
+      if (Number.isFinite(value) && value > 0) return { value, unit: '잔', text: `${value}잔` };
+    }
+    return { value: 1, unit: '잔', text: '1잔' };
+  }
+
+  function amountNearName(sectionText, name) {
+    const src = String(sectionText || '');
+    const key = String(name || '').trim();
+    if (!src || !key) return null;
+    const aliases = [key];
+    if (/달걀|계란/.test(key)) aliases.push('계란', '달걀');
+    if (/바나나/.test(key)) aliases.push('바나나');
+    if (/요거트|요구르트/.test(key)) aliases.push('요거트', '그릭 요거트', '그릭요거트');
+    if (/네스프레소|캡슐/.test(key)) aliases.push('네스프레소', '캡슐');
+    if (/진라면/.test(key)) aliases.push('진라면');
+    if (/칼국수/.test(key)) aliases.push('칼국수', '등촌 칼국수', '등촌칼국수');
+    let idx = -1;
+    let used = key;
+    for (const alias of aliases) {
+      if (!alias) continue;
+      const i = src.indexOf(alias);
+      if (i >= 0) { idx = i; used = alias; break; }
+    }
+    if (idx < 0) return defaultCapsuleAmount(key);
+    const after = src.slice(idx + used.length);
+    // 이름 바로 뒤의 양만. '바나나 120g 계란 1알 50g'에서 바나나가 50g를 가져가면 안 됨.
+    const mass = after.match(/^\s*(?:\d+(?:\.\d+)?\s*(?:알|개|그릇|공기|잔|컵)\s+)?(\d+(?:\.\d+)?)\s*(g|kg|ml|l)\b/iu);
+    if (mass) {
+      let value = Number(mass[1]);
+      let unit = mass[2].toLowerCase();
+      if (unit === 'kg') { value *= 1000; unit = 'g'; }
+      if (unit === 'l') { value *= 1000; unit = 'ml'; }
+      if (Number.isFinite(value) && value > 0) return { value, unit, text: `${mass[1]}${mass[2].toLowerCase()}` };
+    }
+    return defaultCapsuleAmount(used + ' ' + after.slice(0, 16));
   }
 
   function formatDayLogForInterpret(lines) {
@@ -336,6 +425,7 @@
       out.push(meal);
       out.push(...items);
     }
+    if (out) out.unshift('여러 음식이 한 줄에 있으면 items로 나눠 기록하고, 각 항목의 meal을 유지해.');
     return out.join('\n');
   }
 
@@ -607,6 +697,10 @@
       const next = applyDefaultAmount({ ...item, name: hit.name, baseName: hit.baseName || hit.name, data: hit.data, known: true, origin: hit.origin || exact?.origin }, hit);
       const grams = explicitMassAmount(raw);
       if (grams) next.amount = grams;
+      else {
+        const capsule = defaultCapsuleAmount(raw);
+        if (capsule) next.amount = capsule;
+      }
       if (QE.scaleFood) next.food = QE.scaleFood(next);
       resolved.push(next);
     }
@@ -646,8 +740,9 @@
     const parsed = instant.parsed || (QE?.parseQuickEntry ? QE.parseQuickEntry(normalize(text), { foods: catalogsToFoods(catalogs), now: options.now || new Date() }) : null);
     const portion = parsePortionPhrase(text);
     const grams = explicitMassAmount(text);
-    const amount = grams || portion || parsed?.items?.[0]?.amount || null;
-    const hit = withLastServing(found.best, catalogs);
+    const capsule = defaultCapsuleAmount(text);
+    const amount = grams || capsule || portion || parsed?.items?.[0]?.amount || null;
+    const hit = capsule ? found.best : withLastServing(found.best, catalogs);
     const item = applyDefaultAmount({
       name: hit.name,
       baseName: hit.baseName || hit.name,
@@ -657,6 +752,7 @@
       origin: hit.origin,
     }, hit);
     if (grams) item.amount = grams;
+    else if (capsule) item.amount = capsule;
     if (QE?.scaleFood) item.food = QE.scaleFood(item);
     const mealId = parsed?.mealId || mealIdFrom(text) || options.mealId || null;
     return {
@@ -913,6 +1009,9 @@
     normalizeBrandText,
     parseDayLog,
     formatDayLogForInterpret,
+    splitInlineMealSections,
+    defaultCapsuleAmount,
+    amountNearName,
   };
   global.RebuildersChatIntent = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
