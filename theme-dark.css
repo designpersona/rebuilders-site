@@ -588,6 +588,11 @@ html.theme-dark .datafix-restore { color: #4881df; }
 html.theme-dark .food-cal.is-wait { color: #f1c37e; }
 html.theme-dark .phone-frame > .daylog-banner { background: var(--rb-surface, #1c1c1c); color: #e6e6e6; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.288), 0 0 0 1px rgba(0, 0, 0, 0.09); }
 html.theme-dark .phone-frame > .daylog-banner[data-state="running"]::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent); }
+html.theme-dark .ai-model-dot.is-ok { background: #48df80; box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.324); }
+html.theme-dark .ai-model-dot.is-warn { background: #f7ad31; box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.36); }
+html.theme-dark .ai-model-dot.is-fail { box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.324); }
+html.theme-dark .ai-switch span::after { background: #1c1c1c; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); }
+html.theme-dark .ai-switch input:checked + span { background: #48df80; }
 
 /* ---- 손으로 맞춘 다크 값(scripts/theme-dark-extra.css) ---- */
 html.theme-dark {
@@ -615,3 +620,8 @@ html.theme-switching, html.theme-switching *, html.theme-switching *::before, ht
 html.theme-dark #page-tabs.page-tabs.bottom-tabs { background: #0c0c0e !important; box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.08) !important; }
 html.theme-dark #page-tabs.bottom-tabs .nav-item.page-tab { color: rgba(255, 255, 255, 0.45) !important; }
 html.theme-dark #page-tabs.bottom-tabs .nav-item.page-tab.active { color: #fff !important; }
+/* AI 모델: 스위치 손잡이는 다크에서도 흰색, 상태 점은 색 번짐 유지 */
+html.theme-dark .ai-switch span::after { background: #fff; }
+html.theme-dark .ai-model-dot.is-ok { box-shadow: 0 0 0 3px rgba(72, 223, 128, .22); }
+html.theme-dark .ai-model-dot.is-warn { box-shadow: 0 0 0 3px rgba(247, 173, 49, .24); }
+html.theme-dark .ai-model-dot.is-fail { box-shadow: 0 0 0 3px rgba(239, 68, 68, .26); }

@@ -23,3 +23,8 @@ html.theme-switching, html.theme-switching *, html.theme-switching *::before, ht
 html.theme-dark #page-tabs.page-tabs.bottom-tabs { background: #0c0c0e !important; box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.08) !important; }
 html.theme-dark #page-tabs.bottom-tabs .nav-item.page-tab { color: rgba(255, 255, 255, 0.45) !important; }
 html.theme-dark #page-tabs.bottom-tabs .nav-item.page-tab.active { color: #fff !important; }
+/* AI 모델: 스위치 손잡이는 다크에서도 흰색, 상태 점은 색 번짐 유지 */
+html.theme-dark .ai-switch span::after { background: #fff; }
+html.theme-dark .ai-model-dot.is-ok { box-shadow: 0 0 0 3px rgba(72, 223, 128, .22); }
+html.theme-dark .ai-model-dot.is-warn { box-shadow: 0 0 0 3px rgba(247, 173, 49, .24); }
+html.theme-dark .ai-model-dot.is-fail { box-shadow: 0 0 0 3px rgba(239, 68, 68, .26); }

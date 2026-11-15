@@ -9169,8 +9169,14 @@ function daylogRunningTitle(entry) {
   const sec = Math.max(0, Math.round((Date.now() - entry.startedAt) / 1000));
   const day = daylogDateLabel(entry.date);
   const waiting = daylogRun.queue.filter(e => !e.done && e !== entry).length;
-  const base = en ? `Grok is splitting meals and looking up nutrition… ${sec}s` : `그록이 끼니를 나누고 영양을 찾는 중… ${sec}초`;
+  const prog = entry.progress || {};
+  const failedNow = (Array.isArray(prog.failed) ? prog.failed : []).filter(f => f && f.label && f.kind !== 'other');
+  const switched = prog.trying_label && (failedNow.length || prog.trying !== 'grok');
+  const base = switched
+    ? (en ? `Sorting with ${prog.trying_label}… ${sec}s` : `${withRo(prog.trying_label)} 정리하는 중… ${sec}초`)
+    : (en ? `Grok is splitting meals and looking up nutrition… ${sec}s` : `그록이 끼니를 나누고 영양을 찾는 중… ${sec}초`);
   const parts = [];
+  if (failedNow.length) parts.push(failedNow.map(f => (en ? `${f.label} failed` : `${f.label} 실패${f.reason ? `(${f.reason})` : ''}`)).join(' → '));
   if (day) parts.push(en ? `saving to ${day}` : `${day}에 저장`);
   if (waiting) parts.push(en ? `${waiting} more waiting` : `${waiting}개 더 대기`);
   return { title: base, body: parts.join(' · ') };
@@ -9238,6 +9244,26 @@ function daylogUndoAction(entry, message) {
   };
 }
 
+/** 한국어 조사 (으)로: 받침(ㄹ 제외)·숫자 읽기 기준 */
+function withRo(word) {
+  const w = String(word || '').trim();
+  const ch = w.slice(-1);
+  const code = ch.charCodeAt(0) - 0xac00;
+  let batchim = false;
+  if (code >= 0 && code <= 11171) { const jong = code % 28; batchim = jong !== 0 && jong !== 8; }
+  else if (/[0-9]/.test(ch)) batchim = '0136'.includes(ch);
+  return `${w}${batchim ? '으로' : '로'}`;
+}
+/** 어떤 모델이 답했는지: '그록으로 정리' / '그록 실패(로그인 만료) → 제미나이로 정리' */
+function daylogModelLine(raw) {
+  const en = ACTIVE_LOCALE === 'en';
+  const by = raw?.answered_by?.label;
+  const failed = (Array.isArray(raw?.failed_models) ? raw.failed_models : []).filter(f => f && f.label && f.kind !== 'other');
+  if (!by) return '';
+  if (!failed.length) return en ? `Sorted by ${by}` : `${withRo(by)} 정리`;
+  const fails = failed.map(f => (en ? `${f.label} failed` : `${f.label} 실패${f.reason ? `(${f.reason})` : ''}`)).join(' → ');
+  return en ? `${fails} → sorted by ${by}` : `${fails} → ${withRo(by)} 정리`;
+}
 function daylogBannerSummary(raw, entry, dupCount) {
   const en = ACTIVE_LOCALE === 'en';
   const meals0 = raw.meals || {};
@@ -9262,6 +9288,8 @@ function daylogBannerSummary(raw, entry, dupCount) {
   counts.push(en ? `${sec}s` : `${sec}초`);
   lines.push(counts.join(' · '));
   if (dupCount) lines.push(en ? `${dupCount} have the same name as an existing record — undo if doubled.` : `이미 있던 기록과 이름이 같은 게 ${dupCount}개 — 겹쳤으면 되돌리기`);
+  const modelLine = daylogModelLine(raw);
+  if (modelLine) lines.push(modelLine);
   if (raw.comment) lines.push(`💬 ${raw.comment}`);
   return { title, body: lines.join('\n') };
 }
@@ -9342,11 +9370,12 @@ async function runDaylogEntry(entry) {
     savedFoods: savedFoodsForDaylog(entry.text), todayRecords,
     remoteId: entry.remoteId || undefined,
   };
-  const left = Math.max(60000, 180000 - (Date.now() - entry.startedAt));
+  const left = Math.max(60000, 300000 - (Date.now() - entry.startedAt));
   try {
     const result = await RebuildersBridge.daylogAndWait(payload, {
       maxMs: left, intervalMs: 2000,
       onRemoteId: id => { entry.remoteId = id; writeDaylogPending(); },
+      onProgress: p => { entry.progress = p; },
     });
     stopDaylogTicker();
     // 결과를 넣기 전에 대기 목록에서 먼저 지움(앱이 도중에 꺼져도 두 번 넣지 않게)
@@ -9389,11 +9418,12 @@ async function runDaylogEntry(entry) {
           title: pendingClarify
             ? (en ? 'Grok was not available — one question for you' : '그록이 안 돼서 기본 방식으로 했어요 · 확인할 게 있어요')
             : (en ? `Logged with the basic method${day ? ` to ${day}` : ''}` : `그록이 안 돼서 기본 방식으로 기록했어요${day ? ` (${day})` : ''}`),
-          body: en ? 'Tap to see the chat.' : '눌러서 채팅에서 확인',
+          body: [daylogModelLine(raw), en ? 'Tap to see the chat.' : '눌러서 채팅에서 확인'].filter(Boolean).join('\n'),
         });
         return;
       }
     }
+    if (Array.isArray(raw.failed_models) && raw.failed_models.length) entry.failedModels = raw.failed_models;
     throw new RebuildersBridge.BridgeError(raw.error || 'agent_failed');
   } catch (error) {
     stopDaylogTicker();
@@ -9447,6 +9477,7 @@ function daylogFailWhy(kind) {
     timeout: en ? 'Grok took too long to answer' : '그록 답이 너무 늦어서 멈췄어요',
     unauthorized: en ? 'The Mac mini token does not match' : '맥 미니 연결 비밀번호(토큰)가 맞지 않아요',
     not_configured: en ? 'The Mac mini is not set up' : '맥 미니 연결이 설정되지 않았어요',
+    all_failed: en ? 'Every AI model that is on failed' : '켜 둔 AI 모델이 모두 실패했어요',
   })[kind] || (en ? 'Grok could not sort this one out' : '그록이 이번 문장을 정리하지 못했어요');
 }
 function daylogFailHint(kind) {
@@ -9536,6 +9567,10 @@ async function saveDaylogFallback(entry, kind) {
   showDaylogFailBanner(entry, kind, { known, waiting, saved: ids.length });
   return { known, waiting, ids };
 }
+function daylogFailedModelsLine(entry) {
+  const list = (entry?.failedModels || []).filter(f => f && f.label && f.kind !== 'other');
+  return list.length ? list.map(f => `${f.label}: ${f.reason || ''}`).join(' · ') : '';
+}
 function showDaylogFailBanner(entry, kind, { known = 0, waiting = 0, saved = 0, again = false } = {}) {
   const en = ACTIVE_LOCALE === 'en';
   const why = daylogFailWhy(kind);
@@ -9551,7 +9586,7 @@ function showDaylogFailBanner(entry, kind, { known = 0, waiting = 0, saved = 0, 
   if (entry.message) setAgentMessageText(entry.message, `${why}. ${saidWhat} ${retryNote}`);
   setDaylogBanner('error', {
     date: entry.date, title: why,
-    body: [daylogFailHint(kind), saidWhat, retryNote].filter(Boolean).join('\n'),
+    body: [daylogFailHint(kind), daylogFailedModelsLine(entry), saidWhat, retryNote].filter(Boolean).join('\n'),
     actions: [{ label: en ? 'Try again' : '다시 시도', cls: 'is-retry', onClick: () => retryDaylogFallbacks({ manual: true, date: entry.date }) }],
   });
 }
@@ -12620,4 +12655,215 @@ updateTopHead();
   window.addEventListener('rebuilders-theme', sync);
   document.querySelectorAll('.language-option[data-language]').forEach(b => b.addEventListener('click', () => setTimeout(sync, 0)));
   sync();
+})();
+
+/* ============================
+   설정 · AI 모델: 맥 미니에 연결된 모델과 상태(초록 사용 가능 · 노랑 주의 · 빨강 실패 · 회색 꺼짐/없음),
+   1순위 고르기(위·아래), 끄기, 연결 테스트. 순서는 이 기기에만 저장하고 /daylog 에 id 순서만 보냄
+   ============================ */
+(function setupAiModels() {
+  const card = document.getElementById('ai-models-card');
+  const B = globalThis.RebuildersBridge;
+  if (!card || !B?.models) return;
+  const list = card.querySelector('#ai-model-list');
+  const statusEl = card.querySelector('#ai-models-status');
+  let data = B.getModelCache();
+  let fromCache = Boolean(data);
+  let loading = false;
+  let lastLoad = 0;
+  const tests = new Map(); // id → { state: 'running'|'ok'|'fail', text }
+  const en = () => ACTIVE_LOCALE === 'en';
+  const EN_LABEL = { '그록': 'Grok', '그록 4.3': 'Grok 4.3', '그록 4.5': 'Grok 4.5', '제미나이': 'Gemini', '젬마4': 'Gemma 4', '라마 3.1': 'Llama 3.1', '기본 정리': 'Basic' };
+  const label = m => (en() ? EN_LABEL[m.label] || m.label : m.label);
+  const reduce = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  function prefs() {
+    const models = data?.models || [];
+    const ids = models.map(m => m.id);
+    const p = B.getModelPrefs();
+    if (!p) return { order: ids, off: models.filter(m => !m.default).map(m => m.id) };
+    const order = [...p.order.filter(id => ids.includes(id)), ...ids.filter(id => !p.order.includes(id))];
+    const newOff = ids.filter(id => !p.order.includes(id) && !models.find(m => m.id === id)?.default);
+    // 지금 목록에 없는 id 도 순서·끔 그대로 보관(맥 미니가 잠깐 못 보여 줘도 설정이 안 사라지게)
+    return { order, off: [...new Set([...p.off, ...newOff])], keep: p.order.filter(id => !ids.includes(id)) };
+  }
+  function save(order, off, keep = []) { B.setModelPrefs({ order: [...order, ...keep], off }); }
+  function ago(ts) {
+    if (!ts) return '';
+    const d = (Date.now() / 1000 - ts);
+    if (d < 60) return en() ? 'just now' : '방금';
+    if (d < 3600) return en() ? `${Math.floor(d / 60)} min ago` : `${Math.floor(d / 60)}분 전`;
+    if (d < 86400) return en() ? `${Math.floor(d / 3600)} h ago` : `${Math.floor(d / 3600)}시간 전`;
+    const t = new Date(ts * 1000);
+    return `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+  }
+  const secs = ms => (ms == null ? '' : ms < 10000 ? `${(ms / 1000).toFixed(1)}${en() ? 's' : '초'}` : `${Math.round(ms / 1000)}${en() ? 's' : '초'}`);
+  function statusText(m) {
+    const t = tests.get(m.id);
+    if (t?.state === 'running') return en() ? 'Testing…' : '연결 확인 중…';
+    const bits = [];
+    if (t) bits.push(t.text);
+    else bits.push(en() ? ({ ok: 'Available', warn: 'Available (check)', fail: 'Failing', off: 'Not set up' })[m.status] || m.status : m.status_ko);
+    if (m.last_ok) bits.push(en() ? `last OK ${ago(m.last_ok)}${m.last_ms != null ? ` · ${secs(m.last_ms)}` : ''}` : `마지막 성공 ${ago(m.last_ok)}${m.last_ms != null ? ` · ${secs(m.last_ms)}` : ''}`);
+    if (m.last_fail && (!m.last_ok || m.last_fail > m.last_ok) && m.fail_reason && !t && !String(m.status_ko || '').includes(m.fail_reason)) bits.push(en() ? `failed ${ago(m.last_fail)}` : `${ago(m.last_fail)} 실패: ${m.fail_reason}`);
+    return bits.filter(Boolean).join(' · ');
+  }
+  function dotClass(m) {
+    const t = tests.get(m.id);
+    if (t?.state === 'running') return `is-${m.status} is-testing`;
+    if (t?.state === 'ok') return 'is-ok';
+    if (t?.state === 'fail') return 'is-fail';
+    return `is-${m.status}`;
+  }
+  function esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
+
+  function render({ animate = false } = {}) {
+    const before = new Map();
+    if (animate && !reduce()) list.querySelectorAll('.ai-model-row').forEach(el => before.set(el.dataset.id, el.getBoundingClientRect().top));
+    const models = data?.models || [];
+    if (!models.length) {
+      list.innerHTML = `<p class="ai-model-empty">${esc(B.isConfigured() ? (en() ? 'Loading models from the Mac mini…' : '맥 미니에서 모델 목록을 불러오는 중…') : (en() ? 'Set up the Mac mini connection first.' : '맥 미니 연결을 먼저 설정해 주세요.'))}</p>`;
+      return;
+    }
+    const { order, off } = prefs();
+    const offSet = new Set(off);
+    const byId = new Map(models.map(m => [m.id, m]));
+    const firstOn = order.find(id => !offSet.has(id));
+    list.innerHTML = order.map((id, i) => {
+      const m = byId.get(id);
+      const isOn = !offSet.has(id);
+      return `<div class="ai-model-row${isOn ? '' : ' is-off'}" role="listitem" data-id="${esc(id)}">
+        <span class="ai-model-dot ${dotClass(m)}" aria-hidden="true"></span>
+        <div class="ai-model-main">
+          <div class="ai-model-name">${esc(label(m))}${id === firstOn ? `<span class="ai-model-chip">${en() ? '1st' : '1순위'}</span>` : ''}</div>
+          <div class="ai-model-sub">${esc(statusText(m))}</div>
+          <div class="ai-model-meta">${esc([m.model, m.note].filter(Boolean).join(' · '))}</div>
+        </div>
+        <label class="ai-switch"><input type="checkbox" ${isOn ? 'checked' : ''} aria-label="${esc(`${label(m)} ${en() ? 'on' : '사용'}`)}"><span></span></label>
+        <div class="ai-model-ctrl">
+          <button type="button" data-act="up" ${i === 0 ? 'disabled' : ''} aria-label="${esc(`${label(m)} ${en() ? 'up' : '위로'}`)}">↑</button>
+          <button type="button" data-act="down" ${i === order.length - 1 ? 'disabled' : ''} aria-label="${esc(`${label(m)} ${en() ? 'down' : '아래로'}`)}">↓</button>
+          <button type="button" data-act="test" ${tests.get(id)?.state === 'running' ? 'disabled' : ''}>${en() ? 'Test' : '테스트'}</button>
+        </div>
+      </div>`;
+    }).join('');
+    if (before.size) {
+      list.querySelectorAll('.ai-model-row').forEach(el => {
+        const top = before.get(el.dataset.id);
+        const dy = top == null ? 0 : top - el.getBoundingClientRect().top;
+        if (dy) el.animate([{ transform: `translate3d(0,${dy}px,0)` }, { transform: 'translate3d(0,0,0)' }], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      });
+    }
+  }
+  function setStatus(text) { statusEl.textContent = text || ''; }
+  function cachedNote() {
+    if (!fromCache || !data?.saved) return '';
+    const t = new Date(data.saved);
+    return en() ? `Could not reach the Mac mini — showing the last status (${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}).`
+      : `맥 미니에 연결이 안 돼서 마지막으로 본 상태예요 (${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}).`;
+  }
+  async function load({ refresh = false } = {}) {
+    if (loading) return;
+    if (!B.isConfigured()) { render(); setStatus(''); return; }
+    loading = true;
+    lastLoad = Date.now();
+    if (refresh) setStatus(en() ? 'Checking…' : '상태 확인 중…');
+    try {
+      const fresh = await B.models({ refresh });
+      data = { ...fresh, saved: Date.now() };
+      fromCache = false;
+      const ok = fresh.models.filter(m => m.status === 'ok' || m.status === 'warn').length;
+      setStatus(en() ? `${ok} of ${fresh.models.length} available.` : `${fresh.models.length}개 중 ${ok}개 사용 가능해요.`);
+    } catch (error) {
+      data = B.getModelCache() || data;
+      fromCache = true;
+      const kind = error?.kind;
+      setStatus(kind === 'not_found'
+        ? (en() ? 'The Mac mini bridge is older and cannot list models yet.' : '맥 미니 브리지가 예전 버전이라 아직 모델 목록을 못 보여 줘요.')
+        : kind === 'unauthorized' ? (en() ? 'The Mac mini token does not match.' : '맥 미니 토큰이 맞지 않아요.')
+          : (cachedNote() || (en() ? 'Could not reach the Mac mini.' : '맥 미니에 연결이 안 됐어요.')));
+    } finally {
+      loading = false;
+      render();
+    }
+  }
+  async function runTest(ids) {
+    ids.forEach(id => tests.set(id, { state: 'running' }));
+    render();
+    await Promise.all(ids.map(async id => {
+      try {
+        const r = await B.testModel(id);
+        tests.set(id, r?.status === 'ok'
+          ? { state: 'ok', text: en() ? `Connected · ${secs(r.ms)}` : `연결됨 · ${secs(r.ms)}` }
+          : { state: 'fail', text: en() ? `Failed: ${r?.kind || 'error'}` : `실패: ${r?.reason || '오류'}` });
+      } catch (error) {
+        tests.set(id, { state: 'fail', text: error?.kind === 'not_found' ? (en() ? 'Bridge too old' : '브리지가 예전 버전') : (en() ? 'Could not reach the Mac mini' : '맥 미니 연결 안 됨') });
+      }
+      render();
+    }));
+    await load();
+  }
+
+  list.addEventListener('click', event => {
+    const btn = event.target.closest('button[data-act]');
+    const row = event.target.closest('.ai-model-row');
+    if (!btn || !row) return;
+    const id = row.dataset.id;
+    const { order, off, keep } = prefs();
+    if (btn.dataset.act === 'test') { runTest([id]); return; }
+    const i = order.indexOf(id);
+    const j = btn.dataset.act === 'up' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    save(order, off, keep);
+    render({ animate: true });
+    list.querySelector(`.ai-model-row[data-id="${CSS.escape(id)}"] button[data-act="${btn.dataset.act}"]`)?.focus({ preventScroll: true });
+  });
+  list.addEventListener('change', event => {
+    const input = event.target.closest('.ai-switch input');
+    const row = event.target.closest('.ai-model-row');
+    if (!input || !row) return;
+    const id = row.dataset.id;
+    const { order, off, keep } = prefs();
+    let next = off.filter(x => x !== id);
+    if (!input.checked) next.push(id);
+    if (order.every(x => next.includes(x))) {
+      input.checked = true;
+      setStatus(en() ? 'Keep at least one model on.' : '하나는 켜 둬야 해요.');
+      return;
+    }
+    save(order, next, keep);
+    row.classList.toggle('is-off', !input.checked);
+    setTimeout(() => render(), 230); // 스위치가 다 움직인 뒤 1순위 표시 갱신
+  });
+  card.querySelector('#ai-models-refresh')?.addEventListener('click', () => load({ refresh: true }));
+  card.querySelector('#ai-models-test-all')?.addEventListener('click', () => {
+    const { order, off } = prefs();
+    const ids = order.filter(id => !off.includes(id) && data?.models?.find(m => m.id === id)?.provider !== 'interpret');
+    if (ids.length) runTest(ids);
+  });
+  card.querySelector('#ai-models-reset')?.addEventListener('click', () => {
+    B.setModelPrefs(null);
+    render({ animate: true });
+    setStatus(en() ? 'Back to the Mac mini default order.' : '맥 미니 기본 순서로 돌렸어요.');
+  });
+  function syncCopy() {
+    const t = card.querySelector('#ai-models-title');
+    const c = card.querySelector('#ai-models-copy');
+    if (t) t.textContent = en() ? 'AI models' : 'AI 모델';
+    if (c) c.textContent = en() ? 'Used from the top. If one is blocked, the next one takes over automatically. Order and on/off are saved on this device only.' : '위에서부터 써요. 하나가 막히면 다음 모델로 자동으로 넘어가요. 순서와 켜기·끄기는 이 기기에만 저장돼요.';
+    const labels = { 'ai-models-test-all': ['연결 테스트', 'Test connection'], 'ai-models-refresh': ['상태 새로고침', 'Refresh status'], 'ai-models-reset': ['기본 순서로', 'Default order'] };
+    Object.entries(labels).forEach(([id, [ko, enl]]) => { const b = card.querySelector(`#${id}`); if (b) b.textContent = en() ? enl : ko; });
+  }
+  document.addEventListener('click', event => { if (event.target.closest?.('[data-language]')) setTimeout(() => { syncCopy(); render(); }, 0); });
+  syncCopy();
+  render();
+  if (fromCache) setStatus('');
+  // 설정 화면에서 이 카드가 보이면 불러옴(30초에 한 번만, 맥 미니 쪽도 60초 캐시)
+  if ('IntersectionObserver' in globalThis) {
+    new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting) && Date.now() - lastLoad > 30000) load();
+    }).observe(card);
+  }
+  globalThis.RebuildersAiModels = { load, render };
 })();

@@ -28,8 +28,8 @@
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="style.css?v=f55" />
-  <link rel="stylesheet" href="theme-dark.css?v=1" />
+  <link rel="stylesheet" href="style.css?v=f56" />
+  <link rel="stylesheet" href="theme-dark.css?v=2" />
 </head>
 
 <body>
@@ -828,6 +828,18 @@
         </div>
       </section>
 
+      <section class="profile-form-card ai-models-card" id="ai-models-card" aria-labelledby="ai-models-title">
+        <h3 class="stats-section-title" id="ai-models-title">AI 모델</h3>
+        <p class="profile-save-hint language-settings-copy" id="ai-models-copy">위에서부터 써요. 하나가 막히면 다음 모델로 자동으로 넘어가요. 순서와 켜기·끄기는 이 기기에만 저장돼요.</p>
+        <div class="ai-model-list" id="ai-model-list" role="list" aria-labelledby="ai-models-title"></div>
+        <p class="ai-models-status" id="ai-models-status" aria-live="polite"></p>
+        <div class="ai-models-actions">
+          <button type="button" class="language-option ai-models-btn" id="ai-models-test-all">연결 테스트</button>
+          <button type="button" class="language-option ai-models-btn" id="ai-models-refresh">상태 새로고침</button>
+          <button type="button" class="language-option ai-models-btn" id="ai-models-reset">기본 순서로</button>
+        </div>
+      </section>
+
       <section class="profile-form-card reminder-settings-card" id="reminder-card" aria-labelledby="reminder-title" hidden>
         <h3 class="stats-section-title" id="reminder-title">식사 기록 알림</h3>
         <p class="profile-save-hint language-settings-copy" id="reminder-copy">정해진 시간에 이 기기에서 알려드려요. 서버를 거치지 않아요.</p>
@@ -1383,10 +1395,10 @@
   <script src="quick-entry.js?v=6"></script>
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
-  <script src="bridge.js?v=10"></script>
+  <script src="bridge.js?v=11"></script>
   <script src="chat-intent.js?v=13"></script>
   <script src="food-search-rank.js?v=1"></script>
-  <script src="app.js?v=f60"></script>
+  <script src="app.js?v=f61"></script>
 </body>
 
 </html>

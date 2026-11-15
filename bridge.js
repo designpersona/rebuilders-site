@@ -414,6 +414,45 @@
     }).filter(row => row.name && [row.kcal, row.carbs_g, row.protein_g, row.fat_g].every(v => v !== null));
   }
 
+  /* AI 모델 고르기: 순서·끈 모델은 이 기기에만 저장. 맥 미니에는 모델 id 순서만 보냄(키·계정 정보 없음) */
+  const MODEL_PREF_KEY = 'rebuilders-ai-models';
+  const MODEL_CACHE_KEY = 'rebuilders-ai-models-cache';
+  function getModelPrefs() {
+    try {
+      const p = JSON.parse(localStorage.getItem(MODEL_PREF_KEY) || 'null');
+      if (p && Array.isArray(p.order)) return { order: p.order.map(String).slice(0, 20), off: Array.isArray(p.off) ? p.off.map(String).slice(0, 20) : [] };
+    } catch { /* 깨진 값은 기본 순서 */ }
+    return null;
+  }
+  function setModelPrefs(prefs) {
+    try {
+      if (!prefs) localStorage.removeItem(MODEL_PREF_KEY);
+      else localStorage.setItem(MODEL_PREF_KEY, JSON.stringify({ order: (prefs.order || []).slice(0, 20), off: (prefs.off || []).slice(0, 20) }));
+    } catch { /* 저장 실패는 무시 */ }
+  }
+  function getModelCache() {
+    try { const c = JSON.parse(localStorage.getItem(MODEL_CACHE_KEY) || 'null'); return c && Array.isArray(c.models) ? c : null; } catch { return null; }
+  }
+  /** /daylog 에 보낼 순서. 설정을 안 건드렸으면 null(맥 미니 기본 순서) */
+  function modelOrderForDaylog() {
+    const prefs = getModelPrefs();
+    if (!prefs) return null;
+    const off = new Set(prefs.off);
+    const known = getModelCache()?.models?.map(m => m.id);
+    const order = [...prefs.order, ...(known || []).filter(id => !prefs.order.includes(id) && getModelCache().models.find(m => m.id === id)?.default)];
+    const list = order.filter(id => !off.has(id));
+    return list.length ? list.slice(0, 12) : null;
+  }
+  async function models({ refresh = false } = {}) {
+    const data = await request(`/models${refresh ? '?refresh=1' : ''}`, { timeoutMs: 25000 });
+    if (!data || !Array.isArray(data.models)) throw new BridgeError('error');
+    try { localStorage.setItem(MODEL_CACHE_KEY, JSON.stringify({ models: data.models, default_order: data.default_order || [], checked_at: data.checked_at || 0, saved: Date.now() })); } catch { /* 무시 */ }
+    return data;
+  }
+  async function testModel(id) {
+    return request('/models/test', { method: 'POST', body: { id: String(id || '').slice(0, 80) }, timeoutMs: 75000 });
+  }
+
   async function daylog({ text, date, meal, time, remoteId, savedFoods, todayRecords } = {}) {
     let data = null;
     if (JOB_ID_RE.test(String(remoteId || ''))) {
@@ -430,6 +469,8 @@
       const today = daylogRefs(todayRecords);
       if (saved.length) body.savedFoods = saved;
       if (today.length) body.todayRecords = today;
+      const order = modelOrderForDaylog();
+      if (order) body.models = order;
       try {
         data = await request('/daylog', { method: 'POST', body, timeoutMs: SUBMIT_TIMEOUT_MS });
       } catch (error) {
@@ -445,7 +486,7 @@
   }
 
   /** onRemoteId(id): 맡긴 작업 번호를 받자마자 알려 줌(앱이 꺼졌다 켜져도 이 번호로 결과만 다시 받게) */
-  async function daylogAndWait(payload, { maxMs = 180000, intervalMs = 2000, onTick, onRemoteId } = {}) {
+  async function daylogAndWait(payload, { maxMs = 300000, intervalMs = 2000, onTick, onRemoteId, onProgress } = {}) {
     const started = Date.now();
     const end = started + maxMs;
     let result = await daylog(payload);
@@ -462,13 +503,14 @@
       await new Promise(resolve => setTimeout(resolve, intervalMs));
       result = await daylog({ ...payload, remoteId: result.remoteId });
       report();
+      if (!result.done && result.raw?.progress) { try { onProgress?.(result.raw.progress); } catch { /* 화면 갱신 실패는 무시 */ } }
     }
     result.elapsedMs = Date.now() - started;
     if (!result.done) throw new BridgeError('timeout');
     return result;
   }
 
-  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, daylog, daylogAndWait, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
+  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, daylog, daylogAndWait, models, testModel, getModelPrefs, setModelPrefs, getModelCache, modelOrderForDaylog, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
   global.RebuildersBridge = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
