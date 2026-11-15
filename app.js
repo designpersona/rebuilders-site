@@ -12950,7 +12950,14 @@ updateTopHead();
     }
     return null;
   }
-  function unit() { return $('lr-unit').value === 'ml' ? 'ml' : 'g'; }
+  function unit() { const v = $('lr-unit').value; return v === 'ml' || v === 'g' ? v : ''; }
+  /** 1g 에 185kcal 처럼 지방(9kcal/g)보다 진한 양은 잘못 읽은 것 */
+  const impossible = (kcal, amt) => Boolean(kcal && amt && kcal / amt > 9.5);
+  function markAmount() {
+    const need = st.basis !== '100' && Boolean(st.reading) && (!basisAmount() || !unit());
+    $('lr-amount').closest('label').classList.toggle('is-missing', need);
+    $('lr-amount').placeholder = need ? (en() ? 'g or ml' : 'g·ml 적기') : '';
+  }
   function basisAmount(basis = st.basis) {
     if (basis === '100') return 100;
     return num($('lr-amount').value);
@@ -12973,13 +12980,14 @@ updateTopHead();
       btn.classList.toggle('active', b === st.basis);
       btn.setAttribute('aria-pressed', String(b === st.basis));
       btn.disabled = b !== st.basis && !factor(st.basis, b, a) && !tableFor(b, r);
-      if (b === '100') btn.textContent = `100${unit()}`;
+      if (b === '100') btn.textContent = `100${unit() || 'g'}`;
     });
     const labels = en() ? { serving: 'Serving size', package: 'Package total', '100': 'Basis' } : { serving: '1회 제공량', package: '총 내용량', '100': '기준' };
     $('lr-amount-label').textContent = labels[st.basis];
     $('lr-amount').disabled = st.basis === '100';
     if (st.basis === '100') $('lr-amount').value = '100';
-    $('lr-eat-unit').textContent = basisAmount() ? unit() : (en() ? '×' : '회');
+    $('lr-eat-unit').textContent = unit() || (en() ? 'g/ml' : 'g·ml');
+    markAmount();
   }
   function setBasis(next) {
     if (next === st.basis) return;
@@ -12994,7 +13002,7 @@ updateTopHead();
     st.basis = next;
     $('lr-amount').value = amt ? String(round(amt, 1)) : '';
     writeFields(t);
-    if ($('lr-log').checked) $('lr-eat').value = basisAmount() ? String(round(basisAmount(), 1)) : '1';
+    if ($('lr-log').checked) $('lr-eat').value = basisAmount() ? String(round(basisAmount(), 1)) : '';
     syncBasisUi();
   }
   function modelText(res) {
@@ -13020,7 +13028,8 @@ updateTopHead();
   function resetForm() {
     st.reading = null; st.basis = 'serving';
     ['lr-name', 'lr-brand', 'lr-amount', 'lr-eat'].forEach(id => { $(id).value = ''; });
-    $('lr-unit').value = 'g';
+    $('lr-unit').value = '';
+    $('lr-unit').options[0].textContent = en() ? 'unit' : '단위';
     $('lr-log').checked = st.from === 'modal';
     $('lr-log-row').hidden = !$('lr-log').checked;
     $('lr-meal').value = st.meal || globalThis.RebuildersQuickEntry?.mealForTime(new Date()) || 'lunch';
@@ -13057,22 +13066,34 @@ updateTopHead();
         return;
       }
       st.reading = res;
-      const u = res.serving?.unit || res.package?.unit || 'g';
+      // 모르면 단위도 비워 둠(예전엔 g 로 채워서 '1잔'이 1g 이 됨)
+      const u = res.serving?.unit || res.package?.unit || '';
       $('lr-unit').value = u;
       $('lr-name').value = [res.brand && !String(res.name || '').includes(res.brand) ? res.brand : '', res.name].filter(Boolean).join(' ').trim();
       $('lr-brand').value = res.brand || '';
-      const first = res.per_serving ? 'serving' : (res.table_basis || (res.per_100 ? '100' : 'package'));
+      // 표에 적힌 기준(table_basis)을 먼저. 그 표가 없을 때만 1회 → 100 → 전체 순
+      const TB = { serving: res.per_serving, '100': res.per_100, package: res.per_package };
+      const first = res.table_basis && TB[res.table_basis] ? res.table_basis : (res.per_serving ? 'serving' : (res.per_100 ? '100' : 'package'));
       st.basis = first;
       const a = amounts(res);
-      $('lr-amount').value = first === '100' ? '100' : (a[first] ? String(round(a[first], 1)) : '');
-      writeFields(tableFor(first, res));
-      if ($('lr-log').checked) $('lr-eat').value = basisAmount() ? String(round(basisAmount(), 1)) : '1';
+      const firstTable = tableFor(first, res);
+      const firstAmt = first === '100' ? 100 : a[first];
+      const badAmt = first !== '100' && impossible(firstTable?.kcal, firstAmt);
+      $('lr-amount').value = first === '100' ? '100' : (firstAmt && !badAmt ? String(round(firstAmt, 1)) : '');
+      writeFields(firstTable);
+      if ($('lr-log').checked) $('lr-eat').value = basisAmount() ? String(round(basisAmount(), 1)) : '';
       syncBasisUi();
       $('label-review-status').textContent = modelText(res);
       const missing = FIELDS.filter(([k, id]) => num($(id).value) == null).length;
       $('label-review-note').textContent = [
         missing ? (en() ? `${missing} value(s) could not be read — left empty.` : `못 읽은 칸 ${missing}개는 비워 뒀어요.`) : (en() ? 'Check the numbers against the package before saving.' : '포장지와 숫자가 맞는지 확인하고 저장해 주세요.'),
         res.unreadable ? `(${res.unreadable})` : '',
+        st.basis !== '100' && (!basisAmount() || !unit())
+          ? (en() ? `Serving size${res.serving_note ? ` (“${res.serving_note}”)` : ''} has no g/ml — please type it from the package or size chart.`
+            : `1회 제공량${res.serving_note ? `이 ‘${res.serving_note}’라서` : '을'} g·ml로 못 읽었어요. 포장지나 사이즈 표의 용량을 적어 주세요.`)
+          : res.serving_from === 'size' && st.basis === 'serving'
+            ? (en() ? `Filled ${round(basisAmount(), 1)}ml from the ${res.size} size — please check.` : `${res.size} 사이즈라 ${round(basisAmount(), 1)}ml로 채웠어요. 맞는지 확인해 주세요.`)
+            : '',
       ].filter(Boolean).join(' ');
       if (!$('lr-name').value) $('lr-name').focus({ preventScroll: true });
     } catch (error) {
@@ -13120,6 +13141,15 @@ updateTopHead();
     if (['kcal', 'carbs_g', 'protein_g', 'fat_g'].some(k => v[k] == null)) { errEl.textContent = en() ? 'Fill in kcal, carbs, protein and fat.' : '열량·탄수화물·단백질·지방을 채워 주세요.'; return; }
     const u = unit();
     const amt = basisAmount();
+    if (st.basis !== '100' && !amt) {
+      errEl.textContent = en() ? `Enter the ${st.basis === 'package' ? 'package total' : 'serving size'} in g or ml.` : `${st.basis === 'package' ? '총 내용량' : '1회 제공량'}을 g·ml로 적어 주세요.`;
+      markAmount(); $('lr-amount').focus(); return;
+    }
+    if (!u) { errEl.textContent = en() ? 'Choose g or ml.' : '단위(g·ml)를 골라 주세요.'; markAmount(); $('lr-unit').focus(); return; }
+    if (impossible(v.kcal, amt)) {
+      errEl.textContent = en() ? `${round(amt, 1)}${u} cannot have ${Math.round(v.kcal)}kcal — check the amount.` : `${round(amt, 1)}${u}에 ${Math.round(v.kcal)}kcal는 나올 수 없어요. 양을 확인해 주세요.`;
+      markAmount(); $('lr-amount').focus(); return;
+    }
     const servingText = st.basis === '100' ? `100${u}` : st.basis === 'package'
       ? (en() ? `package${amt ? ` ${round(amt, 1)}${u}` : ''}` : `1개(전체)${amt ? ` ${round(amt, 1)}${u}` : ''}`)
       : (en() ? `serving${amt ? ` ${round(amt, 1)}${u}` : ''}` : `1회${amt ? ` ${round(amt, 1)}${u}` : ''}`);
@@ -13196,7 +13226,7 @@ updateTopHead();
   $('lr-unit').addEventListener('change', syncBasisUi);
   $('lr-log').addEventListener('change', () => {
     $('lr-log-row').hidden = !$('lr-log').checked;
-    if ($('lr-log').checked && !$('lr-eat').value) $('lr-eat').value = basisAmount() ? String(round(basisAmount(), 1)) : '1';
+    if ($('lr-log').checked && !$('lr-eat').value) $('lr-eat').value = basisAmount() ? String(round(basisAmount(), 1)) : '';
   });
   FIELDS.forEach(([, id]) => $(id).addEventListener('input', () => $(id).closest('label').classList.remove('is-missing')));
   $('label-review-retry').addEventListener('click', () => { if (st.image) read(); else input.click(); });

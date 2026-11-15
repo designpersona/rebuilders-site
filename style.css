@@ -14379,7 +14379,7 @@ body:has(.modal-overlay.open) .phone-frame > .daylog-banner { display: none; }
 .label-input-unit em { font-style: normal; font-size: 13px; color: var(--text-muted); min-width: 30px; }
 .label-input-unit select { width: 76px; flex: none; }
 .label-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.label-grid label.is-missing input { border-color: #f59e0b; border-style: dashed; }
+#label-review label.is-missing input, #label-review label.is-missing select { border: 1.5px dashed #f59e0b !important; }
 .label-basis { display: flex; gap: 6px; padding: 4px; border-radius: 14px; background: var(--bg3); }
 .label-basis button {
   flex: 1; height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font-weight: 700; font-size: 14px;

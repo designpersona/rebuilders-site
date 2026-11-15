@@ -593,7 +593,8 @@ html.theme-dark .ai-model-dot.is-warn { background: #f7ad31; box-shadow: 0 0 0 3
 html.theme-dark .ai-model-dot.is-fail { box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.324); }
 html.theme-dark .ai-switch span::after { background: #1c1c1c; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); }
 html.theme-dark .ai-switch input:checked + span { background: #48df80; }
-html.theme-dark .label-grid label.is-missing input { border-color: #f7ad31; }
+html.theme-dark #label-review label.is-missing input,
+html.theme-dark #label-review label.is-missing select { border: 1.5px dashed #f7ad31 !important; }
 html.theme-dark .label-basis button.active { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.216); }
 html.theme-dark .label-review-error { color: #e14747; }
 
