@@ -1470,6 +1470,7 @@ function updateDateDisplay() {
   }
   document.getElementById('date-display')?.classList.toggle('is-today', today);
   renderDateStrip();
+  try { syncAgentLogDate(); } catch { /* 대화창이 아직 없으면 무시 */ }
   document.getElementById('date-display')?.setAttribute('aria-label', `${formatHomeDate(currentDate)}. ${ACTIVE_LOCALE === 'en' ? 'Tap to go to today' : '눌러서 오늘로'}`);
   if (goToday) goToday.hidden = today;
   // 홈 건강 카드도 선택한 날짜로(연결 안 했으면 아무 일 없음)
@@ -7486,21 +7487,101 @@ function setAgentSearching(message, on) {
 }
 function setAgentMessageText(message, text, { searching = false } = {}) {
   if (!message) return;
-  const target = message.querySelector('.agent-bubble-text');
-  if (target) target.textContent = text;
-  else message.textContent = text;
-  setAgentSearching(message, searching);
+  const targets = [message];
+  // 날짜를 바꿔 대화창을 다시 그렸으면 같은 메시지의 새 칸도 함께 고침
+  const live = liveAgentMessage(message);
+  if (live && live !== message) targets.push(live);
+  targets.forEach(el => {
+    const target = el.querySelector('.agent-bubble-text');
+    if (target) target.textContent = text;
+    else el.textContent = text;
+    setAgentSearching(el, searching);
+  });
   if (message.dataset.chatId) updateChatHistory(message.dataset.chatId, text);
+}
+/** 화면에 붙어 있는 같은 메시지(날짜를 오가며 다시 그렸을 때) */
+function liveAgentMessage(message) {
+  if (!message) return null;
+  if (message.isConnected) return message;
+  const id = message.dataset?.chatId;
+  if (!id) return null;
+  return [...document.querySelectorAll('#agent-log .agent-message')].find(el => el.dataset.chatId === id) || null;
 }
 
 /* 최근 대화: 기기 안(localStorage)에만 최근 200개 저장 — 앱을 다시 열어도 남음. 서버·iCloud로 보내지 않음 */
+/* 날짜별 대화: 메시지마다 date(그 말이 기록되는 날짜)를 붙이고, 채팅 시트는 홈에서 보고 있는 날짜의 대화만 보여 줌.
+   한도: 날짜마다 최근 200개(전체 6000개). 예전 한 줄 대화는 처음 한 번 원본을 백업한 뒤 날짜를 붙임(지우지 않음) */
 const CHAT_HISTORY_KEY = 'rebuilders-chat-log';
 const CHAT_HISTORY_MAX = 200;
+const CHAT_HISTORY_TOTAL_MAX = 6000;
+const CHAT_DATED_FLAG = 'rebuilders-chat-log-dated-v1';
+const CHAT_BACKUP_KEY = 'rebuilders-chat-log-backup-v1';
+let chatHistoryDatedChecked = false;
+function chatLocalDateKey(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? dateKey(new Date()) : dateKey(d);
+}
+function migrateChatHistoryOnce() {
+  if (chatHistoryDatedChecked) return;
+  chatHistoryDatedChecked = true;
+  try {
+    if (localStorage.getItem(CHAT_DATED_FLAG)) return;
+    const raw = localStorage.getItem(CHAT_HISTORY_KEY);
+    if (raw && !localStorage.getItem(CHAT_BACKUP_KEY)) {
+      localStorage.setItem(CHAT_BACKUP_KEY, JSON.stringify({ at: new Date().toISOString(), raw }));
+      if (localStorage.getItem(CHAT_BACKUP_KEY) === null) return; // 백업이 안 되면 바꾸지 않음
+    }
+    let list = [];
+    try { list = JSON.parse(raw || '[]'); } catch { list = []; }
+    if (Array.isArray(list) && list.length) {
+      const dated = list.map(entry => (entry && typeof entry === 'object'
+        ? { ...entry, date: /^\d{4}-\d{2}-\d{2}$/.test(String(entry.date || '')) ? entry.date : (/^\d{4}-\d{2}-\d{2}$/.test(String(entry.targetDate || '')) ? entry.targetDate : chatLocalDateKey(entry.at)) }
+        : entry));
+      localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(dated));
+    }
+    localStorage.setItem(CHAT_DATED_FLAG, new Date().toISOString());
+  } catch { /* 저장 공간 문제: 다음에 다시 시도 */ chatHistoryDatedChecked = false; }
+}
 function readChatHistory() {
+  migrateChatHistoryOnce();
   try { const list = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]'); return Array.isArray(list) ? list : []; } catch { return []; }
 }
 function writeChatHistory(list) {
-  try { localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(list.slice(-CHAT_HISTORY_MAX))); } catch {}
+  // 날짜마다 최근 200개만, 전체 6000개까지(오래된 날의 대화는 그대로 둠)
+  const perDate = new Map();
+  const keep = new Array(list.length).fill(true);
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const d = list[i]?.date || '';
+    const n = (perDate.get(d) || 0) + 1;
+    perDate.set(d, n);
+    if (n > CHAT_HISTORY_MAX) keep[i] = false;
+  }
+  const trimmed = list.filter((_, i) => keep[i]).slice(-CHAT_HISTORY_TOTAL_MAX);
+  try { localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(trimmed)); } catch {}
+}
+let agentLogDate = '';
+function chatHistoryFor(date) {
+  return readChatHistory().filter(entry => entry && entry.id && entry.text && (entry.date || chatLocalDateKey(entry.at)) === date);
+}
+/** 홈 날짜가 바뀌면 그 날 대화로 바꿔 그림(한 번에 바꿔 깜빡임 없음) */
+function syncAgentLogDate({ force = false } = {}) {
+  const log = document.getElementById('agent-log');
+  if (!log) return;
+  const date = dateKey(currentDate);
+  if (!force && date === agentLogDate) { syncDaylogBannerDate(); return; }
+  agentLogDate = date;
+  const frag = document.createDocumentFragment();
+  const holder = document.createElement('div');
+  chatHistoryFor(date).forEach(entry => {
+    const el = buildAgentMessage(entry.text, entry.kind === 'user' ? 'user' : 'agent', new Date(entry.at), entry.id);
+    holder.appendChild(el);
+  });
+  while (holder.firstChild) frag.appendChild(holder.firstChild);
+  log.replaceChildren(frag);
+  renderAgentEmpty();
+  log.scrollTop = log.scrollHeight;
+  refreshAiDockToggle();
+  syncDaylogBannerDate();
 }
 function updateChatHistory(id, text) {
   const list = readChatHistory();
@@ -7533,32 +7614,36 @@ function renderAgentEmpty() {
   log.appendChild(box);
 }
 
-function appendAgentMessage(text, kind = 'agent', restore = null) {
-  const log = document.getElementById('agent-log');
-  if (!log) return null;
-  log.querySelector('.agent-empty')?.remove();
+function buildAgentMessage(text, kind, now, chatId) {
   const message = document.createElement('div');
   message.className = `agent-message is-${kind}`;
-  const now = restore ? new Date(restore.at) : new Date();
-  if (restore) message.dataset.chatId = restore.id;
-  else {
-    message.dataset.chatId = `${now.getTime().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    writeChatHistory([...readChatHistory(), { id: message.dataset.chatId, kind, text: String(text), at: now.toISOString() }]);
-  }
+  message.dataset.chatId = chatId;
   const stamp = now.toLocaleTimeString(ACTIVE_LOCALE === 'en' ? 'en-US' : 'ko-KR', { hour: 'numeric', minute: '2-digit' });
   message.innerHTML = `<div class="agent-message-body"><div class="agent-bubble"><span class="agent-bubble-text"></span></div><time class="agent-time" datetime="${now.toISOString()}">${stamp}</time></div>`;
-  setAgentMessageText(message, text);
-  log.appendChild(message);
-  log.scrollTop = log.scrollHeight;
+  message.querySelector('.agent-bubble-text').textContent = text;
+  return message;
+}
+/** date: 이 말이 속한 날짜(기본 = 지금 대화창 날짜). 다른 날짜면 저장만 하고 지금 화면에는 붙이지 않음 */
+function appendAgentMessage(text, kind = 'agent', restore = null, { date } = {}) {
+  const log = document.getElementById('agent-log');
+  if (!log) return null;
+  const now = restore ? new Date(restore.at) : new Date();
+  const chatId = restore ? restore.id : `${now.getTime().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const shown = agentLogDate || dateKey(currentDate);
+  const target = restore ? (restore.date || chatLocalDateKey(restore.at)) : (date || shown);
+  if (!restore) writeChatHistory([...readChatHistory(), { id: chatId, kind, text: String(text), at: now.toISOString(), date: target }]);
+  const message = buildAgentMessage(String(text), kind, now, chatId);
+  if (target === shown) {
+    log.querySelector('.agent-empty')?.remove();
+    log.appendChild(message);
+    log.scrollTop = log.scrollHeight;
+  }
   if (!restore && kind !== 'user' && document.getElementById('ai-dock-panel')?.hidden) showToast(text, 'info');
   refreshAiDockToggle();
   return message;
 }
 function restoreAgentLog() {
-  const log = document.getElementById('agent-log');
-  if (!log || log.querySelector('.agent-message')) return;
-  readChatHistory().forEach(entry => { if (entry && entry.id && entry.text) appendAgentMessage(entry.text, entry.kind === 'user' ? 'user' : 'agent', entry); });
-  renderAgentEmpty();
+  syncAgentLogDate({ force: true });
 }
 
 function appendToAgentMessage(message, node) {
@@ -7828,7 +7913,7 @@ function foodMatchHint(food, hint) {
   return (n && (n.includes(h) || h.includes(n))) || (input && (input.includes(h) || h.includes(input)));
 }
 
-function findTargetFoods(hint, targetId) {
+function findTargetFoods(hint, targetId, mealHint = null) {
   if (targetId) {
     for (const mealId of ['breakfast', 'lunch', 'dinner', 'snack']) {
       const idx = (meals[mealId]?.foods || []).findIndex(food => food?.id === targetId);
@@ -7836,7 +7921,7 @@ function findTargetFoods(hint, targetId) {
     }
   }
   const batch = loadLastChatBatch();
-  if (batch && batch.date === dateKey(currentDate) && meals[batch.mealId]) {
+  if (batch && batch.date === dateKey(currentDate) && meals[batch.mealId] && (!mealHint || batch.mealId === mealHint)) {
     const list = meals[batch.mealId].foods || [];
     const used = new Set();
     const hits = [];
@@ -7857,7 +7942,7 @@ function findTargetFoods(hint, targetId) {
     if (filtered.length) return filtered;
   }
   if (hint) {
-    const all = ['breakfast', 'lunch', 'dinner', 'snack'].flatMap(mealId =>
+    const all = (mealHint && meals[mealHint] ? [mealHint] : ['breakfast', 'lunch', 'dinner', 'snack']).flatMap(mealId =>
       (meals[mealId]?.foods || []).map((food, idx) => ({ mealId, idx, food }))
         .filter(item => foodMatchHint(item.food, hint)));
     if (all.length === 1) return all;
@@ -7976,7 +8061,7 @@ async function applyClarifyChoice(choice) {
 
 async function applyEditIntent(edit) {
   const en = ACTIVE_LOCALE === 'en';
-  const targets = findTargetFoods(edit.foodHint, edit.targetId);
+  const targets = findTargetFoods(edit.foodHint, edit.targetId, edit.mealId); // '점심 라면 지워줘': 끼니를 말했으면 그 끼니에서만
   if (!targets.length) {
     appendAgentMessage(en
       ? 'I could not find a recent food to change. Tell me the name.'
@@ -8968,6 +9053,7 @@ function savedFoodsForDaylog(text) {
       score = Math.max(hit >= 2 ? bi : 0, tk);
     }
     if (score < 0.5) return;
+    if (globalThis.RebuildersDataFix?.excludeFood?.(name, data)) return; // 확인 안 한 이상한 저장값은 그록에 안 보냄
     const ref = daylogFoodRef(name, data);
     if (!ref) return;
     const mine = data?.discoveryOrigin === 'manual' || data?.source === 'user-entry' || data?.sourceTrust === 'user';
@@ -8980,6 +9066,7 @@ function todayRecordsForDaylog() {
   ['breakfast', 'lunch', 'snack', 'dinner'].forEach(mealId => {
     (meals[mealId]?.foods || []).forEach(food => {
       if (!food?.name || out.length >= 30) return;
+      if (globalThis.RebuildersDataFix?.excludeRecord?.(food)) return;
       const ref = daylogFoodRef(food.name, food, { meal: mealId });
       if (ref) out.push(ref);
     });
@@ -8998,8 +9085,8 @@ function ensureDaylogBanner() {
   el.setAttribute('aria-live', 'polite');
   el.hidden = true;
   el.innerHTML = '<button type="button" class="daylog-banner-main"><span class="daylog-banner-spinner" aria-hidden="true"></span><span class="daylog-banner-texts"><span class="daylog-banner-title"></span><span class="daylog-banner-body"></span></span></button><div class="daylog-banner-actions"></div><button type="button" class="daylog-banner-close" aria-label="닫기">×</button>';
-  el.querySelector('.daylog-banner-main').addEventListener('click', () => setAiDockPanel(true));
-  el.querySelector('.daylog-banner-close').addEventListener('click', () => { el.hidden = true; el.dataset.state = ''; });
+  el.querySelector('.daylog-banner-main').addEventListener('click', () => { if (typeof el._onTap === 'function') el._onTap(); else setAiDockPanel(true); });
+  el.querySelector('.daylog-banner-close').addEventListener('click', () => { const cb = el._onClose; el._onClose = null; el.hidden = true; el._closed = true; el.dataset.state = ''; if (typeof cb === 'function') cb(); });
   const anchor = home.querySelector('.day-summary') || home.querySelector('.date-header');
   if (anchor?.parentNode === home) home.insertBefore(el, anchor);
   else home.prepend(el);
@@ -9008,11 +9095,16 @@ function ensureDaylogBanner() {
 }
 
 /** state: running | done | error | info. actions: [{label, onClick, cls}] */
-function setDaylogBanner(state, { title = '', body = '', actions = [] } = {}) {
+function setDaylogBanner(state, { title = '', body = '', actions = [], date = '', onTap = null } = {}) {
   const el = ensureDaylogBanner();
   if (!el) return;
   el.dataset.state = state;
-  el.hidden = false;
+  // 결과·오류는 그 날짜를 볼 때만(진행 중은 어느 날이든 보임)
+  el.dataset.date = state === 'running' ? '' : (date || '');
+  el._closed = false;
+  el._onTap = onTap;
+  el._onClose = null;
+  el.hidden = Boolean(el.dataset.date && el.dataset.date !== dateKey(currentDate));
   el.querySelector('.daylog-banner-title').textContent = title;
   const bodyEl = el.querySelector('.daylog-banner-body');
   bodyEl.textContent = body;
@@ -9032,6 +9124,11 @@ function setDaylogBanner(state, { title = '', body = '', actions = [] } = {}) {
   box.hidden = !actions.length;
 }
 
+function syncDaylogBannerDate() {
+  const el = daylogRun.banner;
+  if (!el?.isConnected || el._closed || !el.dataset.state) return;
+  el.hidden = Boolean(el.dataset.date && el.dataset.date !== dateKey(currentDate));
+}
 function daylogRunningTitle(entry) {
   const en = ACTIVE_LOCALE === 'en';
   const sec = Math.max(0, Math.round((Date.now() - entry.startedAt) / 1000));
@@ -9048,8 +9145,9 @@ function startDaylogTicker(entry) {
   const tick = () => {
     const { title, body } = daylogRunningTitle(entry);
     setDaylogBanner('running', { title, body });
-    const target = entry.message?.querySelector('.agent-bubble-text');
-    if (target && entry.message.classList.contains('is-searching')) target.textContent = title;
+    const live = liveAgentMessage(entry.message);
+    const target = live?.querySelector('.agent-bubble-text');
+    if (target && entry.message.classList.contains('is-searching')) { target.textContent = title; live.classList.add('is-searching'); }
   };
   tick();
   daylogRun.tickTimer = setInterval(tick, 1000);
@@ -9088,8 +9186,8 @@ function daylogUndoAction(entry, message) {
       await undoDaylogAdded(entry.date, entry.added || []);
       entry.added = [];
       const text = en ? 'Undid that log.' : '방금 기록을 되돌렸어요.';
-      if (message) { setAgentMessageText(message, text); message.querySelectorAll('.agent-undo').forEach(b => b.remove()); }
-      setDaylogBanner('info', { title: text, body: daylogDateLabel(entry.date) ? (en ? `on ${daylogDateLabel(entry.date)}` : `${daylogDateLabel(entry.date)} 기록`) : '' });
+      if (message) { setAgentMessageText(message, text); [message, liveAgentMessage(message)].forEach(el => el?.querySelectorAll('.agent-undo').forEach(b => b.remove())); }
+      setDaylogBanner('info', { title: text, date: entry.date, body: daylogDateLabel(entry.date) ? (en ? `on ${daylogDateLabel(entry.date)}` : `${daylogDateLabel(entry.date)} 기록`) : '' });
     } catch (error) {
       if (button) button.disabled = false;
       showStorageFailure(error);
@@ -9155,7 +9253,7 @@ async function applyDaylogResult(raw, { message, entry } = {}) {
     const day = daylogDateLabel(target.date);
     const text = (day ? (ACTIVE_LOCALE === 'en' ? `[${day}] ` : `[${day}에 저장] `) : '') + daylogSummaryText(raw, pairs.length);
     if (message) setAgentMessageText(message, text);
-    else message = appendAgentMessage(text);
+    else message = appendAgentMessage(text, 'agent', null, { date: target.date });
     setAgentSearching(message, false);
     const undo = daylogUndoAction(target, message);
     const undoButton = document.createElement('button');
@@ -9163,9 +9261,9 @@ async function applyDaylogResult(raw, { message, entry } = {}) {
     undoButton.className = 'agent-confirm agent-undo';
     undoButton.textContent = ACTIVE_LOCALE === 'en' ? 'Undo' : '되돌리기';
     undoButton.addEventListener('click', () => undo(undoButton));
-    appendToAgentMessage(message, undoButton);
+    appendToAgentMessage(liveAgentMessage(message) || message, undoButton);
     const summary = daylogBannerSummary(raw, target, dupCount);
-    setDaylogBanner('done', { ...summary, actions: [{ label: ACTIVE_LOCALE === 'en' ? 'Undo' : '되돌리기', cls: 'is-undo', onClick: undo }] });
+    setDaylogBanner('done', { ...summary, date: target.date, actions: [{ label: ACTIVE_LOCALE === 'en' ? 'Undo' : '되돌리기', cls: 'is-undo', onClick: undo }] });
     return true;
   } finally {
     daylogRun.applying = false;
@@ -9177,7 +9275,7 @@ async function runDaylogEntry(entry) {
   const en = ACTIVE_LOCALE === 'en';
   const Intent = globalThis.RebuildersChatIntent;
   if (!entry.message) {
-    entry.message = appendAgentMessage(en ? 'Sent to Grok on the Mac mini…' : '맥 미니 그록에게 보냈어요…');
+    entry.message = appendAgentMessage(en ? 'Sent to Grok on the Mac mini…' : '맥 미니 그록에게 보냈어요…', 'agent', null, { date: entry.date });
   }
   const message = entry.message;
   setAgentSearching(message, true);
@@ -9189,7 +9287,7 @@ async function runDaylogEntry(entry) {
     else {
       const day = normalizeDayRecord((await loadDayFoods(entry.date)) || {}).day;
       ['breakfast', 'lunch', 'snack', 'dinner'].forEach(mealId => (day[mealId] || []).forEach(food => {
-        const ref = food?.name && todayRecords.length < 30 ? daylogFoodRef(food.name, food, { meal: mealId }) : null;
+        const ref = food?.name && todayRecords.length < 30 && !globalThis.RebuildersDataFix?.excludeRecord?.(food) ? daylogFoodRef(food.name, food, { meal: mealId }) : null;
         if (ref) todayRecords.push(ref);
       }));
     }
@@ -9222,6 +9320,7 @@ async function runDaylogEntry(entry) {
         await applyInterpretResult(parsed, { message, text: entry.text, catalogs: localMatchCatalogs(), saveAll: true });
         const day = daylogDateLabel(entry.date);
         setDaylogBanner(pendingClarify ? 'error' : 'info', {
+          date: entry.date,
           title: pendingClarify
             ? (en ? 'Grok was not available — one question for you' : '그록이 안 돼서 기본 방식으로 했어요 · 확인할 게 있어요')
             : (en ? `Logged with the basic method${day ? ` to ${day}` : ''}` : `그록이 안 돼서 기본 방식으로 기록했어요${day ? ` (${day})` : ''}`),
@@ -9240,7 +9339,7 @@ async function runDaylogEntry(entry) {
     if (error?.kind === 'not_found' && !entry.remoteId) {
       if (message?.parentNode) message.remove();
       await interpretOrFallback(entry.text, { catalogs: localMatchCatalogs() });
-      setDaylogBanner('info', { title: en ? 'Done (older Mac mini bridge)' : '정리했어요(예전 맥 미니 방식)', body: en ? 'Tap to see the chat.' : '눌러서 채팅에서 확인' });
+      setDaylogBanner('info', { date: entry.date, title: en ? 'Done (older Mac mini bridge)' : '정리했어요(예전 맥 미니 방식)', body: en ? 'Tap to see the chat.' : '눌러서 채팅에서 확인' });
       return;
     }
     const kind = error?.kind || 'error';
@@ -9251,6 +9350,7 @@ async function runDaylogEntry(entry) {
     }[kind] || (en ? 'Grok could not finish' : '그록이 정리를 못 했어요');
     await handleAgentCommandFallback(entry.text, { message, reason: error, silent: false });
     setDaylogBanner('error', {
+      date: entry.date,
       title: why,
       body: en ? 'Saved with the on-phone rules instead. Tap to check.' : '휴대폰 규칙으로 대신 넣었어요. 눌러서 확인해 주세요.',
     });
@@ -9281,7 +9381,7 @@ function enqueueDaylog({ text, date, time, remoteId = '', startedAt = Date.now()
   if (daylogRun.running) {
     const en = ACTIVE_LOCALE === 'en';
     const waiting = daylogRun.queue.filter(e => !e.done).length - 1;
-    const msg = appendAgentMessage(en ? `Queued — Grok is finishing the previous one (${waiting} waiting).` : `앞 기록을 정리하는 중이라 이어서 할게요(대기 ${waiting}개).`);
+    const msg = appendAgentMessage(en ? `Queued — Grok is finishing the previous one (${waiting} waiting).` : `앞 기록을 정리하는 중이라 이어서 할게요(대기 ${waiting}개).`, 'agent', null, { date });
     entry.message = msg;
     const current = daylogRun.queue.find(e => !e.done && e !== entry);
     if (current) { const { title, body } = daylogRunningTitle(current); setDaylogBanner('running', { title, body }); }
@@ -9413,6 +9513,294 @@ function setupPullToRefresh() {
   home.addEventListener('touchcancel', () => { y0 = null; hide(); }, { passive: true });
 }
 
+/* ============================
+   저장값 점검(data-fix.js): 처음 한 번 자동 점검 + 확인할 항목 시트 + 수정 전으로 되돌리기
+   ============================ */
+let dataFixSheet = null;
+async function initDataFixOnce() {
+  const DF = globalThis.RebuildersDataFix;
+  if (!DF) return null;
+  try {
+    const result = await DF.runOnce(storageRepository);
+    if (result?.ran) console.info('저장값 점검:', result);
+    return result;
+  } catch (error) {
+    console.warn('저장값 점검 실패(바꾼 것 없음):', error);
+    try { await DF.loadMeta(storageRepository); } catch {}
+    return { error: String(error) };
+  }
+}
+async function reloadAfterDataFix() {
+  await loadCustomFoods();
+  await loadCurrentDay();
+  statsCache = await loadStorage();
+  updateDateDisplay();
+  renderAll(true);
+  renderRecentFoods();
+  if (activeMealPageContext) renderMealPage();
+  if (activeView === 'search') renderSearchHub();
+  renderDataFixSettings();
+}
+function dataFixWhere(item) {
+  const en = ACTIVE_LOCALE === 'en';
+  if (item.kind === 'food') return en ? 'My foods' : '내 음식(저장값)';
+  const d = parseDateKey(item.date);
+  return `${d.getMonth() + 1}/${d.getDate()} ${mealLabel(item.meal)} ${en ? 'record' : '기록'}`;
+}
+function dataFixValueText(food) {
+  const DF = globalThis.RebuildersDataFix;
+  const g = DF.gramsOf(food);
+  const show = v => (v === null || v === undefined || v === '' ? '–' : (typeof v === 'number' ? Math.round(v * 10) / 10 : String(v)));
+  const unit = food?.servingMl ? 'ml' : 'g';
+  return `${food?.serving ? `${food.serving}` : (g ? `${g}${unit}` : (ACTIVE_LOCALE === 'en' ? 'amount ?' : '양 ?'))}${g && food?.serving && !String(food.serving).includes(String(g)) ? ` (${g}${unit})` : ''} · ${show(food?.cal)}kcal · 탄${show(food?.carbs)} 단${show(food?.protein)} 지${show(food?.fat)}`;
+}
+async function dataFixCommit(item, after) {
+  const DF = globalThis.RebuildersDataFix;
+  const change = item.kind === 'food'
+    ? { kind: 'food', name: item.name, before: item.food, after }
+    : { kind: 'record', date: item.date, meal: item.meal, id: item.id, index: item.index, name: item.name, before: item.food, after };
+  await DF.commit(change);
+  await reloadAfterDataFix();
+}
+function dataFixPatched(food, fields) {
+  const next = { ...food, ...fields };
+  next.sourceLabel = fields.sourceLabel || '내 음식';
+  if (!fields.sourceLabel) { next.sourceType = '내 음식'; next.sourceTrust = 'user'; next.estimate = false; next.aiEstimate = false; next.nutritionCustom = true; }
+  return next;
+}
+
+async function openDataFixSheet() {
+  const DF = globalThis.RebuildersDataFix;
+  if (!DF?.supported()) { showToast(ACTIVE_LOCALE === 'en' ? 'Not available in this mode.' : '이 모드에서는 점검할 수 없어요.', 'info'); return; }
+  const meta = DF.getMeta();
+  if (meta && !meta.cardShown) { meta.cardShown = true; try { await storageRepository.setMeta(DF.META_KEY, meta); } catch {} }
+  if (!dataFixSheet) {
+    dataFixSheet = document.createElement('div');
+    dataFixSheet.className = 'datafix-overlay';
+    dataFixSheet.setAttribute('role', 'dialog');
+    dataFixSheet.setAttribute('aria-modal', 'true');
+    dataFixSheet.innerHTML = '<div class="datafix-sheet"><div class="datafix-head"><h3 class="datafix-title"></h3><button type="button" class="datafix-close" aria-label="닫기">×</button></div><p class="datafix-sub"></p><div class="datafix-auto"></div><div class="datafix-list"></div><div class="datafix-foot"><button type="button" class="datafix-restore"></button></div></div>';
+    document.body.appendChild(dataFixSheet);
+    dataFixSheet.addEventListener('click', event => { if (event.target === dataFixSheet) closeDataFixSheet(); });
+    dataFixSheet.querySelector('.datafix-close').addEventListener('click', closeDataFixSheet);
+    dataFixSheet.querySelector('.datafix-restore').addEventListener('click', event => restoreDataFix(event.currentTarget));
+  }
+  dataFixSheet.hidden = false;
+  document.body.classList.add('datafix-open');
+  await renderDataFixSheet();
+}
+function closeDataFixSheet() {
+  if (!dataFixSheet) return;
+  dataFixSheet.hidden = true;
+  document.body.classList.remove('datafix-open');
+  renderDataFixSettings();
+}
+async function restoreDataFix(button) {
+  const DF = globalThis.RebuildersDataFix;
+  const en = ACTIVE_LOCALE === 'en';
+  const count = (DF.getMeta()?.changes || []).filter(c => !c.reverted).length;
+  if (!count) { showToast(en ? 'Nothing to restore.' : '되돌릴 수정이 없어요.', 'info'); return; }
+  if (!confirm(en ? `Restore ${count} changes made by the check? Records you added later stay.` : `점검에서 바꾼 ${count}개를 수정 전으로 되돌릴까요?\n그 뒤에 새로 넣은 기록은 그대로 남아요.`)) return;
+  if (button) button.disabled = true;
+  try {
+    const n = await DF.restoreAll();
+    await reloadAfterDataFix();
+    showToast(en ? `Restored ${n} changes.` : `${n}개를 수정 전으로 되돌렸어요.`, 'success');
+    if (dataFixSheet && !dataFixSheet.hidden) await renderDataFixSheet();
+  } catch (error) { showStorageFailure(error); } finally { if (button) button.disabled = false; }
+}
+
+async function renderDataFixSheet() {
+  const DF = globalThis.RebuildersDataFix;
+  const en = ACTIVE_LOCALE === 'en';
+  const items = await DF.currentItems();
+  const meta = DF.getMeta() || {};
+  const changes = (meta.changes || []).map((c, i) => ({ c, i }));
+  const live = changes.filter(x => !x.c.reverted);
+  dataFixSheet.querySelector('.datafix-title').textContent = en ? 'Saved values check' : '저장값 점검';
+  dataFixSheet.querySelector('.datafix-sub').textContent = en
+    ? `${items.length} to review. Backup made before any change${meta.backupAt ? ` (${new Date(meta.backupAt).toLocaleString()})` : ''}. Items here are not sent to Grok until you fix or keep them.`
+    : `확인할 항목 ${items.length}개. 바꾸기 전에 백업해 뒀어요${meta.backupAt ? `(${new Date(meta.backupAt).toLocaleString('ko-KR')})` : ''}. 여기 있는 값은 고치거나 '그대로 두기' 전까지 그록에 참고값으로 보내지 않아요.`;
+  const restoreBtn = dataFixSheet.querySelector('.datafix-restore');
+  restoreBtn.textContent = en ? `Restore to before (${live.length})` : `수정 전으로 되돌리기 (${live.length})`;
+  restoreBtn.disabled = !live.length;
+  // 자동으로 고친 것
+  const autoBox = dataFixSheet.querySelector('.datafix-auto');
+  autoBox.replaceChildren();
+  const autos = changes.filter(x => x.c.auto);
+  if (autos.length) {
+    const h = document.createElement('p');
+    h.className = 'datafix-section';
+    h.textContent = en ? `Auto-fixed broken numbers (${autos.length})` : `깨진 숫자 자동 정리 (${autos.length})`;
+    autoBox.appendChild(h);
+    autos.forEach(({ c, i }) => {
+      const row = document.createElement('div');
+      row.className = 'datafix-row is-auto';
+      const where = c.kind === 'food' ? dataFixWhere({ kind: 'food' }) : dataFixWhere({ kind: 'record', date: c.date, meal: c.meal });
+      row.innerHTML = '<div class="datafix-name"></div><div class="datafix-where"></div><div class="datafix-value"></div><div class="datafix-actions"></div>';
+      row.querySelector('.datafix-name').textContent = c.name;
+      row.querySelector('.datafix-where').textContent = `${where} · ${c.note || ''}${c.reverted ? (en ? ' · restored' : ' · 되돌림') : ''}`;
+      row.querySelector('.datafix-value').textContent = `${dataFixValueText(c.before)}  →  ${dataFixValueText(c.after)}`;
+      if (!c.reverted) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'datafix-btn'; b.textContent = en ? 'Undo' : '되돌리기';
+        b.addEventListener('click', async () => { b.disabled = true; try { await DF.revertChange(i); await reloadAfterDataFix(); await renderDataFixSheet(); } catch (e) { b.disabled = false; showStorageFailure(e); } });
+        row.querySelector('.datafix-actions').appendChild(b);
+      }
+      autoBox.appendChild(row);
+    });
+  }
+  const list = dataFixSheet.querySelector('.datafix-list');
+  list.replaceChildren();
+  if (!items.length) {
+    const p = document.createElement('p');
+    p.className = 'datafix-empty';
+    p.textContent = en ? 'Nothing to review. 👍' : '확인할 항목이 없어요. 👍';
+    list.appendChild(p);
+  }
+  items.slice(0, 200).forEach(item => list.appendChild(dataFixRow(item)));
+}
+
+function dataFixRow(item) {
+  const DF = globalThis.RebuildersDataFix;
+  const en = ACTIVE_LOCALE === 'en';
+  const row = document.createElement('div');
+  row.className = 'datafix-row';
+  row.innerHTML = '<div class="datafix-name"></div><div class="datafix-where"></div><div class="datafix-value"></div><ul class="datafix-reasons"></ul><div class="datafix-propose" hidden></div><div class="datafix-actions"></div>';
+  row.querySelector('.datafix-name').textContent = item.name;
+  row.querySelector('.datafix-where').textContent = dataFixWhere(item);
+  row.querySelector('.datafix-value').textContent = dataFixValueText(item.food);
+  const ul = row.querySelector('.datafix-reasons');
+  item.reasons.forEach(r => { const li = document.createElement('li'); li.textContent = r.text; ul.appendChild(li); });
+  const actions = row.querySelector('.datafix-actions');
+  const propose = row.querySelector('.datafix-propose');
+  const btn = (label, cls, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = `datafix-btn ${cls || ''}`.trim(); b.textContent = label;
+    b.addEventListener('click', async () => { if (b.disabled) return; b.disabled = true; try { await onClick(b); } catch (e) { showStorageFailure(e); } finally { b.disabled = false; } });
+    actions.appendChild(b);
+    return b;
+  };
+  if (globalThis.RebuildersBridge?.isConfigured?.()) {
+    btn(en ? 'Fix with Grok' : '그록 값으로 고치기', 'is-primary', async b => {
+      const g = DF.gramsOf(item.food);
+      const serving = item.food.serving || (g ? `${g}${item.food.servingMl ? 'ml' : 'g'}` : '1개');
+      b.textContent = en ? 'Asking…' : '찾는 중…';
+      try {
+        const job = { date: item.date || dateKey(new Date()), meal: item.meal || 'snack', items: [{ name: item.name, serving }] };
+        const result = RebuildersBridge.lookupAndWait ? await RebuildersBridge.lookupAndWait(job) : await RebuildersBridge.lookup(job);
+        const found = result.items?.[0];
+        const fields = found ? RebuildersBridge.toFoodFields(found) : null;
+        if (!fields) { showToast(en ? 'Grok could not find it.' : '그록이 값을 찾지 못했어요.', 'info'); return; }
+        const next = { ...item.food, cal: fields.cal, carbs: fields.carbs, protein: fields.protein, fat: fields.fat,
+          sourceType: fields.sourceType || '추정', sourceLabel: fields.sourceLabel || '추정', sourceTrust: fields.sourceTrust, estimate: fields.estimate, aiEstimate: fields.aiEstimate };
+        if (fields.sourceNote) next.sourceNote = fields.sourceNote;
+        if (fields.sourceUrl) next.sourceUrl = fields.sourceUrl;
+        propose.hidden = false;
+        propose.replaceChildren();
+        const t = document.createElement('div');
+        t.textContent = `${en ? 'Grok' : '그록'}: ${dataFixValueText(next)} (${next.sourceLabel})`;
+        propose.appendChild(t);
+        const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'datafix-btn is-primary'; ok.textContent = en ? 'Apply' : '이 값으로 적용';
+        const no = document.createElement('button'); no.type = 'button'; no.className = 'datafix-btn'; no.textContent = en ? 'Cancel' : '취소';
+        ok.addEventListener('click', async () => { ok.disabled = true; try { await dataFixCommit(item, next); await renderDataFixSheet(); } catch (e) { ok.disabled = false; showStorageFailure(e); } });
+        no.addEventListener('click', () => { propose.hidden = true; });
+        propose.append(ok, no);
+      } catch (error) {
+        showToast(en ? 'Could not reach the Mac mini.' : '맥 미니에 연결이 안 돼요(집 와이파이에서 해 주세요).', 'info');
+      } finally {
+        b.textContent = en ? 'Fix with Grok' : '그록 값으로 고치기';
+      }
+    });
+  }
+  btn(en ? 'Edit' : '직접 수정', '', async () => {
+    propose.hidden = false;
+    propose.replaceChildren();
+    const g = DF.gramsOf(item.food) || '';
+    const fields = [['g', en ? 'amount g' : '양(g)', g], ['cal', 'kcal', item.food.cal], ['carbs', en ? 'carbs' : '탄', item.food.carbs], ['protein', en ? 'protein' : '단', item.food.protein], ['fat', en ? 'fat' : '지', item.food.fat]];
+    const grid = document.createElement('div');
+    grid.className = 'datafix-edit';
+    fields.forEach(([k, label, v]) => {
+      const l = document.createElement('label');
+      l.textContent = label;
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.inputMode = 'decimal'; inp.min = '0'; inp.step = '0.1'; inp.dataset.k = k;
+      inp.value = typeof v === 'number' && Number.isFinite(v) ? String(v) : (typeof v === 'string' && /^\d/.test(v) ? v : '');
+      l.appendChild(inp); grid.appendChild(l);
+    });
+    const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'datafix-btn is-primary'; ok.textContent = en ? 'Save' : '저장';
+    ok.addEventListener('click', async () => {
+      const read = k => { const v = grid.querySelector(`[data-k="${k}"]`).value; const n = Number(v); return v !== '' && Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : null; };
+      const vals = { cal: read('cal'), carbs: read('carbs'), protein: read('protein'), fat: read('fat') };
+      if (Object.values(vals).some(v => v === null)) { showToast(en ? 'Fill in all four numbers.' : 'kcal·탄·단·지를 모두 숫자로 넣어 주세요.', 'info'); return; }
+      const next = dataFixPatched(item.food, vals);
+      const ng = read('g');
+      if (ng && ng !== DF.gramsOf(item.food)) {
+        if (item.food.servingMl) next.servingMl = ng; else next.servingGrams = ng;
+        next.serving = `${ng}${item.food.servingMl ? 'ml' : 'g'}`;
+      }
+      ok.disabled = true;
+      try { await dataFixCommit(item, next); await renderDataFixSheet(); } catch (e) { ok.disabled = false; showStorageFailure(e); }
+    });
+    propose.append(grid, ok);
+  });
+  btn(en ? 'Delete' : '삭제', 'is-danger', async () => {
+    const msg = item.kind === 'food'
+      ? (en ? `Delete “${item.name}” from my foods? Logged meals stay.` : `'${item.name}'을(를) 내 음식에서 지울까요?\n이미 적은 식단 기록은 그대로예요. (되돌리기 가능)`)
+      : (en ? `Delete this record (${dataFixWhere(item)})?` : `${dataFixWhere(item)}에서 '${item.name}'을(를) 지울까요? (되돌리기 가능)`);
+    if (!confirm(msg)) return;
+    await dataFixCommit(item, null);
+    await renderDataFixSheet();
+  });
+  btn(en ? 'Keep as is' : '그대로 두기', '', async () => {
+    await DF.markReviewed(item);
+    row.remove();
+    renderDataFixSettings();
+    await renderDataFixSheet();
+  });
+  return row;
+}
+
+async function renderDataFixSettings() {
+  const hint = document.getElementById('datafix-hint');
+  const DF = globalThis.RebuildersDataFix;
+  if (!hint || !DF?.supported()) return;
+  try {
+    const items = await DF.currentItems();
+    const meta = DF.getMeta() || {};
+    const live = (meta.changes || []).filter(c => !c.reverted).length;
+    hint.hidden = false;
+    hint.textContent = ACTIVE_LOCALE === 'en'
+      ? `${items.length} to review · ${live} changes (can be restored)`
+      : `확인할 항목 ${items.length}개 · 바꾼 것 ${live}개(되돌리기 가능)`;
+    const restore = document.getElementById('datafix-restore');
+    if (restore) restore.disabled = !live;
+  } catch { /* 표시만 실패 */ }
+}
+
+/** 업데이트 뒤 처음 한 번: 확인할 항목이 있으면 홈 배너로 알려 줌 */
+async function showDataFixCardOnce() {
+  const DF = globalThis.RebuildersDataFix;
+  if (!DF?.supported()) return;
+  const meta = DF.getMeta();
+  if (!meta || meta.cardShown) return;
+  const items = await DF.currentItems();
+  const autos = (meta.changes || []).filter(c => c.auto && !c.reverted).length;
+  if (!items.length && !autos) { meta.cardShown = true; try { await storageRepository.setMeta(DF.META_KEY, meta); } catch {} return; }
+  if (daylogRun.running) return;
+  const en = ACTIVE_LOCALE === 'en';
+  setDaylogBanner('info', {
+    title: en ? `Saved values check: ${items.length} to review` : `저장값 점검: 확인할 항목 ${items.length}개`,
+    body: en ? `Looks wrong (0 kcal, mismatched macros, odd names…). Backed up first${autos ? `; ${autos} broken numbers auto-fixed` : ''}. Tap to review.`
+      : `0kcal·탄단지 불일치·이상한 이름 같은 값이에요. 고치기 전에 백업해 뒀어요${autos ? `(깨진 숫자 ${autos}개는 자동 정리)` : ''}. 눌러서 확인`,
+    actions: [{ label: en ? 'Review' : '보기', onClick: () => openDataFixSheet() }],
+    onTap: () => openDataFixSheet(),
+  });
+  if (daylogRun.banner) daylogRun.banner._onClose = async () => { meta.cardShown = true; try { await storageRepository.setMeta(DF.META_KEY, meta); } catch {} };
+}
+document.getElementById('datafix-open')?.addEventListener('click', () => openDataFixSheet());
+document.getElementById('datafix-restore')?.addEventListener('click', event => restoreDataFix(event.currentTarget));
+
 async function handleDayLogPaste(text, catalogs, { skipInterpret } = {}) {
   const Intent = globalThis.RebuildersChatIntent;
   const log = Intent?.parseDayLog?.(text, { now: new Date() });
@@ -9446,6 +9834,11 @@ async function handleAgentCommand() {
   const input = document.getElementById('agent-input');
   const text = input?.value.trim();
   if (!text) return;
+  // 같은 글이 짧은 사이에 두 번 들어오면(키 이벤트 중복) 한 번만
+  if (typeof agentLastSend !== 'undefined') {
+    if (agentLastSend.text === text && Date.now() - agentLastSend.at < 800) { input.value = ''; refreshAiDockSend(); return; }
+    agentLastSend = { text, at: Date.now() };
+  }
   appendAgentMessage(text, 'user');
   input.value = '';
   refreshAiDockSend();
@@ -9492,9 +9885,17 @@ async function handleAgentCommand() {
     const catalogs = addExactOfficialHits(localMatchCatalogs(), text);
     const classified = Intent?.classifyChat(text, { pendingClarify }) || { type: 'food' };
     if (classified.type === 'edit') {
-      const targets = findTargetFoods(classified.foodHint, classified.targetId);
+      const targets = findTargetFoods(classified.foodHint, classified.targetId, classified.mealId);
       if (targets.length) {
         await applyEditIntent(classified);
+        return;
+      }
+      // 지우기 말인데 그 기록이 없으면 음식으로 저장하지 않고 알려 줌
+      if (classified.action === 'delete' && classified.foodHint) {
+        const day = formatHomeDate(currentDate);
+        appendAgentMessage(ACTIVE_LOCALE === 'en'
+          ? `I could not find “${classified.foodHint}” on ${day}. Nothing was deleted.`
+          : `${day} 기록에서 '${classified.foodHint}'을(를) 찾지 못했어요. 지운 건 없어요.`);
         return;
       }
     }
@@ -9606,11 +10007,45 @@ function refreshAiDockSend() {
   refreshAiDockInputSize();
 }
 ['input', 'compositionupdate', 'compositionend', 'keyup', 'change', 'focus', 'blur'].forEach(type => agentInputEl?.addEventListener(type, refreshAiDockSend));
-agentInputEl?.addEventListener('keydown', event => {
-  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
-  event.preventDefault();
-  if (!agentInputEl.value.trim()) return;
+/* 보내기는 키보드 return(보내기) 키나 보내기 버튼으로만.
+   - 한글 조합 중 return: iOS·맥 WebKit은 조합을 끝내는 Enter를 isComposing=false, keyCode 229 로 한 번 더 보냄 →
+     예전 코드는 이걸 바로 보내서 마지막 글자가 빠진 채 먼저 가고, 남은 글자가 다음에 또 가는 일이 생김.
+     이제 229 Enter 는 바로 보내지 않고, 조합이 끝난(compositionend) 뒤 또는 그 Enter가 넣은 줄바꿈을 지우고 한 번만 보냄.
+   - 붙여넣기·받아쓰기·자동완성으로 들어온 줄바꿈은 글자로 남김(보내지 않음).
+   - 같은 글이 0.8초 안에 두 번 가지 않게 막음 */
+let agentComposing = false;
+let agentImeEnter = null; // { at, value }
+let agentLastSend = { text: '', at: 0 };
+function submitAgentFromKey() {
+  if (!agentInputEl?.value.trim()) return;
   document.getElementById('ai-dock-form')?.requestSubmit();
+}
+agentInputEl?.addEventListener('compositionstart', () => { agentComposing = true; });
+agentInputEl?.addEventListener('compositionend', () => {
+  agentComposing = false;
+  if (agentImeEnter && Date.now() - agentImeEnter.at < 600) {
+    agentImeEnter = null;
+    setTimeout(() => { agentInputEl.value = agentInputEl.value.replace(/\n$/, ''); submitAgentFromKey(); }, 0);
+  }
+});
+agentInputEl?.addEventListener('keydown', event => {
+  if (event.key !== 'Enter' && event.keyCode !== 13) return;
+  if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return; // 줄바꿈
+  if (event.isComposing || event.keyCode === 229 || agentComposing) {
+    // 조합 중 return: 조합이 끝난 뒤 한 번만 보냄(아래 compositionend / input)
+    agentImeEnter = { at: Date.now(), value: agentInputEl.value };
+    return;
+  }
+  event.preventDefault();
+  submitAgentFromKey();
+});
+agentInputEl?.addEventListener('input', event => {
+  // 조합 중 return 이 줄바꿈으로 들어온 경우만 보내기로 바꿈(붙여넣기 insertFromPaste·받아쓰기 줄바꿈은 그대로 둠)
+  if (!agentImeEnter || Date.now() - agentImeEnter.at > 600) return;
+  if (event.inputType !== 'insertLineBreak' && event.inputType !== 'insertParagraph') return;
+  agentImeEnter = null;
+  agentInputEl.value = agentInputEl.value.replace(/\n$/, '');
+  setTimeout(submitAgentFromKey, 0);
 });
 // return 키·보내기 버튼 = form 제출(한글 조합 중 return 도 iOS가 조합을 끝낸 뒤 제출)
 // 식도감 아래 검색줄: 왼쪽 돋보기 = 입력칸으로, 오른쪽 검정 버튼·return = 검색하고 키보드 닫기
@@ -11514,6 +11949,7 @@ async function initializeApp() {
   // 브라우저가 저장 공간을 임의로 지우지 않도록 요청(결과와 상관없이 앱은 계속 동작).
   NiliriStorage.requestPersistentStorage();
   await loadSettings();
+  await initDataFixOnce();
   await loadCustomFoods();
   await loadShopping();
   await migrateLegacyEntriesOnce();
@@ -11537,6 +11973,8 @@ async function initializeApp() {
   setupBridge();
   setupPullToRefresh();
   resumeDaylogPending();
+  showDataFixCardOnce().catch(() => {});
+  renderDataFixSettings();
   showAppScreen();
   document.body.classList.add('app-ready'); motionOnReady(); setTimeout(() => { FoodSearch.build().catch(() => {}); globalThis.MfdsDB?.load?.().catch(() => {}); }, 300);
   registerServiceWorker();

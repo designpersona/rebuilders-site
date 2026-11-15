@@ -26,7 +26,7 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=f51" />
+  <link rel="stylesheet" href="style.css?v=f52" />
 </head>
 
 <body>
@@ -877,6 +877,16 @@
         <p class="profile-save-hint" id="telegram-bot-hint" hidden></p>
       </section>
 
+      <section class="profile-form-card datafix-card" id="datafix-card" aria-labelledby="datafix-title">
+        <h3 class="stats-section-title" id="datafix-title">저장값 점검</h3>
+        <p class="profile-save-hint language-settings-copy">0kcal·탄단지 불일치·이상한 이름처럼 틀려 보이는 저장값과 기록을 모아 보여 줘요. 고치기 전에 백업해 두어서 언제든 수정 전으로 되돌릴 수 있어요.</p>
+        <div class="settings-inline-actions">
+          <button class="settings-save-btn" id="datafix-open" type="button">점검 결과 보기</button>
+          <button class="settings-save-btn bridge-check-btn" id="datafix-restore" type="button">수정 전으로 되돌리기</button>
+        </div>
+        <p class="profile-save-hint" id="datafix-hint" hidden></p>
+      </section>
+
       <section class="profile-form-card data-transfer-card" aria-labelledby="data-transfer-title">
         <div class="data-transfer-head">
           <div>
@@ -1351,7 +1361,8 @@
   <script src="food-base.js?v=2"></script>
   <script src="units.js?v=2"></script>
   <script src="mfds.js?v=1"></script>
-  <script src="storage.js?v=7"></script>
+  <script src="storage.js?v=8"></script>
+  <script src="data-fix.js?v=1"></script>
   <script src="backup.js?v=3"></script>
   <script src="notifications.js?v=1"></script>
   <script src="keyboard.js?v=5"></script>
@@ -1360,9 +1371,9 @@
   <script src="health.js?v=2"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=10"></script>
-  <script src="chat-intent.js?v=11"></script>
+  <script src="chat-intent.js?v=12"></script>
   <script src="food-search-rank.js?v=1"></script>
-  <script src="app.js?v=f56"></script>
+  <script src="app.js?v=f57"></script>
 </body>
 
 </html>

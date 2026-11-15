@@ -235,6 +235,41 @@
       return clone(all[dateKey] || emptyDay());
     }
 
+    /** 전체 기록을 한 번에(한 트랜잭션) 고침. mutator(all) → 새 all */
+    async updateAll(mutator) {
+      return this._update(all => mutator(clone(all)));
+    }
+
+    /** 기록 본체(state)와 따로 두는 보조 레코드(점검 백업 등). 내보내기·getAll 에는 섞이지 않음 */
+    async getMeta(key) {
+      if (!key || key === this.recordKey) throw new Error('bad meta key');
+      await this._writeQueue;
+      const db = await this._open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, 'readonly');
+        const request = tx.objectStore(this.storeName).get(`meta:${key}`);
+        request.onsuccess = () => resolve(request.result === undefined ? null : clone(request.result));
+        request.onerror = () => reject(request.error || new Error('보조 기록을 읽지 못했습니다.'));
+      });
+    }
+
+    async setMeta(key, value) {
+      if (!key || key === this.recordKey) throw new Error('bad meta key');
+      const write = async () => {
+        const db = await this._open();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(this.storeName, 'readwrite');
+          tx.objectStore(this.storeName).put(clone(value), `meta:${key}`);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => reject(tx.error || new Error('보조 기록을 저장하지 못했습니다.'));
+          tx.onabort = () => reject(tx.error || new Error('보조 기록 저장이 중단됐습니다.'));
+        });
+      };
+      const result = this._writeQueue.then(write, write);
+      this._writeQueue = result.catch(() => {});
+      return result;
+    }
+
     async saveDay(dateKey, day) {
       const nextDay = withDayMeta(day);
       await this._update(all => ({ ...all, [dateKey]: nextDay }));

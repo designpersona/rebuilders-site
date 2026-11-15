@@ -642,6 +642,16 @@
       || /^(지워줘|삭제해줘|취소해줘)$/u.test(t)) {
       return { action: 'delete', foodHint: extractFoodHint(t) };
     }
+    // '점심 라면 지워줘', '라면 삭제해줘', '점심에 먹은 라면 빼줘': 끝이 지우기 말이면 그 음식 기록 삭제(끼니 말이 있으면 그 끼니에서만)
+    const delTail = /(지워|지워\s*줘|지워\s*주세요|지워\s*줄래|삭제|삭제해|삭제\s*해\s*줘|삭제해\s*주세요|빼\s*줘|빼\s*주세요|없애\s*줘|취소해\s*줘?)\s*[.!~요]*$/u;
+    if (delTail.test(t)) {
+      const hint = extractFoodHint(t.replace(/(빼|없애)\s*(줘|주세요)?\s*[.!~요]*$/u, ' ').replace(/먹은|먹었던|기록한|넣은/gu, ' '))
+        .replace(/\s*(해\s*줘|해\s*주세요|해|줘|주세요)$/u, '').trim();
+      if (hint) {
+        const meal = t.match(/(아침|점심|저녁|간식|야식)/u);
+        return { action: 'delete', foodHint: hint, mealId: meal ? MEAL_WORD[meal[1]] : null };
+      }
+    }
     const move = t.match(/(아침|점심|저녁|간식)(으로|에)\s*(옮겨|바꿔|넣어|기록)/u);
     if (move) {
       return { action: 'move', mealId: MEAL_WORD[move[1]], foodHint: extractFoodHint(t) };

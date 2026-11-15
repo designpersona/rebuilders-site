@@ -1,6 +1,6 @@
 /* Rebuilders service worker — 정적 자산 오프라인 캐시.
  * 배포할 때 정적 파일이 바뀌면 CACHE_VERSION 숫자를 올려 주세요. */
-const CACHE_VERSION = 'v40';
+const CACHE_VERSION = 'v41';
 const CACHE_NAME = `rebuilders-static-${CACHE_VERSION}`;
 const PRECACHE = [
   './',
@@ -10,6 +10,7 @@ const PRECACHE = [
   'app.js',
   'app-config.js',
   'storage.js',
+  'data-fix.js',
   'backup.js',
   'notifications.js',
   'keyboard.js',
