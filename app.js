@@ -6249,6 +6249,7 @@ function setActiveView(view) {
   document.getElementById('view-meal-detail').hidden = true;
   document.body.classList.remove('meal-page-open');
   activeView = view;
+  try { syncDaylogBannerDate(); } catch {}
   const aiDock = document.getElementById('home-ai-dock');
   if (aiDock && !document.body.classList.contains('ai-sheet-open')) aiDock.hidden = true;
   document.body.classList.toggle('has-ai-dock', document.body.classList.contains('ai-sheet-open'));
@@ -7635,6 +7636,7 @@ function appendAgentMessage(text, kind = 'agent', restore = null, { date, quiet 
   const target = restore ? (restore.date || chatLocalDateKey(restore.at)) : (date || shown);
   if (!restore) writeChatHistory([...readChatHistory(), { id: chatId, kind, text: String(text), at: now.toISOString(), date: target }]);
   const message = buildAgentMessage(String(text), kind, now, chatId);
+  if (!restore && !reduceMotion()) { message.classList.add('is-new'); setTimeout(() => message.classList.remove('is-new'), 400); }
   if (target === shown) {
     log.querySelector('.agent-empty')?.remove();
     log.appendChild(message);
@@ -9088,25 +9090,56 @@ function ensureDaylogBanner() {
   el.hidden = true;
   el.innerHTML = '<button type="button" class="daylog-banner-main"><span class="daylog-banner-spinner" aria-hidden="true"></span><span class="daylog-banner-texts"><span class="daylog-banner-title"></span><span class="daylog-banner-body"></span></span></button><div class="daylog-banner-actions"></div><button type="button" class="daylog-banner-close" aria-label="닫기">×</button>';
   el.querySelector('.daylog-banner-main').addEventListener('click', () => { if (typeof el._onTap === 'function') el._onTap(); else setAiDockPanel(true); });
-  el.querySelector('.daylog-banner-close').addEventListener('click', () => { const cb = el._onClose; el._onClose = null; el.hidden = true; el._closed = true; el.dataset.state = ''; if (typeof cb === 'function') cb(); });
-  const anchor = home.querySelector('.day-summary') || home.querySelector('.date-header');
-  if (anchor?.parentNode === home) home.insertBefore(el, anchor);
+  el.querySelector('.daylog-banner-close').addEventListener('click', () => { const cb = el._onClose; el._onClose = null; el._closed = true; showDaylogBannerEl(el, false, () => { if (el._closed) el.dataset.state = ''; }); if (typeof cb === 'function') cb(); });
+  // 홈 위에 떠 있는 카드(채팅 버튼 왼쪽) — 내용을 밀어내지 않음
+  const frame = home.closest('.phone-frame');
+  if (frame) frame.appendChild(el);
   else home.prepend(el);
   daylogRun.banner = el;
   return el;
 }
 
+/** 배너 보이기/숨기기: 들어올 때 아래에서 살짝 떠오르고, 나갈 때 흐려지며 내려감(transform·opacity만) */
+function showDaylogBannerEl(el, show, after) {
+  clearTimeout(el._leaveTimer);
+  document.body.classList.toggle('has-daylog-banner', Boolean(show));
+  if (show) {
+    const wasHidden = el.hidden || el.classList.contains('is-leaving');
+    el.classList.remove('is-leaving');
+    el.hidden = false;
+    if (wasHidden && !reduceMotion()) { el.classList.remove('is-entering'); void el.offsetWidth; el.classList.add('is-entering'); }
+    if (after) after();
+    return;
+  }
+  if (el.hidden) { if (after) after(); return; }
+  if (reduceMotion()) { el.hidden = true; if (after) after(); return; }
+  el.classList.remove('is-entering');
+  el.classList.add('is-leaving');
+  el._leaveTimer = setTimeout(() => { el.hidden = true; el.classList.remove('is-leaving'); if (after) after(); }, 200);
+}
+function daylogBannerWanted(el) {
+  if (!el || el._closed || !el.dataset.state) return false;
+  if (activeView !== 'home' || document.body.classList.contains('meal-page-open')) return false;
+  return !(el.dataset.date && el.dataset.date !== dateKey(currentDate));
+}
 /** state: running | done | error | info. actions: [{label, onClick, cls}] */
 function setDaylogBanner(state, { title = '', body = '', actions = [], date = '', onTap = null } = {}) {
   const el = ensureDaylogBanner();
   if (!el) return;
+  const prevState = el.dataset.state;
+  const prevTitle = el.querySelector('.daylog-banner-title').textContent;
   el.dataset.state = state;
   // 결과·오류는 그 날짜를 볼 때만(진행 중은 어느 날이든 보임)
   el.dataset.date = state === 'running' ? '' : (date || '');
   el._closed = false;
   el._onTap = onTap;
   el._onClose = null;
-  el.hidden = Boolean(el.dataset.date && el.dataset.date !== dateKey(currentDate));
+  const visibleBefore = !el.hidden && !el.classList.contains('is-leaving');
+  showDaylogBannerEl(el, daylogBannerWanted(el));
+  // 상태가 바뀌면 글자만 부드럽게 바꿔 끼움(초 단위 갱신은 그대로 — 숫자 폭 고정이라 흔들리지 않음)
+  if (visibleBefore && !reduceMotion() && (prevState !== state || (state !== 'running' && prevTitle !== title))) {
+    el.querySelector('.daylog-banner-texts')?.animate?.([{ opacity: 0.2, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
   el.querySelector('.daylog-banner-title').textContent = title;
   const bodyEl = el.querySelector('.daylog-banner-body');
   bodyEl.textContent = body;
@@ -9129,7 +9162,7 @@ function setDaylogBanner(state, { title = '', body = '', actions = [], date = ''
 function syncDaylogBannerDate() {
   const el = daylogRun.banner;
   if (!el?.isConnected || el._closed || !el.dataset.state) return;
-  el.hidden = Boolean(el.dataset.date && el.dataset.date !== dateKey(currentDate));
+  showDaylogBannerEl(el, daylogBannerWanted(el));
 }
 function daylogRunningTitle(entry) {
   const en = ACTIVE_LOCALE === 'en';
@@ -9686,10 +9719,17 @@ function setupPullToRefresh() {
     indicator.querySelector('.pull-refresh-icon').style.transform = `rotate(${Math.min(180, d / TRIGGER * 180)}deg)`;
     label.textContent = ready ? (ACTIVE_LOCALE === 'en' ? 'Release to refresh' : '놓으면 새로고침') : (ACTIVE_LOCALE === 'en' ? 'Pull to refresh' : '당겨서 새로고침');
   };
+  let raf = 0, pendingD = 0;
   const hide = () => {
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    // 스프링처럼 위로 돌아감
+    indicator.classList.add('is-settling');
     indicator.classList.remove('is-visible', 'is-ready', 'is-loading');
     indicator.style.transform = '';
+    clearTimeout(indicator._settle);
+    indicator._settle = setTimeout(() => indicator.classList.remove('is-settling'), 400);
   };
+  const showSoon = d => { pendingD = d; if (!raf) raf = requestAnimationFrame(() => { raf = 0; show(pendingD); }); };
   home.addEventListener('touchstart', event => {
     y0 = null; mode = null; dist = 0;
     if (event.touches.length !== 1 || pullRefreshBusy || home.scrollTop > 0 || blocked(event.target)) return;
@@ -9704,15 +9744,20 @@ function setupPullToRefresh() {
       mode = dy > 0 && Math.abs(dy) > Math.abs(dx) * 1.2 && home.scrollTop <= 0 ? 'pull' : 'skip';
       if (mode === 'skip') { y0 = null; return; }
     }
-    dist = Math.max(0, dy) * 0.55;
+    // 고무줄 저항: 처음엔 손을 거의 따라오고 멀리 당길수록 덜 움직임
+    const MAX = 160;
+    const raw = Math.max(0, dy);
+    dist = MAX * (1 - 1 / (raw / MAX + 1)); // 124px 당기면 새로고침 지점
     if (event.cancelable) event.preventDefault(); // 당기는 동안 웹뷰 자체 튕김을 막음
-    show(dist);
+    indicator.classList.remove('is-settling');
+    showSoon(dist);
   }, { passive: false });
   const end = () => {
     if (y0 == null || mode !== 'pull') { y0 = null; return; }
     y0 = null;
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
     if (dist >= TRIGGER) {
-      indicator.classList.add('is-loading');
+      indicator.classList.add('is-settling', 'is-loading');
       label.textContent = ACTIVE_LOCALE === 'en' ? 'Refreshing…' : '새로고침 중…';
       indicator.style.transform = `translate(-50%, ${TRIGGER - 56}px)`;
       softRefreshHome().finally(() => setTimeout(hide, 250));
@@ -10319,7 +10364,8 @@ function setAiDockPanel(open) {
     backdrop.classList.remove('is-open');
     document.body.classList.remove('ai-sheet-open', 'has-ai-dock');
     if (fab) { fab.hidden = false; fab.setAttribute('aria-expanded', 'false'); }
-    panel._closeTimer = setTimeout(() => { panel.hidden = true; dock.hidden = true; backdrop.hidden = true; refreshAiDockToggle(); }, reduceMotion() ? 0 : 280);
+    backdrop.style.opacity = '';
+    panel._closeTimer = setTimeout(() => { panel.hidden = true; dock.hidden = true; backdrop.hidden = true; refreshAiDockToggle(); }, reduceMotion() ? 0 : 340);
   }
   toggle?.setAttribute('aria-expanded', String(open));
   history?.setAttribute('aria-expanded', String(open));
@@ -12359,28 +12405,64 @@ document.getElementById('ai-dock-history')?.addEventListener('click', () => {
   const panel = document.getElementById('ai-dock-panel');
   setAiDockPanel(!panel || panel.hidden || !panel.classList.contains('is-open'));
 });
-(function setupSheetSwipeDown() {
-  const panel = document.getElementById('ai-dock-panel');
-  if (!panel) return;
-  let y0 = null; let dy = 0;
-  panel.addEventListener('touchstart', event => {
+(function setupSheetDrag() {
+  // 시트(채팅)를 손가락으로 끌어 내림: 손을 따라오고, 빨리 내리거나 30% 넘기면 닫힘, 아니면 스프링처럼 제자리
+  const dock = document.getElementById('home-ai-dock');
+  if (!dock) return;
+  let y0 = null, x0 = 0, dy = 0, dragging = false, lastY = 0, lastT = 0, v = 0, raf = 0, h = 1;
+  const backdrop = () => document.getElementById('ai-sheet-backdrop');
+  const paint = () => {
+    raf = 0;
+    dock.style.transform = `translate3d(0, ${dy}px, 0)`;
+    const b = backdrop();
+    if (b) b.style.opacity = String(Math.max(0, 1 - Math.max(0, dy) / h));
+  };
+  dock.addEventListener('touchstart', event => {
+    y0 = null; dragging = false;
+    if (event.touches.length !== 1 || !dock.classList.contains('is-open')) return;
+    if (document.body.classList.contains('keyboard-open') || document.documentElement.classList.contains('kb-up')) return;
+    if (event.target.closest?.('textarea, input, select, .agent-choices, .agent-undo')) return;
     const log = document.getElementById('agent-log');
-    if (event.touches.length !== 1 || (log && log.contains(event.target) && log.scrollTop > 0)) { y0 = null; return; }
-    y0 = event.touches[0].clientY; dy = 0;
+    if (log && log.contains(event.target) && log.scrollTop > 0) return;
+    y0 = lastY = event.touches[0].clientY; x0 = event.touches[0].clientX; lastT = performance.now(); v = 0; dy = 0;
+    h = dock.getBoundingClientRect().height || 1;
   }, { passive: true });
-  panel.addEventListener('touchmove', event => {
+  dock.addEventListener('touchmove', event => {
     if (y0 == null) return;
-    dy = Math.max(0, event.touches[0].clientY - y0);
-    if (dy > 0) { panel.style.transition = 'none'; panel.style.transform = `translateY(${dy}px)`; if (event.cancelable) event.preventDefault(); }
+    const t = event.touches[0];
+    const d = t.clientY - y0;
+    if (!dragging) {
+      if (Math.abs(d) < 6) return;
+      if (d < 0 || Math.abs(t.clientX - x0) > Math.abs(d)) { y0 = null; return; } // 위로 밀기·가로는 목록 스크롤에 맡김
+      dragging = true;
+      dock.style.transition = 'none';
+      const b = backdrop(); if (b) b.style.transition = 'none';
+    }
+    const now = performance.now();
+    const inst = (t.clientY - lastY) / Math.max(1, now - lastT);
+    v = v * 0.6 + inst * 0.4;
+    lastY = t.clientY; lastT = now;
+    dy = d > 0 ? d : d * 0.15;
+    if (event.cancelable) event.preventDefault();
+    if (!raf) raf = requestAnimationFrame(paint);
   }, { passive: false });
-  panel.addEventListener('touchend', () => {
+  const end = () => {
     if (y0 == null) return;
     y0 = null;
-    panel.style.transition = '';
-    if (dy > 80) setAiDockPanel(false);
-    else panel.style.transform = '';
-  }, { passive: true });
+    if (!dragging) return;
+    dragging = false;
+    if (raf) { cancelAnimationFrame(raf); raf = 0; paint(); }
+    dock.style.transition = '';
+    const b = backdrop(); if (b) b.style.transition = '';
+    if (performance.now() - lastT > 120) v = 0; // 멈췄다 놓으면 휙 내린 게 아님
+    if (dy > h * 0.3 || v > 0.5) setAiDockPanel(false);
+    else { dock.style.transform = ''; if (b) b.style.opacity = ''; }
+  };
+  dock.addEventListener('touchend', end, { passive: true });
+  dock.addEventListener('touchcancel', end, { passive: true });
 })();
+// iOS 웹뷰에서 :active 눌림 표시가 바로 보이게
+document.addEventListener('touchstart', () => {}, { passive: true });
 
 /* ============================
    공용 세그먼트(.rb-seg): 회색 알약 트랙 + 흰 선택 칸이 미끄러짐. 기존 버튼·active 클래스는 그대로 두고 위에 얹음
