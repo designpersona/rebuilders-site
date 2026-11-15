@@ -8160,6 +8160,7 @@ body.meal-page-open .bottom-nav {
 
 .agent-bubble-text {
   display: block;
+  white-space: pre-line;
 }
 
 .agent-message.is-searching .agent-bubble-text::after,

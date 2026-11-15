@@ -8830,6 +8830,147 @@ async function interpretOrFallback(text, { candidates, catalogs, meal, mixedMeal
   }
 }
 
+/* 하루 식단 통째 기록: 문장 전체를 맥 미니 그록(/daylog)에 한 번 맡기고, 돌려준 끼니·이름·g·kcal·탄단지·공식/추정을
+   앱은 그대로 저장하고 끼니별·하루 총합·코멘트만 보여 준다(앱에서 다시 계산하거나 덮어쓰지 않음). */
+const DAYLOG_MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner'];
+
+function daylogItemToFood(item) {
+  const num = value => {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : null;
+  };
+  const cal = num(item?.kcal), carbs = num(item?.carbs_g), protein = num(item?.protein_g), fat = num(item?.fat_g);
+  const name = String(item?.name || '').trim().slice(0, 80);
+  if (!name || [cal, carbs, protein, fat].some(v => v === null)) return null;
+  const official = item.source === '공식' || item.source_type === '공식';
+  const grams = num(item.grams);
+  const unit = String(item.unit || 'g').toLowerCase() === 'ml' ? 'ml' : 'g';
+  const food = {
+    name,
+    cal: Math.round(cal), carbs, protein, fat,
+    serving: String(item.amount_text || (grams ? `${grams}${unit}` : '')).trim().slice(0, 30) || undefined,
+    sourceType: official ? '공식' : '추정',
+    sourceLabel: official ? '공식' : '추정',
+    sourceTrust: official ? 'reference' : 'estimate',
+    estimate: !official,
+    aiEstimate: !official,
+    source: 'grok',
+    loggedVia: 'bridge',
+  };
+  if (item.brand) food.brand = String(item.brand).trim().slice(0, 40);
+  if (grams) {
+    if (unit === 'ml') food.servingMl = grams; else food.servingGrams = grams;
+  }
+  const per = item.per100;
+  if (per && [per.kcal, per.carbs_g, per.protein_g, per.fat_g].every(v => num(v) !== null)) {
+    food.basisNutrients = { cal: num(per.kcal), carbs: num(per.carbs_g), protein: num(per.protein_g), fat: num(per.fat_g) };
+    food.basisGrams = 100;
+    food.basis = `100${unit}`;
+  }
+  const note = String(item.source_note || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (note) food.sourceNote = note;
+  try { const u = new URL(String(item.source_url || '')); if (official && u.protocol === 'https:') food.sourceUrl = u.href.slice(0, 300); } catch { /* 없음 */ }
+  return food;
+}
+
+function daylogSummaryText(raw, savedCount) {
+  const en = ACTIVE_LOCALE === 'en';
+  const fmt = n => (Math.round(Number(n || 0) * 10) / 10).toLocaleString(en ? 'en-US' : 'ko-KR');
+  const lines = [];
+  lines.push(en ? `Saved ${savedCount} foods.` : `${savedCount}개 저장했어요.`);
+  const meals = raw.meals || {};
+  DAYLOG_MEAL_ORDER.forEach(mealId => {
+    const m = meals[mealId];
+    if (!m) return;
+    const names = (raw.items || []).filter(it => it.meal === mealId)
+      .map(it => `${it.name}${it.amount_text ? ` ${it.amount_text}` : ''}${it.source === '공식' ? (en ? '(official)' : '(공식)') : ''}`).join(', ');
+    lines.push(`${mealLabel(mealId)} ${Math.round(m.kcal)}kcal · ${en ? 'C' : '탄'} ${fmt(m.carbs_g)}g · ${en ? 'P' : '단'} ${fmt(m.protein_g)}g · ${en ? 'F' : '지'} ${fmt(m.fat_g)}g\n  ${names}`);
+  });
+  const t = raw.total || {};
+  lines.push(`${en ? 'Total' : '하루 합계'} ${Math.round(t.kcal || 0)}kcal · ${en ? 'C' : '탄'} ${fmt(t.carbs_g)}g · ${en ? 'P' : '단'} ${fmt(t.protein_g)}g · ${en ? 'F' : '지'} ${fmt(t.fat_g)}g`);
+  const est = (raw.items || []).filter(it => it.source !== '공식').length;
+  if (est) lines.push(en ? `${est} are estimates.` : `${est}개는 추정값이에요.`);
+  if (raw.comment) lines.push(`💬 ${raw.comment}`);
+  return lines.join('\n');
+}
+
+async function applyDaylogResult(raw, { message } = {}) {
+  const items = (raw.items || []).filter(it => it && MEAL_IDS_FOR_DAYLOG.has(it.meal));
+  const pairs = items.map(it => ({ it, food: daylogItemToFood(it) })).filter(p => p.food);
+  if (!pairs.length) return false;
+  const undoSnapshot = snapshotMeals();
+  let firstMeal = null, firstIndexes = [], firstFoods = [];
+  for (const mealId of DAYLOG_MEAL_ORDER) {
+    const list = pairs.filter(p => p.it.meal === mealId).map(p => p.food);
+    if (!list.length) continue;
+    if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
+    const indexes = await addFoods(mealId, list, null);
+    await registerLoggedFoods(list);
+    if (!firstMeal) { firstMeal = mealId; firstIndexes = indexes; firstFoods = list; }
+  }
+  if (firstMeal) rememberChatBatch(null, firstMeal, firstFoods, firstIndexes);
+  const text = daylogSummaryText(raw, pairs.length);
+  if (message) setAgentMessageText(message, text);
+  else message = appendAgentMessage(text);
+  setAgentSearching(message, false);
+  appendUndoSaveButton(message, undoSnapshot);
+  return true;
+}
+const MEAL_IDS_FOR_DAYLOG = new Set(DAYLOG_MEAL_ORDER);
+
+async function daylogOrFallback(text, { catalogs, candidates } = {}) {
+  const en = ACTIVE_LOCALE === 'en';
+  const Intent = globalThis.RebuildersChatIntent;
+  if (!RebuildersBridge.daylogAndWait) return interpretOrFallback(text, { candidates, catalogs });
+  const waitText = sec => (en
+    ? `Grok is splitting meals and looking up nutrition… ${sec}s`
+    : `그록이 끼니를 나누고 영양을 찾는 중… ${sec}초`);
+  const message = appendAgentMessage(en ? 'Sent to Grok on the Mac mini…' : '맥 미니 그록에게 보냈어요…');
+  setAgentSearching(message, true);
+  const now = new Date();
+  const payload = {
+    text,
+    date: dateKey(currentDate),
+    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+  };
+  try {
+    const result = await RebuildersBridge.daylogAndWait(payload, {
+      maxMs: 180000,
+      intervalMs: 2000,
+      onTick: ms => {
+        const target = message?.querySelector('.agent-bubble-text');
+        if (target) target.textContent = waitText(Math.round(ms / 1000));
+      },
+    });
+    lastInterpretMs = result.elapsedMs || lastInterpretMs;
+    const raw = result.raw || {};
+    if (raw.mode === 'daylog' && Array.isArray(raw.items) && raw.items.length) {
+      if (await applyDaylogResult(raw, { message })) return;
+    }
+    if (raw.mode === 'interpret') {
+      // 그록이 실패했거나 기록이 아닌 말 → 브리지가 예전 해석 결과를 돌려줌
+      const parsed = Intent.parseInterpretResult({ ...result, ...raw, done: true, pending: [], raw });
+      if (parsed) {
+        setAgentSearching(message, false);
+        await applyInterpretResult(parsed, { message, text, catalogs: catalogs || localMatchCatalogs(), saveAll: true });
+        return;
+      }
+    }
+    throw new RebuildersBridge.BridgeError(raw.error || 'agent_failed');
+  } catch (error) {
+    setAgentSearching(message, false);
+    if (error?.kind === 'not_found') {
+      // 예전 브리지(/daylog 없음)
+      if (message?.parentNode) message.remove();
+      await interpretOrFallback(text, { candidates, catalogs });
+      return;
+    }
+    await handleAgentCommandFallback(text, { message, reason: error, silent: false });
+  } finally {
+    if (message?.classList.contains('is-searching')) setAgentSearching(message, false);
+  }
+}
+
 async function handleDayLogPaste(text, catalogs, { skipInterpret } = {}) {
   const Intent = globalThis.RebuildersChatIntent;
   const log = Intent?.parseDayLog?.(text, { now: new Date() });
@@ -8841,6 +8982,10 @@ async function handleDayLogPaste(text, catalogs, { skipInterpret } = {}) {
   };
   if (skipInterpret || !globalThis.RebuildersBridge?.isConfigured()) {
     await applyChatFoods(localParsed());
+    return true;
+  }
+  if (RebuildersBridge.daylogAndWait) {
+    await daylogOrFallback(text, { catalogs });
     return true;
   }
   const interpretText = Intent.formatDayLogForInterpret(log.lines);
@@ -8960,7 +9105,8 @@ async function handleAgentCommand() {
       }
     }
     if (globalThis.RebuildersBridge?.isConfigured()) {
-      await interpretOrFallback(text, { candidates: local.candidates, catalogs });
+      if (classified.type === 'food') await daylogOrFallback(text, { candidates: local.candidates, catalogs });
+      else await interpretOrFallback(text, { candidates: local.candidates, catalogs });
       return;
     }
     await handleAgentCommandFallback(text, { reason: 'not_configured', silent: true });

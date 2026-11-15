@@ -389,7 +389,42 @@
     return result;
   }
 
-  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
+  /** 하루 식단 통째 기록: POST /daylog 로 문장 전체를 맥 미니 그록에 맡기고 GET /jobs/<id> 로
+   *  끼니별 항목(이름·브랜드·g·kcal·탄단지·공식/추정)·끼니 합계·하루 총합·코멘트를 받음.
+   *  그록이 실패하면 브리지가 예전 /interpret 결과(mode: 'interpret')를 대신 돌려줌. */
+  async function daylog({ text, date, meal, time, remoteId } = {}) {
+    let data = null;
+    if (JOB_ID_RE.test(String(remoteId || ''))) {
+      try { data = await request(`/jobs/${remoteId}`, { timeoutMs: POLL_TIMEOUT_MS }); } catch (error) {
+        if (error?.kind !== 'not_found') throw error;
+      }
+    }
+    if (!data) {
+      const body = { text: String(text || '').trim().slice(0, 1500) };
+      if (date) body.date = date;
+      if (meal) body.meal = meal;
+      if (time) body.time = time;
+      data = await request('/daylog', { method: 'POST', body, timeoutMs: SUBMIT_TIMEOUT_MS });
+    }
+    const done = data.done === true;
+    return { done, remoteId: JOB_ID_RE.test(String(data.job_id || '')) ? data.job_id : '', raw: data };
+  }
+
+  async function daylogAndWait(payload, { maxMs = 180000, intervalMs = 2000, onTick } = {}) {
+    const started = Date.now();
+    const end = started + maxMs;
+    let result = await daylog(payload);
+    while (!result.done && result.remoteId && Date.now() < end) {
+      try { onTick?.(Date.now() - started); } catch { /* 화면 갱신 실패는 무시 */ }
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      result = await daylog({ ...payload, remoteId: result.remoteId });
+    }
+    result.elapsedMs = Date.now() - started;
+    if (!result.done) throw new BridgeError('timeout');
+    return result;
+  }
+
+  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, daylog, daylogAndWait, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
   global.RebuildersBridge = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
