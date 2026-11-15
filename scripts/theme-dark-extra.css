@@ -1,0 +1,25 @@
+html.theme-dark {
+  color-scheme: dark;
+  --bg: #000000; --bg2: #1c1c1f; --bg3: #2a2a2e; --bg4: #3a3a40;
+  --card: #1c1c1f; --card2: #232327;
+  --border: rgba(255, 255, 255, 0.12); --border-strong: rgba(255, 255, 255, 0.24);
+  --text-primary: #f2f2f4; --text-secondary: #a8a8b3; --text-muted: #8a8a96;
+  --accent: #f2f2f4; --accent2: #e4e4e7; --accent-soft: #2a2a2e; --accent-glow: rgba(255, 255, 255, 0.08);
+  --track: #2c2c31; --hairline: rgba(255, 255, 255, 0.08);
+  --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --rb-surface: #1c1c1f;
+}
+html.theme-dark body { background: var(--bg); color: var(--text-primary); }
+/* 검은 선 아이콘(img)은 밝게 */
+html.theme-dark img[src*="assets/icon/"], html.theme-dark img[src$=".svg"]:not([src*="character"]) { filter: invert(1) hue-rotate(180deg); }
+/* 입력칸 */
+html.theme-dark input, html.theme-dark textarea, html.theme-dark select { color: var(--text-primary); }
+html.theme-dark ::placeholder { color: #7c7c88; }
+/* 테마 바꿀 때 부드럽게(잠깐만) */
+html.theme-switching, html.theme-switching *, html.theme-switching *::before, html.theme-switching *::after {
+  transition: background-color .28s ease, color .28s ease, border-color .28s ease, fill .28s ease, stroke .28s ease, box-shadow .28s ease !important;
+}
+/* 아래 탭: 라이트에서도 검정이라 다크에서도 검정 유지 */
+html.theme-dark #page-tabs.page-tabs.bottom-tabs { background: #0c0c0e !important; box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.08) !important; }
+html.theme-dark #page-tabs.bottom-tabs .nav-item.page-tab { color: rgba(255, 255, 255, 0.45) !important; }
+html.theme-dark #page-tabs.bottom-tabs .nav-item.page-tab.active { color: #fff !important; }

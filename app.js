@@ -12601,3 +12601,23 @@ function updateTopHead() {
 }
 window.addEventListener('resize', () => { if (activeView === 'home') renderDateStrip(true); });
 updateTopHead();
+
+/* 화면 모드 설정(theme.js) */
+(function setupThemeChoice() {
+  const T = globalThis.RebuildersTheme;
+  const buttons = [...document.querySelectorAll('.theme-option[data-theme-mode]')];
+  if (!T || !buttons.length) return;
+  const sync = () => {
+    const mode = T.getMode();
+    buttons.forEach(b => { const on = b.dataset.themeMode === mode; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
+    const en = ACTIVE_LOCALE === 'en';
+    const label = { light: en ? 'Light' : '라이트', dark: en ? 'Dark' : '다크', system: en ? 'System' : '시스템' };
+    buttons.forEach(b => { b.textContent = label[b.dataset.themeMode]; });
+    const title = document.getElementById('theme-settings-title'); if (title) title.textContent = en ? 'Appearance' : '화면 모드';
+    const copy = document.getElementById('theme-settings-copy'); if (copy) copy.textContent = en ? 'System follows your iPhone setting. Saved on this device only.' : '시스템은 아이폰 설정(라이트/다크)을 바로 따라가요. 이 기기에만 저장돼요.';
+  };
+  buttons.forEach(b => b.addEventListener('click', () => { T.setMode(b.dataset.themeMode); sync(); }));
+  window.addEventListener('rebuilders-theme', sync);
+  document.querySelectorAll('.language-option[data-language]').forEach(b => b.addEventListener('click', () => setTimeout(sync, 0)));
+  sync();
+})();

@@ -15,6 +15,7 @@
   <meta name="twitter:title" content="Rebuilders — Food Tracker" />
   <meta name="twitter:description" content="Track, review, and manage the meals that rebuild you. Design your body." />
   <meta name="theme-color" content="#ffffff" />
+  <meta name="color-scheme" content="light dark" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="리빌더스" />
@@ -26,7 +27,9 @@
   <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
   <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
   <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
-  <link rel="stylesheet" href="style.css?v=f54" />
+  <script src="theme.js?v=1"></script>
+  <link rel="stylesheet" href="style.css?v=f55" />
+  <link rel="stylesheet" href="theme-dark.css?v=1" />
 </head>
 
 <body>
@@ -815,6 +818,16 @@
         </div>
       </section>
 
+      <section class="profile-form-card theme-settings-card" aria-labelledby="theme-settings-title">
+        <h3 class="stats-section-title" id="theme-settings-title">화면 모드</h3>
+        <p class="profile-save-hint language-settings-copy" id="theme-settings-copy">시스템은 아이폰 설정(라이트/다크)을 바로 따라가요. 이 기기에만 저장돼요.</p>
+        <div class="language-choice theme-choice" role="group" aria-labelledby="theme-settings-title">
+          <button type="button" class="language-option theme-option" data-theme-mode="light" aria-pressed="false">라이트</button>
+          <button type="button" class="language-option theme-option" data-theme-mode="dark" aria-pressed="false">다크</button>
+          <button type="button" class="language-option theme-option" data-theme-mode="system" aria-pressed="true">시스템</button>
+        </div>
+      </section>
+
       <section class="profile-form-card reminder-settings-card" id="reminder-card" aria-labelledby="reminder-title" hidden>
         <h3 class="stats-section-title" id="reminder-title">식사 기록 알림</h3>
         <p class="profile-save-hint language-settings-copy" id="reminder-copy">정해진 시간에 이 기기에서 알려드려요. 서버를 거치지 않아요.</p>
@@ -1373,7 +1386,7 @@
   <script src="bridge.js?v=10"></script>
   <script src="chat-intent.js?v=13"></script>
   <script src="food-search-rank.js?v=1"></script>
-  <script src="app.js?v=f59"></script>
+  <script src="app.js?v=f60"></script>
 </body>
 
 </html>

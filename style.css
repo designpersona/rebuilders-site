@@ -14294,3 +14294,5 @@ body.has-daylog-banner #view-home { padding-bottom: calc(var(--rb-banner-h, 72px
 .phone-frame > .daylog-banner .daylog-banner-close { order: 2; }
 .phone-frame > .daylog-banner .daylog-banner-actions { order: 3; flex: 1 0 100%; justify-content: flex-end; margin: 4px 0 0; }
 .phone-frame > .daylog-banner .daylog-banner-title, .phone-frame > .daylog-banner .daylog-banner-body { word-break: keep-all; overflow-wrap: anywhere; }
+/* 음식 추가 같은 시트가 열리면 배너는 숨김 */
+body:has(.modal-overlay.open) .phone-frame > .daylog-banner { display: none; }
