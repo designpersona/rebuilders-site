@@ -640,6 +640,7 @@ function applySourceLabel(food) {
 }
 function sourceLabelText(food) {
   const key = inferSourceLabel(food, food?.name);
+  if (key === '공식' && food?.source === 'label-photo') return ACTIVE_LOCALE === 'en' ? 'Official (label)' : '공식(포장지)';
   if (ACTIVE_LOCALE === 'en') {
     return { '공식': 'Official', '공공DB': 'Public DB', '식약처': 'MFDS', '저장': 'Saved', '내 음식': 'Mine', '추정': 'Estimate', '확인 필요': 'Needs check', '없음': 'None' }[key] || key;
   }
@@ -9254,6 +9255,16 @@ function withRo(word) {
   else if (/[0-9]/.test(ch)) batchim = '0136'.includes(ch);
   return `${w}${batchim ? '으로' : '로'}`;
 }
+/** 한국어 조사 이/가 */
+function withIga(word) {
+  const w = String(word || '').trim();
+  const ch = w.slice(-1);
+  const code = ch.charCodeAt(0) - 0xac00;
+  let batchim = false;
+  if (code >= 0 && code <= 11171) batchim = code % 28 !== 0;
+  else if (/[0-9]/.test(ch)) batchim = '013678'.includes(ch);
+  return `${w}${batchim ? '이' : '가'}`;
+}
 /** 어떤 모델이 답했는지: '그록으로 정리' / '그록 실패(로그인 만료) → 제미나이로 정리' */
 function daylogModelLine(raw) {
   const en = ACTIVE_LOCALE === 'en';
@@ -11089,7 +11100,7 @@ const PHOTO_CONSENT_KEY = 'rebuilders-photo-consent';
 // 사진 기록은 보류 중: false 면 버튼을 숨기고 사진 경로를 막음(코드는 그대로 둠). 맥 미니 브리지도 REBUILDERS_PHOTO=1 일 때만 받음
 const PHOTO_ENABLED = false;
 const aiPhotoButton = document.getElementById('ai-photo');
-if (aiPhotoButton) aiPhotoButton.hidden = !PHOTO_ENABLED;
+if (aiPhotoButton) aiPhotoButton.hidden = false; // 지금은 포장지 영양정보표 사진 등록(아래 setupLabelPhoto)
 let bridgePhotoBusy = false;
 
 async function resizePhoto(file, maxSide = 1280, maxBytes = 2 * 1024 * 1024) {
@@ -11127,7 +11138,7 @@ async function confirmPhotoConsent() {
 
 document.getElementById('ai-photo')?.addEventListener('click', async () => {
   const en = ACTIVE_LOCALE === 'en';
-  if (!PHOTO_ENABLED) { showToast(en ? 'Photo logging is coming soon.' : '사진 인식은 준비 중이에요.', 'info'); return; }
+  if (!PHOTO_ENABLED) { globalThis.RebuildersLabelPhoto?.pick({ from: 'chat' }); return; }
   if (!globalThis.RebuildersBridge?.isConfigured()) {
     showToast(en ? 'Connect the Mac mini in Settings to log from photos.' : '사진 기록은 설정에서 맥 미니를 연결하면 쓸 수 있어요.', 'info');
     return;
@@ -12866,4 +12877,340 @@ updateTopHead();
     }).observe(card);
   }
   globalThis.RebuildersAiModels = { load, render };
+})();
+
+/* ============================
+   사진으로 등록: 포장지 영양정보표 사진 → 맥 미니(설정의 AI 모델 순서, 사진 읽는 모델만) → 확인 창에서 고치고 저장.
+   사진은 기기에서 줄이고(긴 변 1600px JPEG) 다시 그려서 EXIF·위치 정보를 지운 뒤 보냄. 확인 없이 저장하지 않음
+   ============================ */
+(function setupLabelPhoto() {
+  const overlay = document.getElementById('label-review');
+  const input = document.getElementById('label-photo-input');
+  const B = globalThis.RebuildersBridge;
+  if (!overlay || !input || !B) return;
+  const $ = id => document.getElementById(id);
+  const en = () => ACTIVE_LOCALE === 'en';
+  const FIELDS = [['kcal', 'lr-kcal', 0], ['carbs_g', 'lr-carbs', 1], ['protein_g', 'lr-protein', 1], ['fat_g', 'lr-fat', 1], ['sugar_g', 'lr-sugar', 1], ['sodium_mg', 'lr-sodium', 0]];
+  const st = { reading: null, basis: 'serving', from: 'chat', meal: null, busy: false, thumbUrl: '', image: '', token: 0 };
+
+  async function shrink(file, maxSide = 1600) {
+    let src, w, h, close = () => {};
+    try {
+      src = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      w = src.width; h = src.height; close = () => src.close?.();
+    } catch {
+      const url = URL.createObjectURL(file);
+      src = await new Promise((resolve, reject) => { const el = new Image(); el.onload = () => resolve(el); el.onerror = () => reject(new Error('image')); el.src = url; });
+      w = src.naturalWidth; h = src.naturalHeight; close = () => URL.revokeObjectURL(url);
+    }
+    try {
+      const scale = Math.min(1, maxSide / Math.max(w, h));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(w * scale));
+      canvas.height = Math.max(1, Math.round(h * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
+      // 캔버스로 다시 그린 JPEG 에는 원본 EXIF(위치·기기·시간)가 들어가지 않음
+      for (const q of [0.8, 0.7, 0.55]) {
+        const data = canvas.toDataURL('image/jpeg', q).split(',')[1] || '';
+        if (data.length * 0.75 <= 2_000_000) return { data, w: canvas.width, h: canvas.height };
+      }
+      throw new Error('too_big');
+    } finally { close(); }
+  }
+
+  const num = v => { if (v === '' || v == null) return null; const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : null; };
+  const round = (v, d) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** d);
+  function amounts(r, cur) {
+    const S = cur?.serving ?? r?.serving?.amount ?? null;
+    const N = r?.servings_per_package ?? null;
+    let P = cur?.package ?? r?.package?.amount ?? null;
+    let S2 = S;
+    if (!P && S2 && N) P = S2 * N;
+    if (!S2 && P && N) S2 = P / N;
+    return { serving: S2, package: P, '100': 100, N };
+  }
+  /** from 기준 값을 to 기준으로 바꾸는 배수(모르면 null) */
+  function factor(from, to, a) {
+    if (from === to) return 1;
+    if (a[from] && a[to]) return a[to] / a[from];
+    if (a.N && from === 'serving' && to === 'package') return a.N;
+    if (a.N && from === 'package' && to === 'serving') return 1 / a.N;
+    return null;
+  }
+  function tableFor(basis, r) {
+    const direct = { serving: r.per_serving, package: r.per_package, '100': r.per_100 }[basis];
+    if (direct) return { ...direct };
+    const a = amounts(r);
+    for (const src of ['serving', 'package', '100']) {
+      const t = { serving: r.per_serving, package: r.per_package, '100': r.per_100 }[src];
+      const f = t ? factor(src, basis, a) : null;
+      if (t && f) return Object.fromEntries(Object.entries(t).map(([k, v]) => [k, v == null ? null : v * f]));
+    }
+    return null;
+  }
+  function unit() { return $('lr-unit').value === 'ml' ? 'ml' : 'g'; }
+  function basisAmount(basis = st.basis) {
+    if (basis === '100') return 100;
+    return num($('lr-amount').value);
+  }
+  function readFields() { return Object.fromEntries(FIELDS.map(([k, id]) => [k, num($(id).value)])); }
+  function writeFields(t) {
+    FIELDS.forEach(([k, id, d]) => {
+      const el = $(id);
+      const v = t ? t[k] : null;
+      el.value = v == null ? '' : String(round(v, d));
+      el.closest('label').classList.toggle('is-missing', v == null && Boolean(st.reading));
+      el.placeholder = st.reading ? (en() ? 'unread' : '못 읽음') : '';
+    });
+  }
+  function syncBasisUi() {
+    const r = st.reading || {};
+    const a = amounts(r, { serving: st.basis === 'serving' ? basisAmount() : null, package: st.basis === 'package' ? basisAmount() : null });
+    $('lr-basis').querySelectorAll('button').forEach(btn => {
+      const b = btn.dataset.basis;
+      btn.classList.toggle('active', b === st.basis);
+      btn.setAttribute('aria-pressed', String(b === st.basis));
+      btn.disabled = b !== st.basis && !factor(st.basis, b, a) && !tableFor(b, r);
+      if (b === '100') btn.textContent = `100${unit()}`;
+    });
+    const labels = en() ? { serving: 'Serving size', package: 'Package total', '100': 'Basis' } : { serving: '1회 제공량', package: '총 내용량', '100': '기준' };
+    $('lr-amount-label').textContent = labels[st.basis];
+    $('lr-amount').disabled = st.basis === '100';
+    if (st.basis === '100') $('lr-amount').value = '100';
+    $('lr-eat-unit').textContent = basisAmount() ? unit() : (en() ? '×' : '회');
+  }
+  function setBasis(next) {
+    if (next === st.basis) return;
+    const r = st.reading || {};
+    const cur = readFields();
+    const a = amounts(r, { serving: st.basis === 'serving' ? basisAmount() : null, package: st.basis === 'package' ? basisAmount() : null });
+    const f = factor(st.basis, next, a);
+    let t = null;
+    if (f) t = Object.fromEntries(Object.entries(cur).map(([k, v]) => [k, v == null ? null : v * f]));
+    else t = tableFor(next, r);
+    const amt = next === '100' ? 100 : (next === 'serving' ? a.serving : a.package);
+    st.basis = next;
+    $('lr-amount').value = amt ? String(round(amt, 1)) : '';
+    writeFields(t);
+    if ($('lr-log').checked) $('lr-eat').value = basisAmount() ? String(round(basisAmount(), 1)) : '1';
+    syncBasisUi();
+  }
+  function modelText(res) {
+    const by = res?.answered_by;
+    const failed = (res?.failed_models || []).map(f => `${f.label} ${en() ? 'failed' : '실패'}${f.reason ? `(${f.reason})` : ''}`);
+    const sec = res?.total_ms != null ? `${(res.total_ms / 1000).toFixed(1)}${en() ? 's' : '초'}` : '';
+    if (!by) return '';
+    const where = by.local ? (en() ? ' · on the Mac mini' : ' · 맥 미니 안에서') : '';
+    return [...failed, en() ? `Read by ${by.label}${where} · ${sec}` : `${withIga(by.label)} 읽음${where} · ${sec}`].join(' → ');
+  }
+  function open() {
+    overlay.classList.add('open');
+    document.body.classList.add('label-review-open');
+  }
+  function close() {
+    st.token += 1;
+    overlay.classList.remove('open');
+    document.body.classList.remove('label-review-open');
+    setTimeout(() => { if (st.thumbUrl) URL.revokeObjectURL(st.thumbUrl); st.thumbUrl = ''; $('label-review-thumb').removeAttribute('src'); }, 350);
+    st.image = '';
+    st.busy = false;
+  }
+  function resetForm() {
+    st.reading = null; st.basis = 'serving';
+    ['lr-name', 'lr-brand', 'lr-amount', 'lr-eat'].forEach(id => { $(id).value = ''; });
+    $('lr-unit').value = 'g';
+    $('lr-log').checked = st.from === 'modal';
+    $('lr-log-row').hidden = !$('lr-log').checked;
+    $('lr-meal').value = st.meal || globalThis.RebuildersQuickEntry?.mealForTime(new Date()) || 'lunch';
+    $('label-review-error').textContent = '';
+    $('label-review-note').textContent = '';
+    writeFields(null);
+    syncBasisUi();
+  }
+  function setReading(on) {
+    overlay.classList.toggle('is-reading', on);
+    $('label-review-save').disabled = on;
+    $('label-review-retry').hidden = true;
+  }
+  async function read() {
+    const my = ++st.token;
+    setReading(true);
+    $('label-review-status').textContent = en() ? 'Reading the label…' : '영양정보표를 읽는 중…';
+    try {
+      const res = await B.labelAndWait(st.image, {
+        onProgress: p => {
+          if (my !== st.token || !p?.trying_label) return;
+          const fails = (p.failed || []).map(f => `${f.label} ${en() ? 'failed' : '실패'}`).join(' → ');
+          $('label-review-status').textContent = `${fails ? `${fails} → ` : ''}${en() ? `Reading with ${p.trying_label}…` : `${withRo(p.trying_label)} 읽는 중…`}`;
+        },
+      });
+      if (my !== st.token) return;
+      setReading(false);
+      if (res.error || res.is_label === false) {
+        const why = res.is_label === false
+          ? (en() ? 'This does not look like a nutrition label. You can still fill it in yourself.' : '영양정보표가 아닌 것 같아요. 직접 채워서 저장할 수 있어요.')
+          : (en() ? 'No model could read it.' : '사진을 읽지 못했어요.') + ' ' + (res.failed_models || []).map(f => `${f.label}: ${f.reason}`).join(' · ');
+        $('label-review-status').textContent = why;
+        $('label-review-retry').hidden = false;
+        return;
+      }
+      st.reading = res;
+      const u = res.serving?.unit || res.package?.unit || 'g';
+      $('lr-unit').value = u;
+      $('lr-name').value = [res.brand && !String(res.name || '').includes(res.brand) ? res.brand : '', res.name].filter(Boolean).join(' ').trim();
+      $('lr-brand').value = res.brand || '';
+      const first = res.per_serving ? 'serving' : (res.table_basis || (res.per_100 ? '100' : 'package'));
+      st.basis = first;
+      const a = amounts(res);
+      $('lr-amount').value = first === '100' ? '100' : (a[first] ? String(round(a[first], 1)) : '');
+      writeFields(tableFor(first, res));
+      if ($('lr-log').checked) $('lr-eat').value = basisAmount() ? String(round(basisAmount(), 1)) : '1';
+      syncBasisUi();
+      $('label-review-status').textContent = modelText(res);
+      const missing = FIELDS.filter(([k, id]) => num($(id).value) == null).length;
+      $('label-review-note').textContent = [
+        missing ? (en() ? `${missing} value(s) could not be read — left empty.` : `못 읽은 칸 ${missing}개는 비워 뒀어요.`) : (en() ? 'Check the numbers against the package before saving.' : '포장지와 숫자가 맞는지 확인하고 저장해 주세요.'),
+        res.unreadable ? `(${res.unreadable})` : '',
+      ].filter(Boolean).join(' ');
+      if (!$('lr-name').value) $('lr-name').focus({ preventScroll: true });
+    } catch (error) {
+      if (my !== st.token) return;
+      setReading(false);
+      const kind = error?.kind || 'error';
+      $('label-review-status').textContent = kind === 'not_found'
+        ? (en() ? 'The Mac mini bridge is older and cannot read labels yet.' : '맥 미니 브리지가 예전 버전이라 아직 사진을 못 읽어요.')
+        : kind === 'unreachable' ? (en() ? 'Could not reach the Mac mini (home Wi-Fi?).' : '맥 미니에 연결이 안 됐어요(집 와이파이인지 확인해 주세요).')
+          : kind === 'timeout' ? (en() ? 'Reading took too long.' : '읽는 데 너무 오래 걸려서 멈췄어요.')
+            : (en() ? 'Could not read the photo.' : '사진을 읽지 못했어요.');
+      $('label-review-retry').hidden = false;
+    }
+  }
+  async function onFile(file) {
+    if (!file) return;
+    resetForm();
+    if (st.thumbUrl) URL.revokeObjectURL(st.thumbUrl);
+    st.thumbUrl = URL.createObjectURL(file);
+    $('label-review-thumb').src = st.thumbUrl;
+    setReading(true);
+    $('label-review-status').textContent = en() ? 'Preparing the photo…' : '사진을 준비하는 중…';
+    open();
+    try {
+      const shrunk = await shrink(file);
+      st.image = shrunk.data;
+    } catch (error) {
+      setReading(false);
+      $('label-review-status').textContent = error?.message === 'too_big' ? (en() ? 'The photo is too large.' : '사진이 너무 커요.') : (en() ? 'Could not open this photo.' : '이 사진을 열지 못했어요.');
+      return;
+    }
+    if (!B.isConfigured()) {
+      setReading(false);
+      $('label-review-status').textContent = en() ? 'Connect the Mac mini in Settings to read labels. You can fill it in yourself.' : '사진 읽기는 설정에서 맥 미니를 연결하면 돼요. 직접 채워서 저장할 수도 있어요.';
+      return;
+    }
+    await read();
+  }
+  async function save() {
+    const errEl = $('label-review-error');
+    errEl.textContent = '';
+    const name = $('lr-name').value.trim().replace(/\s+/g, ' ').slice(0, 80);
+    const v = readFields();
+    if (!name) { errEl.textContent = en() ? 'Enter a product name.' : '제품명을 적어 주세요.'; $('lr-name').focus(); return; }
+    if (['kcal', 'carbs_g', 'protein_g', 'fat_g'].some(k => v[k] == null)) { errEl.textContent = en() ? 'Fill in kcal, carbs, protein and fat.' : '열량·탄수화물·단백질·지방을 채워 주세요.'; return; }
+    const u = unit();
+    const amt = basisAmount();
+    const servingText = st.basis === '100' ? `100${u}` : st.basis === 'package'
+      ? (en() ? `package${amt ? ` ${round(amt, 1)}${u}` : ''}` : `1개(전체)${amt ? ` ${round(amt, 1)}${u}` : ''}`)
+      : (en() ? `serving${amt ? ` ${round(amt, 1)}${u}` : ''}` : `1회${amt ? ` ${round(amt, 1)}${u}` : ''}`);
+    const by = st.reading?.answered_by?.label;
+    const data = {
+      cal: Math.round(v.kcal), carbs: round(v.carbs_g, 1), protein: round(v.protein_g, 1), fat: round(v.fat_g, 1),
+      serving: servingText,
+      sourceType: '공식', sourceLabel: '공식', sourceTrust: 'reference', source: 'label-photo', estimate: false, aiEstimate: false,
+      sourceNote: en() ? `Nutrition label photo${by ? ` · read by ${by}, checked by me` : ' · entered by me'}` : `포장지 영양정보표 사진${by ? ` · ${withIga(by)} 읽고 내가 확인` : ' · 내가 입력'}`,
+      labelBasis: st.basis, savedAt: new Date().toISOString(),
+    };
+    if (v.sugar_g != null) data.sugar = round(v.sugar_g, 1);
+    if (v.sodium_mg != null) data.sodium = Math.round(v.sodium_mg);
+    const brand = $('lr-brand').value.trim().slice(0, 40);
+    if (brand) data.brand = brand;
+    if (amt) { if (u === 'ml') data.servingMl = amt; else data.servingGrams = amt; }
+    if (amt) {
+      const f = 100 / amt;
+      data.basisNutrients = { cal: round(v.kcal * f, 1), carbs: round(v.carbs_g * f, 1), protein: round(v.protein_g * f, 1), fat: round(v.fat_g * f, 1) };
+      data.basisGrams = 100; data.basis = `100${u}`;
+    }
+    if (CUSTOM_FOODS[name] && !confirm(en() ? `“${name}” is already saved. Replace it with these values?` : `‘${name}’은(는) 이미 저장돼 있어요. 이 값으로 바꿀까요?`)) return;
+    let logFood = null, mealId = null;
+    if ($('lr-log').checked) {
+      const eat = num($('lr-eat').value);
+      if (!eat) { errEl.textContent = en() ? 'Enter how much you ate.' : '먹은 양을 적어 주세요.'; $('lr-eat').focus(); return; }
+      const f = amt ? eat / amt : eat;
+      mealId = $('lr-meal').value;
+      logFood = {
+        ...data, name,
+        cal: Math.round(v.kcal * f), carbs: round(v.carbs_g * f, 1), protein: round(v.protein_g * f, 1), fat: round(v.fat_g * f, 1),
+        serving: amt ? `${round(eat, 1)}${u}` : (en() ? `${round(eat, 2)} × ${servingText}` : `${servingText} × ${round(eat, 2)}`),
+        loggedVia: 'label-photo',
+      };
+      if (v.sugar_g != null) logFood.sugar = round(v.sugar_g * f, 1);
+      if (v.sodium_mg != null) logFood.sodium = Math.round(v.sodium_mg * f);
+      delete logFood.servingGrams; delete logFood.servingMl;
+      if (amt) { if (u === 'ml') logFood.servingMl = round(eat, 1); else logFood.servingGrams = round(eat, 1); }
+      delete logFood.savedAt;
+    }
+    $('label-review-save').disabled = true;
+    try {
+      await saveCustomFood(name, { ...data, discoveredAt: data.savedAt, discoveryOrigin: 'label-photo', unlocked: true });
+      if (logFood) {
+        if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
+        await addFoods(mealId, [logFood]);
+      }
+      const fromModal = st.from === 'modal' && document.getElementById('modal-overlay')?.classList.contains('open');
+      close();
+      if (fromModal && logFood) closeModal();
+      if (activeView === 'foodex') renderSearchHub();
+      renderAll?.(true);
+      showToast(logFood
+        ? (en() ? `Saved “${name}” and logged it to ${mealLabel(mealId)}` : `‘${name}’ 저장하고 ${mealLabel(mealId)}에 기록했어요`)
+        : (en() ? `Saved “${name}” to my foods` : `‘${name}’을(를) 내 음식에 저장했어요`), 'success');
+    } catch (error) {
+      console.warn('label save', error);
+      errEl.textContent = en() ? 'Could not save. Please try again.' : '저장하지 못했어요. 다시 시도해 주세요.';
+      $('label-review-save').disabled = false;
+    }
+  }
+
+  function pick({ from = 'chat', meal = null } = {}) {
+    if (st.busy) return;
+    st.from = from;
+    st.meal = meal;
+    input.value = '';
+    input.click();
+  }
+  input.addEventListener('change', () => { const file = input.files?.[0]; input.value = ''; onFile(file); });
+  document.getElementById('label-photo-entry')?.addEventListener('click', () => pick({ from: 'modal', meal: currentMeal }));
+  $('lr-basis').addEventListener('click', e => { const b = e.target.closest('button[data-basis]'); if (b && !b.disabled) setBasis(b.dataset.basis); });
+  $('lr-amount').addEventListener('input', syncBasisUi);
+  $('lr-unit').addEventListener('change', syncBasisUi);
+  $('lr-log').addEventListener('change', () => {
+    $('lr-log-row').hidden = !$('lr-log').checked;
+    if ($('lr-log').checked && !$('lr-eat').value) $('lr-eat').value = basisAmount() ? String(round(basisAmount(), 1)) : '1';
+  });
+  FIELDS.forEach(([, id]) => $(id).addEventListener('input', () => $(id).closest('label').classList.remove('is-missing')));
+  $('label-review-retry').addEventListener('click', () => { if (st.image) read(); else input.click(); });
+  $('label-review-save').addEventListener('click', save);
+  $('label-review-cancel').addEventListener('click', close);
+  $('label-review-x').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  function syncCopy() {
+    const map = en()
+      ? { 'label-photo-entry-title': 'Add from photo', 'label-photo-entry-sub': 'Take or pick a nutrition label', 'label-review-title': 'Check the label', 'lr-log-text': 'Also log it to this day', 'label-review-save': 'Save', 'label-review-cancel': 'Cancel', 'label-review-retry': 'Read again', 'lr-eat-label': 'Amount eaten' }
+      : { 'label-photo-entry-title': '사진으로 등록', 'label-photo-entry-sub': '포장지 영양정보표를 찍거나 골라요', 'label-review-title': '포장지 영양정보 확인', 'lr-log-text': '이 날짜 기록에도 넣기', 'label-review-save': '저장', 'label-review-cancel': '취소', 'label-review-retry': '다시 읽기', 'lr-eat-label': '먹은 양' };
+    Object.entries(map).forEach(([id, t]) => { const el = $(id); if (el) el.textContent = t; });
+  }
+  document.addEventListener('click', e => { if (e.target.closest?.('[data-language]')) setTimeout(syncCopy, 0); });
+  syncCopy();
+  globalThis.RebuildersLabelPhoto = { pick, onFile, close, _state: st };
 })();

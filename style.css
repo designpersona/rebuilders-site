@@ -14344,3 +14344,55 @@ body:has(.modal-overlay.open) .phone-frame > .daylog-banner { display: none; }
   .ai-switch span, .ai-switch span::after, .ai-model-row { transition: none; }
   .ai-model-dot.is-testing { animation: none; }
 }
+
+/* ===== 사진으로 등록(포장지 영양정보표) ===== */
+.label-photo-entry {
+  display: flex; align-items: center; gap: 12px; width: 100%; margin: 4px 0 12px; padding: 12px 14px;
+  border-radius: var(--radius-sm); border: 1px dashed var(--border-strong); background: var(--bg3); color: var(--text-primary);
+  text-align: left; touch-action: manipulation; transition: transform .04s ease, background-color .2s ease;
+}
+.label-photo-entry:active { transform: scale(.98); }
+.label-photo-entry-ico { font-size: 22px; line-height: 1; }
+.label-photo-entry-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.label-photo-entry-text b { font-size: 15px; }
+.label-photo-entry-text small { font-size: 12px; color: var(--text-secondary); }
+.label-review-overlay { z-index: 1100; }
+.label-review-sheet { max-height: calc(92dvh - var(--safe-top)); }
+.label-review-head { display: flex; gap: 12px; align-items: flex-start; margin: 4px 0 14px; }
+.label-review-thumb { width: 72px; height: 72px; flex: none; border-radius: 12px; object-fit: cover; background: var(--bg3); border: 1px solid var(--border); }
+.label-review-state { min-width: 0; flex: 1; }
+.label-review-status { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary); line-height: 1.4; position: relative; }
+.label-review-note { margin: 4px 0 0; font-size: 12.5px; color: var(--text-secondary); line-height: 1.4; }
+.label-review-note:empty { display: none; }
+.label-review-retry { margin-top: 8px; }
+.label-review-overlay.is-reading .label-review-status { background: linear-gradient(90deg, var(--text-secondary) 0%, var(--text-primary) 40%, var(--text-secondary) 80%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: rb-label-shimmer 1.4s linear infinite; }
+@keyframes rb-label-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.label-review-overlay.is-reading .label-review-form { opacity: .45; pointer-events: none; }
+.label-review-form { transition: opacity .25s ease; display: flex; flex-direction: column; gap: 12px; }
+.label-review-form label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--text-secondary); min-width: 0; }
+.label-review-form input[type="text"], .label-review-form input[type="number"], .label-review-form select {
+  width: 100%; min-width: 0; height: 42px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--border-strong);
+  background: var(--card); color: var(--text-primary); font-size: 16px; font-variant-numeric: tabular-nums;
+}
+.label-row.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.label-input-unit { display: flex; align-items: center; gap: 6px; }
+.label-input-unit em { font-style: normal; font-size: 13px; color: var(--text-muted); min-width: 30px; }
+.label-input-unit select { width: 76px; flex: none; }
+.label-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.label-grid label.is-missing input { border-color: #f59e0b; border-style: dashed; }
+.label-basis { display: flex; gap: 6px; padding: 4px; border-radius: 14px; background: var(--bg3); }
+.label-basis button {
+  flex: 1; height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font-weight: 700; font-size: 14px;
+  touch-action: manipulation; transition: background-color .2s cubic-bezier(.2, .8, .2, 1), color .2s ease, transform .04s ease;
+}
+.label-basis button.active { background: var(--card); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.label-basis button:disabled { opacity: .35; }
+.label-basis button:active:not(:disabled) { transform: scale(.96); }
+.label-log-toggle { flex-direction: row !important; align-items: center; gap: 10px !important; font-size: 14px !important; color: var(--text-primary) !important; }
+.label-log-toggle input { width: 20px; height: 20px; accent-color: var(--text-primary); }
+.label-review-error { margin: 0; font-size: 13px; color: #dc2626; min-height: 0; }
+.label-review-error:empty { display: none; }
+.label-review-actions { display: flex; gap: 10px; margin-top: 16px; position: sticky; bottom: 0; padding-top: 8px; background: var(--bg2); }
+.label-review-actions > * { flex: 1; margin: 0 !important; }
+body.label-review-open .phone-frame > .daylog-banner { display: none; }
+@media (prefers-reduced-motion: reduce) { .label-review-overlay.is-reading .label-review-status { animation: none; color: var(--text-primary); background: none; } }

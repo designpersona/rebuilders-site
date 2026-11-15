@@ -28,3 +28,6 @@ html.theme-dark .ai-switch span::after { background: #fff; }
 html.theme-dark .ai-model-dot.is-ok { box-shadow: 0 0 0 3px rgba(72, 223, 128, .22); }
 html.theme-dark .ai-model-dot.is-warn { box-shadow: 0 0 0 3px rgba(247, 173, 49, .24); }
 html.theme-dark .ai-model-dot.is-fail { box-shadow: 0 0 0 3px rgba(239, 68, 68, .26); }
+/* 사진으로 등록 */
+html.theme-dark .label-review-error { color: #f87171; }
+html.theme-dark .label-basis button.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .5); }

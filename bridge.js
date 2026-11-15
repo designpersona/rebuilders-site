@@ -453,6 +453,25 @@
     return request('/models/test', { method: 'POST', body: { id: String(id || '').slice(0, 80) }, timeoutMs: 75000 });
   }
 
+  /** 포장지 영양정보표 사진: POST /label(사진 base64 JPEG) → GET /jobs/<id>. 사진은 맥 미니 메모리에서만 쓰고 저장하지 않음.
+   *  모델 순서는 AI 모델 설정 순서(사진 못 읽는 모델은 맥 미니가 건너뜀) */
+  async function labelAndWait(image, { maxMs = 200000, intervalMs = 1500, onProgress } = {}) {
+    const body = { image: String(image || '') };
+    const order = modelOrderForDaylog();
+    if (order) body.models = order;
+    let data = await request('/label', { method: 'POST', body, timeoutMs: 30000 });
+    body.image = '';
+    const started = Date.now();
+    const id = JOB_ID_RE.test(String(data?.job_id || '')) ? data.job_id : '';
+    while (!data?.done && id && Date.now() - started < maxMs) {
+      if (data?.progress) { try { onProgress?.(data.progress); } catch { /* 무시 */ } }
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      data = await request(`/jobs/${id}`, { timeoutMs: POLL_TIMEOUT_MS });
+    }
+    if (!data?.done) throw new BridgeError('timeout');
+    return data;
+  }
+
   async function daylog({ text, date, meal, time, remoteId, savedFoods, todayRecords } = {}) {
     let data = null;
     if (JOB_ID_RE.test(String(remoteId || ''))) {
@@ -510,7 +529,7 @@
     return result;
   }
 
-  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, daylog, daylogAndWait, models, testModel, getModelPrefs, setModelPrefs, getModelCache, modelOrderForDaylog, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
+  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, daylog, daylogAndWait, labelAndWait, models, testModel, getModelPrefs, setModelPrefs, getModelCache, modelOrderForDaylog, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
   global.RebuildersBridge = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

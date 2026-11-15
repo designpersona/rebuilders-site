@@ -593,6 +593,9 @@ html.theme-dark .ai-model-dot.is-warn { background: #f7ad31; box-shadow: 0 0 0 3
 html.theme-dark .ai-model-dot.is-fail { box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.324); }
 html.theme-dark .ai-switch span::after { background: #1c1c1c; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); }
 html.theme-dark .ai-switch input:checked + span { background: #48df80; }
+html.theme-dark .label-grid label.is-missing input { border-color: #f7ad31; }
+html.theme-dark .label-basis button.active { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.216); }
+html.theme-dark .label-review-error { color: #e14747; }
 
 /* ---- 손으로 맞춘 다크 값(scripts/theme-dark-extra.css) ---- */
 html.theme-dark {
@@ -625,3 +628,6 @@ html.theme-dark .ai-switch span::after { background: #fff; }
 html.theme-dark .ai-model-dot.is-ok { box-shadow: 0 0 0 3px rgba(72, 223, 128, .22); }
 html.theme-dark .ai-model-dot.is-warn { box-shadow: 0 0 0 3px rgba(247, 173, 49, .24); }
 html.theme-dark .ai-model-dot.is-fail { box-shadow: 0 0 0 3px rgba(239, 68, 68, .26); }
+/* 사진으로 등록 */
+html.theme-dark .label-review-error { color: #f87171; }
+html.theme-dark .label-basis button.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
