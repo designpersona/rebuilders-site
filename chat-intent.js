@@ -476,6 +476,71 @@
     return { ok: Boolean(sawHeader && lines.length), lines };
   }
 
+  /* ---- 그록(/daylog)이 실패했을 때 휴대폰에서 나누기: 끼니 단어 → 음식 덩어리(이름+양). 저장 음식 이름은 통째로 지킴 ---- */
+  const FB_NUM = '(?:\\d+(?:\\.\\d+)?|한|두|세|네|다섯|반|하나|둘|셋)';
+  const FB_UNIT = '(?:g|kg|ml|l|개|알|그릇|공기|잔|컵|조각|봉|봉지|팩|인분|줌|스푼|큰술|작은술|캡슐|톨|마리|줄|장|판|쪽|접시|병|캔|입|모|덩이|송이|숟갈|숟가락|국자)';
+  const FB_AMOUNT_RE = new RegExp(`^(?:${FB_NUM}\\s*${FB_UNIT}|${FB_NUM}|반마리|반공기|반그릇|반개|tall|톨|grande|venti)$`, 'iu');
+  const FB_WORDNUM = { 한: 1, 하나: 1, 두: 2, 둘: 2, 세: 3, 셋: 3, 네: 4, 다섯: 5, 반: 0.5 };
+  function fallbackAmount(text) {
+    const t = String(text || '').trim();
+    const m = t.match(new RegExp(`^(${FB_NUM})\\s*(${FB_UNIT})?$`, 'iu')) || t.match(/^(반)(마리|공기|그릇|개)$/u);
+    if (!m) return { text: t };
+    const n = /^\d/.test(m[1]) ? Number(m[1]) : FB_WORDNUM[m[1]];
+    let unit = (m[2] || '').toLowerCase();
+    let value = Number.isFinite(n) ? n : null;
+    if (unit === 'kg') { value = value * 1000; unit = 'g'; }
+    if (unit === 'l') { value = value * 1000; unit = 'ml'; }
+    if (!unit && value !== null && value >= 10) unit = 'g'; // 단위 없는 큰 숫자는 g
+    return { text: t, value, unit: unit || null };
+  }
+  function splitForFallback(text, { now, knownNames = [] } = {}) {
+    const fold = s => String(s || '').toLowerCase().replace(/\s+/g, '');
+    let t = String(text || '').replace(/\r\n/g, '\n')
+      .replace(/(아침|조식|점심|중식|저녁|석식|간식|야식)(?:에|엔|은|는|으로|로|때)?(?=\s|$|[:：,])/gu, ' $1 ')
+      .replace(/(먹었(?:어요|습니다|다|어|음)?|먹음|먹을게|마셨(?:어요|습니다|다|어)?|마심|드셨어요)(?=\s|$|[.!~,])/gu, ' ')
+      .replace(/(?:오늘|어제|오늘거|어제거)\s*(?=아침|점심|저녁|간식|야식|$)/gu, ' ')
+      .replace(/[.!~]+/g, ' ');
+    const fallbackMeal = globalThis.RebuildersQuickEntry?.mealForTime?.(now || new Date()) || 'snack';
+    const names = [...new Set((knownNames || []).filter(n => fold(n).length >= 2))].sort((a, b) => fold(b).length - fold(a).length);
+    const out = [];
+    let meal = null;
+    t.split('\n').forEach(row => splitInlineMealSections(row.trim()).forEach(bit => {
+      if (bit.mealId) meal = bit.mealId;
+      let body = String(bit.text || '').trim();
+      if (!body || isInstructionLine(body)) return;
+      // 저장 음식 이름은 먼저 자리표시로 바꿔 나누지 않게
+      const slots = [];
+      names.forEach(name => {
+        const re = new RegExp(String(name).trim().split(/\s+/).map(escapeRe).join('\\s*'), 'giu');
+        body = body.replace(re, () => { slots.push(name); return ` \u0001${slots.length - 1}\u0001 `; });
+      });
+      const clauses = body.split(/\s*(?:이랑|랑|하고|그리고|및|,|，|\/|\+|&)\s+|\s*(?:,|，|\/|\+)\s*/u).map(x => x.trim()).filter(Boolean);
+      clauses.forEach(clause => {
+        const tokens = clause.split(/\s+/).filter(Boolean);
+        let nameBuf = [], amtBuf = [];
+        const flush = () => {
+          const nameRaw = nameBuf.join(' ').replace(/\u0001(\d+)\u0001/g, (_, i) => slots[Number(i)]).replace(/\s+/g, ' ').trim()
+            .replace(/(이랑|랑|하고|과|와)$/u, '').trim();
+          if (nameRaw) {
+            const amt = fallbackAmount(amtBuf.join(' '));
+            const known = slots.includes(nameRaw);
+            out.push({ meal: meal || fallbackMeal, name: nameRaw, amountText: amtBuf.join(' '), value: amt.value ?? null, unit: amt.unit || null, known, mealGuessed: !meal });
+          }
+          nameBuf = []; amtBuf = [];
+        };
+        tokens.forEach(tok => {
+          const slot = /^\u0001\d+\u0001$/.test(tok);
+          const isAmt = !slot && (FB_AMOUNT_RE.test(tok) || /^\d+(?:\.\d+)?(?:g|kg|ml|l)$/iu.test(tok));
+          if (isAmt) { if (nameBuf.length) amtBuf.push(tok); return; }
+          if (amtBuf.length || (slot && nameBuf.length) || (nameBuf.length && /^\u0001\d+\u0001$/.test(nameBuf[nameBuf.length - 1]))) flush();
+          nameBuf.push(tok);
+        });
+        flush();
+      });
+    }));
+    return out.slice(0, 30);
+  }
+
   /** 캡슐은 1잔으로 본다. 저장된 100g 최근 기록을 덮어쓰지 않는다. */
   function defaultCapsuleAmount(text) {
     const t = String(text || '');
@@ -1254,6 +1319,7 @@
     formatDayLogForInterpret,
     splitInlineMealSections,
     splitFoodPhrases,
+    splitForFallback,
     isInstructionLine,
     nutritionSanity,
     stripInsaneNutrition,

@@ -1894,7 +1894,7 @@ function missingNutritionEntries() {
   const entries = [];
   [...MEAL_IDS, 'snack'].forEach(mealId => {
     (meals[mealId]?.foods || []).forEach((food, idx) => {
-      if (isNutritionMissing(food)) entries.push({ mealId, idx, food });
+      if (isNutritionMissing(food) && !food.daylogWait) entries.push({ mealId, idx, food });
     });
   });
   return entries;
@@ -1913,6 +1913,7 @@ function isFoodNutritionPending(food) {
   }
 }
 function foodCalText(food) {
+  if (food?.daylogWait && isBlankNutrient(food?.cal)) return ACTIVE_LOCALE === 'en' ? 'Waiting' : '대기';
   if (isFoodNutritionPending(food)) return ACTIVE_LOCALE === 'en' ? 'Searching' : '찾는 중';
   return isBlankNutrient(food?.cal) ? (ACTIVE_LOCALE === 'en' ? '— kcal' : '— kcal') : `${Math.round(Number(food.cal) * 10) / 10}kcal`;
 }
@@ -2618,7 +2619,7 @@ function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
       <div class="food-detail-line">
         <button type="button" class="food-amount-btn" aria-label="${escapeHtml(ACTIVE_LOCALE === 'en' ? `${visibleName} amount` : `${visibleName} 양 수정`)}">${escapeHtml(foodAmountLabel(food))}</button>
         <span class="food-meta-sep" aria-hidden="true">·</span>
-        <span class="food-cal${isFoodNutritionPending(food) ? ' is-pending' : ''}">${escapeHtml(foodCalText(food))}</span>
+        <span class="food-cal${isFoodNutritionPending(food) || (food.daylogWait && isBlankNutrient(food.cal)) ? ' is-pending' : ''}${food.daylogWait && isBlankNutrient(food.cal) ? ' is-wait' : ''}">${escapeHtml(foodCalText(food))}</span>
       </div>
     </div>
     <div class="food-actions">
@@ -7570,6 +7571,7 @@ function syncAgentLogDate({ force = false } = {}) {
   const date = dateKey(currentDate);
   if (!force && date === agentLogDate) { syncDaylogBannerDate(); return; }
   agentLogDate = date;
+  if (typeof retryDaylogFallbacks === 'function' && document.body.classList.contains('app-ready')) setTimeout(() => retryDaylogFallbacks(), 400);
   const frag = document.createDocumentFragment();
   const holder = document.createElement('div');
   chatHistoryFor(date).forEach(entry => {
@@ -7624,7 +7626,7 @@ function buildAgentMessage(text, kind, now, chatId) {
   return message;
 }
 /** date: 이 말이 속한 날짜(기본 = 지금 대화창 날짜). 다른 날짜면 저장만 하고 지금 화면에는 붙이지 않음 */
-function appendAgentMessage(text, kind = 'agent', restore = null, { date } = {}) {
+function appendAgentMessage(text, kind = 'agent', restore = null, { date, quiet = false } = {}) {
   const log = document.getElementById('agent-log');
   if (!log) return null;
   const now = restore ? new Date(restore.at) : new Date();
@@ -7638,7 +7640,7 @@ function appendAgentMessage(text, kind = 'agent', restore = null, { date } = {})
     log.appendChild(message);
     log.scrollTop = log.scrollHeight;
   }
-  if (!restore && kind !== 'user' && document.getElementById('ai-dock-panel')?.hidden) showToast(text, 'info');
+  if (!restore && !quiet && kind !== 'user' && document.getElementById('ai-dock-panel')?.hidden) showToast(text, 'info');
   refreshAiDockToggle();
   return message;
 }
@@ -8996,7 +8998,7 @@ function readDaylogPending() {
 }
 function writeDaylogPending() {
   try {
-    const list = daylogRun.queue.filter(e => !e.done).map(({ id, text, date, time, remoteId, startedAt }) => ({ id, text, date, time, remoteId: remoteId || '', startedAt }));
+    const list = daylogRun.queue.filter(e => !e.done).map(({ id, text, date, time, remoteId, startedAt, retryOf }) => ({ id, text, date, time, remoteId: remoteId || '', startedAt, ...(retryOf ? { retryOf } : {}) }));
     if (list.length) localStorage.setItem(DAYLOG_PENDING_KEY, JSON.stringify(list.slice(0, 10)));
     else localStorage.removeItem(DAYLOG_PENDING_KEY);
   } catch { /* 저장 공간 문제는 무시(진행에는 영향 없음) */ }
@@ -9185,6 +9187,14 @@ function daylogUndoAction(entry, message) {
     try {
       await undoDaylogAdded(entry.date, entry.added || []);
       entry.added = [];
+      if (entry.removedFallback?.length) {
+        // 다시 맡기기 결과를 되돌리면 그 전의 대기·내 저장값 기록을 다시 놓음
+        const before = snapshotMeals();
+        entry.removedFallback.forEach(({ mealId, index, food }) => { if (meals[mealId]) meals[mealId].foods.splice(Math.min(index, meals[mealId].foods.length), 0, food); });
+        entry.removedFallback = [];
+        await persistMealsOrRestore(before);
+        renderAll(true);
+      }
       const text = en ? 'Undid that log.' : '방금 기록을 되돌렸어요.';
       if (message) { setAgentMessageText(message, text); [message, liveAgentMessage(message)].forEach(el => el?.querySelectorAll('.agent-undo').forEach(b => b.remove())); }
       setDaylogBanner('info', { title: text, date: entry.date, body: daylogDateLabel(entry.date) ? (en ? `on ${daylogDateLabel(entry.date)}` : `${daylogDateLabel(entry.date)} 기록`) : '' });
@@ -9275,7 +9285,9 @@ async function runDaylogEntry(entry) {
   const en = ACTIVE_LOCALE === 'en';
   const Intent = globalThis.RebuildersChatIntent;
   if (!entry.message) {
-    entry.message = appendAgentMessage(en ? 'Sent to Grok on the Mac mini…' : '맥 미니 그록에게 보냈어요…', 'agent', null, { date: entry.date });
+    entry.message = appendAgentMessage(entry.retryOf
+      ? (en ? `Trying again: “${entry.text.slice(0, 40)}”…` : `대기였던 기록을 다시 맡겼어요: “${entry.text.slice(0, 40)}”…`)
+      : (en ? 'Sent to Grok on the Mac mini…' : '맥 미니 그록에게 보냈어요…'), 'agent', null, { date: entry.date, quiet: Boolean(entry.retryOf) });
   }
   const message = entry.message;
   setAgentSearching(message, true);
@@ -9310,9 +9322,29 @@ async function runDaylogEntry(entry) {
     lastInterpretMs = result.elapsedMs || lastInterpretMs;
     const raw = result.raw || {};
     if (raw.mode === 'daylog' && Array.isArray(raw.items) && raw.items.length) {
-      if (await applyDaylogResult(raw, { message, entry })) return;
+      if (entry.retryOf) {
+        const usable = raw.items.some(it => it && MEAL_IDS_FOR_DAYLOG.has(it.meal) && daylogSourceFood(it));
+        const rec = readDaylogRetry().find(r => r.id === entry.retryOf);
+        if (usable && rec) {
+          await goToDaylogDate(entry.date);
+          const before = snapshotMeals();
+          const { removed, kept } = takeFallbackRecords(rec);
+          if (removed.length) await persistMealsOrRestore(before);
+          const items = raw.items.filter(it => !kept.has(`${it.meal}|${daylogFoldName(daylogSourceFood(it)?.name || it.name)}`));
+          entry.removedFallback = removed;
+          const ok = await applyDaylogResult({ ...raw, items }, { message, entry });
+          if (ok || !items.length) {
+            writeDaylogRetry(readDaylogRetry().filter(r => r.id !== rec.id));
+            if (!ok) { renderAll(true); setDaylogBanner('done', { date: entry.date, title: en ? 'Filled the waiting items' : '대기였던 기록을 정리했어요' }); }
+            return;
+          }
+        } else if (!rec) {
+          setAgentMessageText(message, en ? 'Already filled in.' : '이미 채운 기록이에요.');
+          return;
+        }
+      } else if (await applyDaylogResult(raw, { message, entry })) return;
     }
-    if (raw.mode === 'interpret') {
+    if (raw.mode === 'interpret' && !entry.retryOf) {
       const parsed = Intent.parseInterpretResult({ ...result, ...raw, done: true, pending: [], raw });
       if (parsed) {
         setAgentSearching(message, false);
@@ -9343,20 +9375,194 @@ async function runDaylogEntry(entry) {
       return;
     }
     const kind = error?.kind || 'error';
-    const why = {
-      unreachable: en ? 'Could not reach the Mac mini (home Wi-Fi?)' : '맥 미니에 연결이 안 돼요(집 와이파이인지 확인)',
-      timeout: en ? 'Grok took too long' : '그록 답이 너무 늦어요',
-      unauthorized: en ? 'Mac mini token does not match' : '맥 미니 토큰이 달라요',
-    }[kind] || (en ? 'Grok could not finish' : '그록이 정리를 못 했어요');
-    await handleAgentCommandFallback(entry.text, { message, reason: error, silent: false });
-    setDaylogBanner('error', {
-      date: entry.date,
-      title: why,
-      body: en ? 'Saved with the on-phone rules instead. Tap to check.' : '휴대폰 규칙으로 대신 넣었어요. 눌러서 확인해 주세요.',
-    });
+    if (entry.retryOf) {
+      // 다시 맡기기도 실패: 대기 기록은 그대로, 다시 넣지 않음
+      const list = readDaylogRetry();
+      const rec = list.find(r => r.id === entry.retryOf);
+      if (rec) { rec.attempts = (rec.attempts || 1) + 1; rec.kind = kind; writeDaylogRetry(list); }
+      showDaylogFailBanner(entry, kind, { again: true });
+      return;
+    }
+    const classified = globalThis.RebuildersChatIntent?.classifyChat(entry.text, { pendingClarify }) || { type: 'food' };
+    if (classified.type !== 'food') {
+      await handleAgentCommandFallback(entry.text, { message, reason: error, silent: false });
+      return;
+    }
+    await saveDaylogFallback(entry, kind);
   } finally {
     if (message?.classList.contains('is-searching')) setAgentSearching(message, false);
   }
+}
+
+/* ============================
+   /daylog 실패 시: 문장 통째를 음식으로 저장하지 않음(식도감·최근에 안 넣음).
+   끼니·음식으로 나눠 내 저장값이 있는 건 그 값으로, 모르는 건 '대기'(이름·양만, 합계 0)로 넣고
+   원문을 남겨 맥 미니가 다시 되면(앱 다시 열기·다음 보내기·당겨서 새로고침·날짜 보기·다시 시도) 다시 맡겨 채움
+   ============================ */
+const DAYLOG_RETRY_KEY = 'rebuilders-daylog-retry';
+let daylogRetryLastAuto = 0;
+function readDaylogRetry() {
+  try { const list = JSON.parse(localStorage.getItem(DAYLOG_RETRY_KEY) || '[]'); return Array.isArray(list) ? list.filter(r => r && r.id && r.text && r.date) : []; } catch { return []; }
+}
+function writeDaylogRetry(list) {
+  try { if (list.length) localStorage.setItem(DAYLOG_RETRY_KEY, JSON.stringify(list.slice(-30))); else localStorage.removeItem(DAYLOG_RETRY_KEY); } catch {}
+}
+function daylogFailWhy(kind) {
+  const en = ACTIVE_LOCALE === 'en';
+  return ({
+    unreachable: en ? 'Could not reach the Mac mini' : '맥 미니에 연결이 안 됐어요',
+    timeout: en ? 'Grok took too long to answer' : '그록 답이 너무 늦어서 멈췄어요',
+    unauthorized: en ? 'The Mac mini token does not match' : '맥 미니 연결 비밀번호(토큰)가 맞지 않아요',
+    not_configured: en ? 'The Mac mini is not set up' : '맥 미니 연결이 설정되지 않았어요',
+  })[kind] || (en ? 'Grok could not sort this one out' : '그록이 이번 문장을 정리하지 못했어요');
+}
+function daylogFailHint(kind) {
+  const en = ACTIVE_LOCALE === 'en';
+  return ({
+    unreachable: en ? 'Not on home Wi-Fi, or the Mac mini is asleep.' : '집 와이파이가 아니거나 맥 미니가 꺼져 있을 수 있어요.',
+    unauthorized: en ? 'Check the token in Settings.' : '설정에서 토큰을 확인해 주세요.',
+  })[kind] || '';
+}
+function daylogFoldName(s) { return String(s || '').toLowerCase().replace(/\s+/g, ''); }
+function daylogRecordSig(food) {
+  return JSON.stringify([food?.name, food?.cal ?? null, food?.carbs ?? null, food?.protein ?? null, food?.fat ?? null, food?.serving ?? '', food?.servingGrams ?? null]);
+}
+function fallbackSavedFoods() {
+  const out = new Map();
+  Object.entries(CUSTOM_FOODS || {}).forEach(([name, data]) => {
+    if (!data || typeof data !== 'object') return;
+    if (['cal', 'carbs', 'protein', 'fat'].some(k => data[k] === null || data[k] === '' || data[k] === undefined || !Number.isFinite(Number(data[k])))) return;
+    if (data.sourceTrust === 'pending' || data.daylogWait) return;
+    if (globalThis.RebuildersDataFix?.excludeFood?.(name, data)) return;
+    out.set(daylogFoldName(name), { name, data });
+  });
+  return out;
+}
+function fallbackRecordFromSaved(item, saved, entryId) {
+  const d = saved.data;
+  const savedGrams = Number(d.servingMl) || Number(d.servingGrams) || Number(d.packageGrams) || null;
+  let factor = 1, serving = d.serving || '', grams = savedGrams;
+  if (item.value && (item.unit === 'g' || item.unit === 'ml') && savedGrams) {
+    factor = item.value / savedGrams; grams = item.value; serving = `${item.value}${item.unit}`;
+  } else if (item.value && item.unit !== 'g' && item.unit !== 'ml' && item.value <= 20) {
+    factor = item.value; grams = savedGrams ? Math.round(savedGrams * factor * 10) / 10 : null; serving = item.amountText || serving;
+  }
+  const r1 = v => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * factor * 10) / 10);
+  const food = { name: saved.name, cal: r1(d.cal), carbs: r1(d.carbs), protein: r1(d.protein), fat: r1(d.fat), serving,
+    sourceType: '내 음식', sourceLabel: '내 음식', sourceTrust: 'user', loggedVia: 'fallback', daylogFallback: entryId };
+  if (d.sugar != null && d.sugar !== '') food.sugar = r1(d.sugar);
+  if (d.sodium != null && d.sodium !== '') food.sodium = r1(d.sodium);
+  if (grams) { if (d.servingMl) food.servingMl = grams; else food.servingGrams = grams; }
+  if (d.brand) food.brand = d.brand;
+  return food;
+}
+function fallbackWaitRecord(item, entryId) {
+  const food = { name: item.name, serving: item.amountText || '', cal: null, carbs: null, protein: null, fat: null,
+    sourceType: '대기', sourceLabel: '대기', sourceTrust: 'pending', daylogWait: true, loggedVia: 'fallback', daylogFallback: entryId };
+  if (item.value && item.unit === 'g') food.servingGrams = item.value;
+  if (item.value && item.unit === 'ml') food.servingMl = item.value;
+  return food;
+}
+async function saveDaylogFallback(entry, kind) {
+  const en = ACTIVE_LOCALE === 'en';
+  await goToDaylogDate(entry.date);
+  const saved = fallbackSavedFoods();
+  const pieces = globalThis.RebuildersChatIntent?.splitForFallback?.(entry.text, { now: new Date(), knownNames: [...saved.values()].map(s => s.name) }) || [];
+  const before = snapshotMeals();
+  const ids = [], sigs = {};
+  let known = 0, waiting = 0;
+  const byMeal = new Map();
+  pieces.forEach(item => {
+    const hit = saved.get(daylogFoldName(item.name));
+    const food = hit ? fallbackRecordFromSaved(item, hit, entry.id) : fallbackWaitRecord(item, entry.id);
+    if (hit) known += 1; else waiting += 1;
+    if (!byMeal.has(item.meal)) byMeal.set(item.meal, []);
+    byMeal.get(item.meal).push(food);
+  });
+  for (const [mealId, list] of byMeal) {
+    if (!meals[mealId]) continue;
+    const slot = mealId === 'snack' ? getDefaultSnackSlot() : null;
+    const wasEmpty = mealId === 'snack' ? !snackFoodsForSlot(slot).length : !meals[mealId].foods.length;
+    list.forEach(food => {
+      const data = { ...food, id: newFoodId(), _isNew: true };
+      if (mealId === 'snack') data.slot = slot;
+      meals[mealId].foods.push(data);
+      ids.push(data.id);
+      sigs[data.id] = daylogRecordSig(data);
+    });
+    setAutoTimeForFirstFood(mealId, slot, wasEmpty, null);
+  }
+  if (ids.length) {
+    await persistMealsOrRestore(before);
+    renderAll(true);
+    if (activeMealPageContext) renderMealPage();
+  }
+  const list = readDaylogRetry().filter(r => r.id !== entry.id);
+  list.push({ id: entry.id, text: entry.text, date: entry.date, time: entry.time, kind, failedAt: new Date().toISOString(), attempts: 1, ids, sigs });
+  writeDaylogRetry(list);
+  showDaylogFailBanner(entry, kind, { known, waiting, saved: ids.length });
+  return { known, waiting, ids };
+}
+function showDaylogFailBanner(entry, kind, { known = 0, waiting = 0, saved = 0, again = false } = {}) {
+  const en = ACTIVE_LOCALE === 'en';
+  const why = daylogFailWhy(kind);
+  const parts = [];
+  if (known) parts.push(en ? `${known} from my saved values` : `내 저장값으로 ${known}개`);
+  if (waiting) parts.push(en ? `${waiting} waiting (name and amount only, not in totals)` : `'대기' ${waiting}개(이름·양만, 합계에선 빠짐)`);
+  const waitLeft = readDaylogRetry().filter(r => r.date === entry.date).length;
+  const saidWhat = again
+    ? (en ? `Still waiting (${waitLeft}). Nothing was changed.` : `대기 중인 기록 ${waitLeft}건은 그대로 있어요.`)
+    : saved ? (en ? `Saved ${parts.join(', ')}.` : `${parts.join(', ')} 넣어 뒀어요.`)
+      : (en ? 'Nothing saved yet — the sentence is kept.' : '아직 넣은 건 없고, 보낸 문장은 남겨 뒀어요.');
+  const retryNote = en ? 'I will try again automatically when the Mac mini is back.' : '맥 미니가 다시 되면 자동으로 다시 맡겨서 채울게요.';
+  if (entry.message) setAgentMessageText(entry.message, `${why}. ${saidWhat} ${retryNote}`);
+  setDaylogBanner('error', {
+    date: entry.date, title: why,
+    body: [daylogFailHint(kind), saidWhat, retryNote].filter(Boolean).join('\n'),
+    actions: [{ label: en ? 'Try again' : '다시 시도', cls: 'is-retry', onClick: () => retryDaylogFallbacks({ manual: true, date: entry.date }) }],
+  });
+}
+/** 다시 맡기기 성공 직전: 대체로 넣은 것 중 그대로인 것만 뺌. 사용자가 고친 건 남기고 같은 끼니·이름 결과는 버림 */
+function takeFallbackRecords(rec) {
+  const removed = [];
+  const kept = new Set();
+  const ids = new Set(rec.ids || []);
+  Object.keys(meals).forEach(mealId => {
+    if (!Array.isArray(meals[mealId]?.foods)) return;
+    meals[mealId].foods = meals[mealId].foods.filter((food, index) => {
+      if (!food || (!ids.has(food.id) && food.daylogFallback !== rec.id)) return true;
+      if (rec.sigs?.[food.id] && rec.sigs[food.id] === daylogRecordSig(food)) { removed.push({ mealId, index, food: { ...food } }); return false; }
+      kept.add(`${mealId}|${daylogFoldName(food.name)}`);
+      return true;
+    });
+  });
+  return { removed, kept };
+}
+function enqueueDaylogRetry(rec, { auto = false } = {}) {
+  if (daylogRun.queue.some(e => !e.done && e.retryOf === rec.id)) return false;
+  daylogRun.queue.push({ id: `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, text: rec.text, date: rec.date, time: rec.time, remoteId: '', startedAt: Date.now(), message: null, done: false, retryOf: rec.id, auto });
+  writeDaylogPending();
+  return true;
+}
+/** manual: 다시 시도 버튼. viaSend: 다음 보내기(그 앞에 끼움). 그 외 자동: /health 가 될 때만, 20초에 한 번, 보고 있는 날짜만 */
+async function retryDaylogFallbacks({ manual = false, date = null, viaSend = false } = {}) {
+  if (!globalThis.RebuildersBridge?.isConfigured?.() || !RebuildersBridge.daylogAndWait) {
+    if (manual) showToast(ACTIVE_LOCALE === 'en' ? 'Set up the Mac mini in Settings first.' : '설정에서 맥 미니 연결을 먼저 해 주세요.', 'info');
+    return 0;
+  }
+  const target = date || dateKey(currentDate);
+  if (!readDaylogRetry().some(r => r.date === target)) return 0;
+  if (!manual && !viaSend) {
+    if (daylogRun.running || Date.now() - daylogRetryLastAuto < 20000) return 0;
+    daylogRetryLastAuto = Date.now();
+    try { RebuildersBridge.resetOffline(); await RebuildersBridge.checkHealth(); } catch { return 0; }
+    if (target !== dateKey(currentDate)) return 0;
+  }
+  if (manual) RebuildersBridge.resetOffline();
+  let n = 0;
+  readDaylogRetry().filter(r => r.date === target).forEach(rec => { if (enqueueDaylogRetry(rec, { auto: !manual })) n += 1; });
+  if (n && !viaSend) drainDaylogQueue();
+  return n;
 }
 
 async function drainDaylogQueue() {
@@ -9416,6 +9622,7 @@ async function daylogOrFallback(text, { catalogs, candidates } = {}) {
   // 보내면 채팅 시트를 닫고 홈 배너로 진행 상황을 보여 줌
   try { if (document.body.classList.contains('ai-sheet-open')) setAiDockPanel(false); } catch { /* 시트가 없으면 무시 */ }
   try { document.getElementById('view-home')?.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' }); } catch {}
+  await retryDaylogFallbacks({ viaSend: true, date });
   await enqueueDaylog({ text, date, time, message });
 }
 
@@ -9442,6 +9649,8 @@ async function softRefreshHome() {
     if (globalThis.RebuildersBridge?.isConfigured?.()) {
       if (RebuildersBridge.getQueue().length) processBridgeQueue({ fresh: true });
       resumeDaylogPending();
+      daylogRetryLastAuto = 0;
+      retryDaylogFallbacks();
     }
     showToast(ACTIVE_LOCALE === 'en' ? 'Refreshed' : '새로고침했어요', 'success');
   } catch (error) {
@@ -11925,12 +12134,12 @@ function setupBridge() {
     if (state === 'ok') processBridgeQueue({ announce: true });
   }));
   document.getElementById('bridge-pending')?.addEventListener('click', () => processBridgeQueue({ announce: true, force: true }));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) processBridgeQueue({ fresh: true }); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { processBridgeQueue({ fresh: true }); retryDaylogFallbacks(); } });
   window.addEventListener('online', () => processBridgeQueue({ force: true }));
   setInterval(() => { if (!document.hidden && RebuildersBridge.getQueue().length) processBridgeQueue(); }, 120000);
   const cap = globalThis.Capacitor;
   const appPlugin = cap?.isNativePlatform?.() ? (cap.Plugins?.App || cap.registerPlugin?.('App')) : null;
-  appPlugin?.addListener?.('appStateChange', state => { if (state?.isActive) processBridgeQueue({ fresh: true }); });
+  appPlugin?.addListener?.('appStateChange', state => { if (state?.isActive) { processBridgeQueue({ fresh: true }); retryDaylogFallbacks(); } });
 }
 
 function setupDeepLinks() {
@@ -11974,6 +12183,7 @@ async function initializeApp() {
   setupPullToRefresh();
   resumeDaylogPending();
   showDataFixCardOnce().catch(() => {});
+  setTimeout(() => retryDaylogFallbacks(), 1500);
   renderDataFixSettings();
   showAppScreen();
   document.body.classList.add('app-ready'); motionOnReady(); setTimeout(() => { FoodSearch.build().catch(() => {}); globalThis.MfdsDB?.load?.().catch(() => {}); }, 300);

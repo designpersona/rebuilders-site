@@ -14230,3 +14230,6 @@ body.datafix-open { overflow: hidden; }
 .datafix-foot { display: flex; justify-content: center; margin-top: 12px; }
 .datafix-restore { border: 0; background: transparent; color: #2f6fdb; font-weight: 700; font-size: 14px; padding: 8px 12px; }
 .datafix-restore:disabled { color: inherit; opacity: 0.4; }
+
+/* 대기(그록 다시 맡길 항목) */
+.food-cal.is-wait { color: #b26a00; font-weight: 700; }
