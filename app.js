@@ -8843,17 +8843,19 @@ function daylogItemToFood(item) {
   const name = String(item?.name || '').trim().slice(0, 80);
   if (!name || [cal, carbs, protein, fat].some(v => v === null)) return null;
   const official = item.source === '공식' || item.source_type === '공식';
+  const mine = item.source === '저장값' || item.source === '내 기록';
   const grams = num(item.grams);
   const unit = String(item.unit || 'g').toLowerCase() === 'ml' ? 'ml' : 'g';
   const food = {
     name,
     cal: Math.round(cal), carbs, protein, fat,
     serving: String(item.amount_text || (grams ? `${grams}${unit}` : '')).trim().slice(0, 30) || undefined,
-    sourceType: official ? '공식' : '추정',
-    sourceLabel: official ? '공식' : '추정',
-    sourceTrust: official ? 'reference' : 'estimate',
-    estimate: !official,
-    aiEstimate: !official,
+    sourceType: official ? '공식' : (mine ? '저장' : '추정'),
+    sourceLabel: official ? '공식' : (mine ? '저장' : '추정'),
+    sourceTrust: official ? 'reference' : (mine ? 'user' : 'estimate'),
+    // 저장값은 내 숫자 그대로. 그 저장값이 원래 추정이었으면 추정 표시는 유지
+    estimate: mine ? Boolean(item.ref_estimate) : !official,
+    aiEstimate: mine ? false : !official,
     source: 'grok',
     loggedVia: 'bridge',
   };
@@ -8883,92 +8885,532 @@ function daylogSummaryText(raw, savedCount) {
     const m = meals[mealId];
     if (!m) return;
     const names = (raw.items || []).filter(it => it.meal === mealId)
-      .map(it => `${it.name}${it.amount_text ? ` ${it.amount_text}` : ''}${it.source === '공식' ? (en ? '(official)' : '(공식)') : ''}`).join(', ');
+      .map(it => `${it.name}${it.amount_text ? ` ${it.amount_text}` : ''}${it.source === '공식' ? (en ? '(official)' : '(공식)') : (it.source === '저장값' || it.source === '내 기록' ? (en ? '(saved)' : '(저장값)') : '')}`).join(', ');
     lines.push(`${mealLabel(mealId)} ${Math.round(m.kcal)}kcal · ${en ? 'C' : '탄'} ${fmt(m.carbs_g)}g · ${en ? 'P' : '단'} ${fmt(m.protein_g)}g · ${en ? 'F' : '지'} ${fmt(m.fat_g)}g\n  ${names}`);
   });
   const t = raw.total || {};
   lines.push(`${en ? 'Total' : '하루 합계'} ${Math.round(t.kcal || 0)}kcal · ${en ? 'C' : '탄'} ${fmt(t.carbs_g)}g · ${en ? 'P' : '단'} ${fmt(t.protein_g)}g · ${en ? 'F' : '지'} ${fmt(t.fat_g)}g`);
-  const est = (raw.items || []).filter(it => it.source !== '공식').length;
+  const mineCount = (raw.items || []).filter(it => it.source === '저장값' || it.source === '내 기록').length;
+  const est = (raw.items || []).filter(it => it.source !== '공식' && it.source !== '저장값' && it.source !== '내 기록').length;
+  if (mineCount) lines.push(en ? `${mineCount} used my saved values.` : `${mineCount}개는 내 저장값을 썼어요.`);
   if (est) lines.push(en ? `${est} are estimates.` : `${est}개는 추정값이에요.`);
   if (raw.comment) lines.push(`💬 ${raw.comment}`);
   return lines.join('\n');
 }
 
-async function applyDaylogResult(raw, { message } = {}) {
-  const items = (raw.items || []).filter(it => it && MEAL_IDS_FOR_DAYLOG.has(it.meal));
-  const pairs = items.map(it => ({ it, food: daylogItemToFood(it) })).filter(p => p.food);
-  if (!pairs.length) return false;
-  const undoSnapshot = snapshotMeals();
-  let firstMeal = null, firstIndexes = [], firstFoods = [];
-  for (const mealId of DAYLOG_MEAL_ORDER) {
-    const list = pairs.filter(p => p.it.meal === mealId).map(p => p.food);
-    if (!list.length) continue;
-    if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
-    const indexes = await addFoods(mealId, list, null);
-    await registerLoggedFoods(list);
-    if (!firstMeal) { firstMeal = mealId; firstIndexes = indexes; firstFoods = list; }
+/* ---- 하루 식단(/daylog) 실행: 보내면 채팅 시트는 닫히고 홈 위 배너에 진행·결과를 보여 줌 ----
+   - 저장 날짜: 보낼 때 홈에서 보고 있던 날짜로 고정(기다리는 동안 다른 날로 가도 그 날짜에 저장하고 그 날로 돌아감)
+   - 하나가 도는 중에 또 보내면 차례로(대기열) 처리
+   - 맡긴 작업 번호는 localStorage 에 남겨, 앱이 다시 열리거나 새로고침돼도 결과만 이어서 받음 */
+const DAYLOG_PENDING_KEY = 'rebuilders-daylog-pending';
+const DAYLOG_RESUME_MAX_MS = 6 * 60 * 60 * 1000;
+const daylogRun = { queue: [], running: false, applying: false, banner: null, tickTimer: 0 };
+
+function readDaylogPending() {
+  try { const list = JSON.parse(localStorage.getItem(DAYLOG_PENDING_KEY) || '[]'); return Array.isArray(list) ? list.filter(e => e && e.id && e.text && e.date) : []; } catch { return []; }
+}
+function writeDaylogPending() {
+  try {
+    const list = daylogRun.queue.filter(e => !e.done).map(({ id, text, date, time, remoteId, startedAt }) => ({ id, text, date, time, remoteId: remoteId || '', startedAt }));
+    if (list.length) localStorage.setItem(DAYLOG_PENDING_KEY, JSON.stringify(list.slice(0, 10)));
+    else localStorage.removeItem(DAYLOG_PENDING_KEY);
+  } catch { /* 저장 공간 문제는 무시(진행에는 영향 없음) */ }
+}
+
+function daylogDateLabel(dateStr) {
+  if (!dateStr || dateStr === dateKey(new Date())) return '';
+  const d = parseDateKey(dateStr);
+  return ACTIVE_LOCALE === 'en' ? `${d.getMonth() + 1}/${d.getDate()}` : `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/* 문장과 이름이 겹치는 내 저장 음식만(최대 30개). 영양 숫자가 다 있는 것만 보냄 */
+const DAYLOG_ALIASES = [['스벅', '스타벅스'], ['별다방', '스타벅스'], ['맥날', '맥도날드'], ['버킹', '버거킹'], ['롯리', '롯데리아'], ['투썸', '투썸플레이스'], ['메가커피', '메가MGC커피'], ['빽다방', '빽다방']];
+function daylogFold(s) { return String(s || '').toLowerCase().normalize('NFC').replace(/[\s·.,()[\]{}\-_/~!?'"+*:;]+/g, ''); }
+function daylogBigrams(t) { const out = new Set(); for (let i = 0; i < t.length - 1; i += 1) out.add(t.slice(i, i + 2)); return out; }
+function daylogNum(v) { const n = typeof v === 'number' ? v : (v === '' || v == null ? NaN : Number(v)); return Number.isFinite(n) && n >= 0 ? Math.round(n * 10) / 10 : null; }
+function daylogFoodRef(name, data, extra = {}) {
+  const kcal = daylogNum(data?.cal), carbs = daylogNum(data?.carbs), protein = daylogNum(data?.protein), fat = daylogNum(data?.fat);
+  if ([kcal, carbs, protein, fat].some(v => v === null)) return null;
+  const ml = daylogNum(data?.servingMl);
+  const grams = ml || daylogNum(data?.servingGrams) || daylogNum(data?.packageGrams);
+  const ref = {
+    name, brand: data?.brand || data?.maker || '',
+    serving: String(data?.serving || '').slice(0, 30),
+    grams: grams || null, unit: ml || /ml$/i.test(String(data?.serving || '')) ? 'ml' : 'g',
+    kcal, carbs_g: carbs, protein_g: protein, fat_g: fat,
+    est: Boolean(data?.estimate || data?.aiEstimate || data?.sourceTrust === 'estimate'),
+    ...extra,
+  };
+  const b = data?.basisNutrients; const bg = daylogNum(data?.basisGrams);
+  if (b && bg) {
+    const per = [b.cal, b.carbs, b.protein, b.fat].map(v => daylogNum(v));
+    if (per.every(v => v !== null)) ref.per100 = { kcal: per[0] * 100 / bg, carbs_g: per[1] * 100 / bg, protein_g: per[2] * 100 / bg, fat_g: per[3] * 100 / bg };
   }
-  if (firstMeal) rememberChatBatch(null, firstMeal, firstFoods, firstIndexes);
-  const text = daylogSummaryText(raw, pairs.length);
-  if (message) setAgentMessageText(message, text);
-  else message = appendAgentMessage(text);
-  setAgentSearching(message, false);
-  appendUndoSaveButton(message, undoSnapshot);
+  return ref;
+}
+function savedFoodsForDaylog(text) {
+  let t = String(text || '');
+  DAYLOG_ALIASES.forEach(([a, b]) => { if (t.includes(a)) t += ` ${b}`; });
+  const ft = daylogFold(t);
+  const tb = daylogBigrams(ft);
+  const scored = [];
+  Object.entries(CUSTOM_FOODS || {}).forEach(([name, data]) => {
+    const fn = daylogFold(name);
+    if (fn.length < 2) return;
+    let score = 0;
+    if (ft.includes(fn)) score = 2;
+    else {
+      const nb = daylogBigrams(fn);
+      let hit = 0; nb.forEach(g => { if (tb.has(g)) hit += 1; });
+      const bi = nb.size ? hit / nb.size : 0;
+      const tokens = String(name).split(/\s+/).map(daylogFold).filter(w => w.length >= 2);
+      const tk = tokens.length ? tokens.filter(w => ft.includes(w)).length / tokens.length : 0;
+      score = Math.max(hit >= 2 ? bi : 0, tk);
+    }
+    if (score < 0.5) return;
+    const ref = daylogFoodRef(name, data);
+    if (!ref) return;
+    const mine = data?.discoveryOrigin === 'manual' || data?.source === 'user-entry' || data?.sourceTrust === 'user';
+    scored.push({ ref, score: score + (mine ? 0.05 : 0) });
+  });
+  return scored.sort((a, b) => b.score - a.score).slice(0, 30).map(s => s.ref);
+}
+function todayRecordsForDaylog() {
+  const out = [];
+  ['breakfast', 'lunch', 'snack', 'dinner'].forEach(mealId => {
+    (meals[mealId]?.foods || []).forEach(food => {
+      if (!food?.name || out.length >= 30) return;
+      const ref = daylogFoodRef(food.name, food, { meal: mealId });
+      if (ref) out.push(ref);
+    });
+  });
+  return out;
+}
+
+function ensureDaylogBanner() {
+  if (daylogRun.banner?.isConnected) return daylogRun.banner;
+  const home = document.getElementById('view-home');
+  if (!home) return null;
+  const el = document.createElement('div');
+  el.id = 'daylog-banner';
+  el.className = 'daylog-banner';
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
+  el.hidden = true;
+  el.innerHTML = '<button type="button" class="daylog-banner-main"><span class="daylog-banner-spinner" aria-hidden="true"></span><span class="daylog-banner-texts"><span class="daylog-banner-title"></span><span class="daylog-banner-body"></span></span></button><div class="daylog-banner-actions"></div><button type="button" class="daylog-banner-close" aria-label="닫기">×</button>';
+  el.querySelector('.daylog-banner-main').addEventListener('click', () => setAiDockPanel(true));
+  el.querySelector('.daylog-banner-close').addEventListener('click', () => { el.hidden = true; el.dataset.state = ''; });
+  const anchor = home.querySelector('.day-summary') || home.querySelector('.date-header');
+  if (anchor?.parentNode === home) home.insertBefore(el, anchor);
+  else home.prepend(el);
+  daylogRun.banner = el;
+  return el;
+}
+
+/** state: running | done | error | info. actions: [{label, onClick, cls}] */
+function setDaylogBanner(state, { title = '', body = '', actions = [] } = {}) {
+  const el = ensureDaylogBanner();
+  if (!el) return;
+  el.dataset.state = state;
+  el.hidden = false;
+  el.querySelector('.daylog-banner-title').textContent = title;
+  const bodyEl = el.querySelector('.daylog-banner-body');
+  bodyEl.textContent = body;
+  bodyEl.hidden = !body;
+  el.querySelector('.daylog-banner-close').hidden = state === 'running';
+  el.querySelector('.daylog-banner-close').setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? 'Close' : '닫기');
+  const box = el.querySelector('.daylog-banner-actions');
+  box.replaceChildren();
+  actions.forEach(a => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `daylog-banner-action ${a.cls || ''}`.trim();
+    b.textContent = a.label;
+    b.addEventListener('click', event => { event.stopPropagation(); a.onClick?.(b); });
+    box.appendChild(b);
+  });
+  box.hidden = !actions.length;
+}
+
+function daylogRunningTitle(entry) {
+  const en = ACTIVE_LOCALE === 'en';
+  const sec = Math.max(0, Math.round((Date.now() - entry.startedAt) / 1000));
+  const day = daylogDateLabel(entry.date);
+  const waiting = daylogRun.queue.filter(e => !e.done && e !== entry).length;
+  const base = en ? `Grok is splitting meals and looking up nutrition… ${sec}s` : `그록이 끼니를 나누고 영양을 찾는 중… ${sec}초`;
+  const parts = [];
+  if (day) parts.push(en ? `saving to ${day}` : `${day}에 저장`);
+  if (waiting) parts.push(en ? `${waiting} more waiting` : `${waiting}개 더 대기`);
+  return { title: base, body: parts.join(' · ') };
+}
+function startDaylogTicker(entry) {
+  clearInterval(daylogRun.tickTimer);
+  const tick = () => {
+    const { title, body } = daylogRunningTitle(entry);
+    setDaylogBanner('running', { title, body });
+    const target = entry.message?.querySelector('.agent-bubble-text');
+    if (target && entry.message.classList.contains('is-searching')) target.textContent = title;
+  };
+  tick();
+  daylogRun.tickTimer = setInterval(tick, 1000);
+}
+function stopDaylogTicker() { clearInterval(daylogRun.tickTimer); daylogRun.tickTimer = 0; }
+
+async function goToDaylogDate(dateStr) {
+  if (!dateStr || dateStr === dateKey(currentDate)) return;
+  currentDate = parseDateKey(dateStr);
+  await loadCurrentDay();
+  updateDateDisplay();
+  renderAll(true);
+}
+
+/* 방금 넣은 항목만(id로) 지움 — 그 사이 다른 기록을 넣었어도 그건 그대로 */
+async function undoDaylogAdded(dateStr, added) {
+  await goToDaylogDate(dateStr);
+  const ids = new Set(added.flatMap(a => a.ids).filter(Boolean));
+  if (!ids.size) return false;
+  const before = snapshotMeals();
+  Object.keys(meals).forEach(mealId => {
+    if (Array.isArray(meals[mealId]?.foods)) meals[mealId].foods = meals[mealId].foods.filter(food => !ids.has(food?.id));
+  });
+  await persistMealsOrRestore(before);
+  renderAll(true);
+  if (activeMealPageContext) renderMealPage();
   return true;
+}
+
+function daylogUndoAction(entry, message) {
+  const en = ACTIVE_LOCALE === 'en';
+  return async button => {
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
+    try {
+      await undoDaylogAdded(entry.date, entry.added || []);
+      entry.added = [];
+      const text = en ? 'Undid that log.' : '방금 기록을 되돌렸어요.';
+      if (message) { setAgentMessageText(message, text); message.querySelectorAll('.agent-undo').forEach(b => b.remove()); }
+      setDaylogBanner('info', { title: text, body: daylogDateLabel(entry.date) ? (en ? `on ${daylogDateLabel(entry.date)}` : `${daylogDateLabel(entry.date)} 기록`) : '' });
+    } catch (error) {
+      if (button) button.disabled = false;
+      showStorageFailure(error);
+    }
+  };
+}
+
+function daylogBannerSummary(raw, entry, dupCount) {
+  const en = ACTIVE_LOCALE === 'en';
+  const meals0 = raw.meals || {};
+  const t = raw.total || {};
+  const fmt = n => Math.round(Number(n || 0) * 10) / 10;
+  const day = daylogDateLabel(entry.date);
+  const sec = Math.round((Date.now() - entry.startedAt) / 1000);
+  const title = en
+    ? `Saved ${(raw.items || []).length}${day ? ` to ${day}` : ''} · ${Math.round(t.kcal || 0)} kcal · P ${fmt(t.protein_g)}g`
+    : `${day ? `${day}에 ` : ''}${(raw.items || []).length}개 저장 · 하루 ${Math.round(t.kcal || 0)}kcal · 단백질 ${fmt(t.protein_g)}g`;
+  const lines = [];
+  const mealLine = DAYLOG_MEAL_ORDER.filter(id => meals0[id]).map(id => `${mealLabel(id)} ${Math.round(meals0[id].kcal)}`).join(' · ');
+  if (mealLine) lines.push(`${mealLine}kcal`);
+  const items = raw.items || [];
+  const official = items.filter(it => it.source === '공식').length;
+  const mine = items.filter(it => it.source === '저장값' || it.source === '내 기록').length;
+  const est = items.length - official - mine;
+  const counts = [];
+  if (official) counts.push(en ? `${official} official` : `공식 ${official}`);
+  if (mine) counts.push(en ? `${mine} from my saved` : `저장값 ${mine}`);
+  if (est) counts.push(en ? `${est} estimated` : `추정 ${est}`);
+  counts.push(en ? `${sec}s` : `${sec}초`);
+  lines.push(counts.join(' · '));
+  if (dupCount) lines.push(en ? `${dupCount} have the same name as an existing record — undo if doubled.` : `이미 있던 기록과 이름이 같은 게 ${dupCount}개 — 겹쳤으면 되돌리기`);
+  if (raw.comment) lines.push(`💬 ${raw.comment}`);
+  return { title, body: lines.join('\n') };
+}
+
+function daylogSourceFood(item) {
+  return daylogItemToFood(item);
+}
+
+async function applyDaylogResult(raw, { message, entry } = {}) {
+  const items = (raw.items || []).filter(it => it && MEAL_IDS_FOR_DAYLOG.has(it.meal));
+  const pairs = items.map(it => ({ it, food: daylogSourceFood(it) })).filter(p => p.food);
+  if (!pairs.length) return false;
+  const target = entry || { date: dateKey(currentDate), startedAt: Date.now() };
+  daylogRun.applying = true;
+  try {
+    await goToDaylogDate(target.date);
+    const existing = new Set();
+    Object.entries(meals).forEach(([mealId, meal]) => (meal?.foods || []).forEach(f => { if (f?.name) existing.add(`${mealId}|${daylogFold(f.name)}`); }));
+    const dupCount = pairs.filter(p => existing.has(`${p.it.meal}|${daylogFold(p.food.name)}`)).length;
+    let firstMeal = null, firstIndexes = [], firstFoods = [];
+    target.added = [];
+    for (const mealId of DAYLOG_MEAL_ORDER) {
+      const list = pairs.filter(p => p.it.meal === mealId).map(p => p.food);
+      if (!list.length) continue;
+      if (mealId === 'snack') currentSnackSlot = getDefaultSnackSlot();
+      const indexes = await addFoods(mealId, list, null);
+      target.added.push({ mealId, ids: indexes.map(i => meals[mealId]?.foods?.[i]?.id).filter(Boolean) });
+      await registerLoggedFoods(list);
+      if (!firstMeal) { firstMeal = mealId; firstIndexes = indexes; firstFoods = list; }
+    }
+    if (firstMeal) rememberChatBatch(null, firstMeal, firstFoods, firstIndexes);
+    const day = daylogDateLabel(target.date);
+    const text = (day ? (ACTIVE_LOCALE === 'en' ? `[${day}] ` : `[${day}에 저장] `) : '') + daylogSummaryText(raw, pairs.length);
+    if (message) setAgentMessageText(message, text);
+    else message = appendAgentMessage(text);
+    setAgentSearching(message, false);
+    const undo = daylogUndoAction(target, message);
+    const undoButton = document.createElement('button');
+    undoButton.type = 'button';
+    undoButton.className = 'agent-confirm agent-undo';
+    undoButton.textContent = ACTIVE_LOCALE === 'en' ? 'Undo' : '되돌리기';
+    undoButton.addEventListener('click', () => undo(undoButton));
+    appendToAgentMessage(message, undoButton);
+    const summary = daylogBannerSummary(raw, target, dupCount);
+    setDaylogBanner('done', { ...summary, actions: [{ label: ACTIVE_LOCALE === 'en' ? 'Undo' : '되돌리기', cls: 'is-undo', onClick: undo }] });
+    return true;
+  } finally {
+    daylogRun.applying = false;
+  }
 }
 const MEAL_IDS_FOR_DAYLOG = new Set(DAYLOG_MEAL_ORDER);
 
-async function daylogOrFallback(text, { catalogs, candidates } = {}) {
+async function runDaylogEntry(entry) {
   const en = ACTIVE_LOCALE === 'en';
   const Intent = globalThis.RebuildersChatIntent;
-  if (!RebuildersBridge.daylogAndWait) return interpretOrFallback(text, { candidates, catalogs });
-  const waitText = sec => (en
-    ? `Grok is splitting meals and looking up nutrition… ${sec}s`
-    : `그록이 끼니를 나누고 영양을 찾는 중… ${sec}초`);
-  const message = appendAgentMessage(en ? 'Sent to Grok on the Mac mini…' : '맥 미니 그록에게 보냈어요…');
+  if (!entry.message) {
+    entry.message = appendAgentMessage(en ? 'Sent to Grok on the Mac mini…' : '맥 미니 그록에게 보냈어요…');
+  }
+  const message = entry.message;
   setAgentSearching(message, true);
-  const now = new Date();
+  startDaylogTicker(entry);
+  // 참고값은 저장할 날짜 기준(그 날 기록). 지금 다른 날을 보고 있으면 그 날을 IndexedDB에서 읽음
+  let todayRecords = [];
+  try {
+    if (entry.date === dateKey(currentDate)) todayRecords = todayRecordsForDaylog();
+    else {
+      const day = normalizeDayRecord((await loadDayFoods(entry.date)) || {}).day;
+      ['breakfast', 'lunch', 'snack', 'dinner'].forEach(mealId => (day[mealId] || []).forEach(food => {
+        const ref = food?.name && todayRecords.length < 30 ? daylogFoodRef(food.name, food, { meal: mealId }) : null;
+        if (ref) todayRecords.push(ref);
+      }));
+    }
+  } catch { todayRecords = []; }
   const payload = {
-    text,
-    date: dateKey(currentDate),
-    time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+    text: entry.text, date: entry.date, time: entry.time,
+    savedFoods: savedFoodsForDaylog(entry.text), todayRecords,
+    remoteId: entry.remoteId || undefined,
   };
+  const left = Math.max(60000, 180000 - (Date.now() - entry.startedAt));
   try {
     const result = await RebuildersBridge.daylogAndWait(payload, {
-      maxMs: 180000,
-      intervalMs: 2000,
-      onTick: ms => {
-        const target = message?.querySelector('.agent-bubble-text');
-        if (target) target.textContent = waitText(Math.round(ms / 1000));
-      },
+      maxMs: left, intervalMs: 2000,
+      onRemoteId: id => { entry.remoteId = id; writeDaylogPending(); },
     });
+    stopDaylogTicker();
+    // 결과를 넣기 전에 대기 목록에서 먼저 지움(앱이 도중에 꺼져도 두 번 넣지 않게)
+    entry.done = true;
+    writeDaylogPending();
     lastInterpretMs = result.elapsedMs || lastInterpretMs;
     const raw = result.raw || {};
     if (raw.mode === 'daylog' && Array.isArray(raw.items) && raw.items.length) {
-      if (await applyDaylogResult(raw, { message })) return;
+      if (await applyDaylogResult(raw, { message, entry })) return;
     }
     if (raw.mode === 'interpret') {
-      // 그록이 실패했거나 기록이 아닌 말 → 브리지가 예전 해석 결과를 돌려줌
       const parsed = Intent.parseInterpretResult({ ...result, ...raw, done: true, pending: [], raw });
       if (parsed) {
         setAgentSearching(message, false);
-        await applyInterpretResult(parsed, { message, text, catalogs: catalogs || localMatchCatalogs(), saveAll: true });
+        await goToDaylogDate(entry.date);
+        await applyInterpretResult(parsed, { message, text: entry.text, catalogs: localMatchCatalogs(), saveAll: true });
+        const day = daylogDateLabel(entry.date);
+        setDaylogBanner(pendingClarify ? 'error' : 'info', {
+          title: pendingClarify
+            ? (en ? 'Grok was not available — one question for you' : '그록이 안 돼서 기본 방식으로 했어요 · 확인할 게 있어요')
+            : (en ? `Logged with the basic method${day ? ` to ${day}` : ''}` : `그록이 안 돼서 기본 방식으로 기록했어요${day ? ` (${day})` : ''}`),
+          body: en ? 'Tap to see the chat.' : '눌러서 채팅에서 확인',
+        });
         return;
       }
     }
     throw new RebuildersBridge.BridgeError(raw.error || 'agent_failed');
   } catch (error) {
+    stopDaylogTicker();
+    entry.done = true;
+    writeDaylogPending();
     setAgentSearching(message, false);
-    if (error?.kind === 'not_found') {
-      // 예전 브리지(/daylog 없음)
+    await goToDaylogDate(entry.date);
+    if (error?.kind === 'not_found' && !entry.remoteId) {
       if (message?.parentNode) message.remove();
-      await interpretOrFallback(text, { candidates, catalogs });
+      await interpretOrFallback(entry.text, { catalogs: localMatchCatalogs() });
+      setDaylogBanner('info', { title: en ? 'Done (older Mac mini bridge)' : '정리했어요(예전 맥 미니 방식)', body: en ? 'Tap to see the chat.' : '눌러서 채팅에서 확인' });
       return;
     }
-    await handleAgentCommandFallback(text, { message, reason: error, silent: false });
+    const kind = error?.kind || 'error';
+    const why = {
+      unreachable: en ? 'Could not reach the Mac mini (home Wi-Fi?)' : '맥 미니에 연결이 안 돼요(집 와이파이인지 확인)',
+      timeout: en ? 'Grok took too long' : '그록 답이 너무 늦어요',
+      unauthorized: en ? 'Mac mini token does not match' : '맥 미니 토큰이 달라요',
+    }[kind] || (en ? 'Grok could not finish' : '그록이 정리를 못 했어요');
+    await handleAgentCommandFallback(entry.text, { message, reason: error, silent: false });
+    setDaylogBanner('error', {
+      title: why,
+      body: en ? 'Saved with the on-phone rules instead. Tap to check.' : '휴대폰 규칙으로 대신 넣었어요. 눌러서 확인해 주세요.',
+    });
   } finally {
     if (message?.classList.contains('is-searching')) setAgentSearching(message, false);
   }
+}
+
+async function drainDaylogQueue() {
+  if (daylogRun.running) return;
+  daylogRun.running = true;
+  try {
+    while (daylogRun.queue.some(e => !e.done)) {
+      const entry = daylogRun.queue.find(e => !e.done);
+      try { await runDaylogEntry(entry); } catch (error) { console.warn('daylog', error); entry.done = true; writeDaylogPending(); }
+    }
+  } finally {
+    daylogRun.queue = daylogRun.queue.filter(e => !e.done);
+    daylogRun.running = false;
+    writeDaylogPending();
+  }
+}
+
+function enqueueDaylog({ text, date, time, remoteId = '', startedAt = Date.now(), message = null, id = '' }) {
+  const entry = { id: id || `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, text, date, time, remoteId, startedAt, message, done: false };
+  daylogRun.queue.push(entry);
+  writeDaylogPending();
+  if (daylogRun.running) {
+    const en = ACTIVE_LOCALE === 'en';
+    const waiting = daylogRun.queue.filter(e => !e.done).length - 1;
+    const msg = appendAgentMessage(en ? `Queued — Grok is finishing the previous one (${waiting} waiting).` : `앞 기록을 정리하는 중이라 이어서 할게요(대기 ${waiting}개).`);
+    entry.message = msg;
+    const current = daylogRun.queue.find(e => !e.done && e !== entry);
+    if (current) { const { title, body } = daylogRunningTitle(current); setDaylogBanner('running', { title, body }); }
+  }
+  return drainDaylogQueue();
+}
+
+/* 앱을 다시 열거나 새로고침했을 때 남아 있던 작업 이어 받기 */
+function resumeDaylogPending() {
+  if (daylogRun.running || !globalThis.RebuildersBridge?.isConfigured?.() || !RebuildersBridge.daylogAndWait) return;
+  const list = readDaylogPending();
+  if (!list.length) return;
+  const fresh = list.filter(e => Date.now() - (e.startedAt || 0) < DAYLOG_RESUME_MAX_MS);
+  const stale = list.length - fresh.length;
+  if (!fresh.length) {
+    try { localStorage.removeItem(DAYLOG_PENDING_KEY); } catch {}
+    if (stale) setDaylogBanner('error', { title: ACTIVE_LOCALE === 'en' ? 'An old log request expired. Please send it again.' : '오래된 기록 요청이 끝나지 못했어요. 다시 보내 주세요.' });
+    return;
+  }
+  fresh.forEach(e => daylogRun.queue.push({ ...e, message: null, done: false }));
+  writeDaylogPending();
+  drainDaylogQueue();
+}
+
+async function daylogOrFallback(text, { catalogs, candidates } = {}) {
+  if (!RebuildersBridge.daylogAndWait) return interpretOrFallback(text, { candidates, catalogs });
+  const now = new Date();
+  // 저장 날짜 = 지금 홈에서 보고 있는 날짜(보낼 때 고정)
+  const date = dateKey(currentDate);
+  const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const message = daylogRun.running ? null : appendAgentMessage(ACTIVE_LOCALE === 'en' ? 'Sent to Grok on the Mac mini…' : '맥 미니 그록에게 보냈어요…');
+  // 보내면 채팅 시트를 닫고 홈 배너로 진행 상황을 보여 줌
+  try { if (document.body.classList.contains('ai-sheet-open')) setAiDockPanel(false); } catch { /* 시트가 없으면 무시 */ }
+  try { document.getElementById('view-home')?.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' }); } catch {}
+  await enqueueDaylog({ text, date, time, message });
+}
+
+/* ============================
+   홈 아래로 당겨 새로고침: 맨 위에서만, 세로로 당길 때만(가로 날짜 밀기·음식 끌기·채팅 시트와 겹치지 않음)
+   새로고침 = 기기 안(IndexedDB) 기록·내 음식을 다시 읽어 그리기 + 맥 미니 대기 작업 다시 확인. 데이터는 지우지 않음.
+   그록 작업이 도는 중이면 그 작업은 그대로 두고(폴링 계속) 화면만 다시 그림
+   ============================ */
+let pullRefreshReady = false;
+let pullRefreshBusy = false;
+async function softRefreshHome() {
+  if (pullRefreshBusy) return;
+  pullRefreshBusy = true;
+  try {
+    // 그록 결과를 넣는 중이면 끝날 때까지 잠깐 기다림(넣는 도중 다시 읽어 덮어쓰지 않게)
+    for (let i = 0; i < 50 && daylogRun.applying; i += 1) await new Promise(r => setTimeout(r, 100));
+    await loadCustomFoods();
+    await loadCurrentDay();
+    statsCache = await loadStorage();
+    updateDateDisplay();
+    renderAll(true);
+    renderRecentFoods();
+    if (activeMealPageContext) renderMealPage();
+    if (globalThis.RebuildersBridge?.isConfigured?.()) {
+      if (RebuildersBridge.getQueue().length) processBridgeQueue({ fresh: true });
+      resumeDaylogPending();
+    }
+    showToast(ACTIVE_LOCALE === 'en' ? 'Refreshed' : '새로고침했어요', 'success');
+  } catch (error) {
+    showStorageFailure(error);
+  } finally {
+    pullRefreshBusy = false;
+  }
+}
+function setupPullToRefresh() {
+  if (pullRefreshReady) return;
+  const home = document.getElementById('view-home');
+  if (!home) return;
+  pullRefreshReady = true;
+  const TRIGGER = 70;
+  const indicator = document.createElement('div');
+  indicator.className = 'pull-refresh';
+  indicator.setAttribute('aria-hidden', 'true');
+  indicator.innerHTML = '<span class="pull-refresh-icon"></span><span class="pull-refresh-text"></span>';
+  document.body.appendChild(indicator);
+  const label = indicator.querySelector('.pull-refresh-text');
+  let y0 = null, x0 = 0, mode = null, dist = 0;
+  const blocked = target => {
+    const b = document.body.classList;
+    if (activeView !== 'home' || b.contains('ai-sheet-open') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing')) return true;
+    if (target?.closest?.('input, textarea, select, [contenteditable="true"], .home-ai-dock, .modal, dialog, .meal-drag-ghost')) return true;
+    return false;
+  };
+  const show = d => {
+    const ready = d >= TRIGGER;
+    indicator.classList.add('is-visible');
+    indicator.classList.toggle('is-ready', ready);
+    indicator.style.transform = `translate(-50%, ${Math.min(d, 110) - 56}px)`;
+    indicator.querySelector('.pull-refresh-icon').style.transform = `rotate(${Math.min(180, d / TRIGGER * 180)}deg)`;
+    label.textContent = ready ? (ACTIVE_LOCALE === 'en' ? 'Release to refresh' : '놓으면 새로고침') : (ACTIVE_LOCALE === 'en' ? 'Pull to refresh' : '당겨서 새로고침');
+  };
+  const hide = () => {
+    indicator.classList.remove('is-visible', 'is-ready', 'is-loading');
+    indicator.style.transform = '';
+  };
+  home.addEventListener('touchstart', event => {
+    y0 = null; mode = null; dist = 0;
+    if (event.touches.length !== 1 || pullRefreshBusy || home.scrollTop > 0 || blocked(event.target)) return;
+    y0 = event.touches[0].clientY; x0 = event.touches[0].clientX;
+  }, { passive: true });
+  home.addEventListener('touchmove', event => {
+    if (y0 == null) return;
+    const t = event.touches[0];
+    const dy = t.clientY - y0; const dx = t.clientX - x0;
+    if (!mode) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      mode = dy > 0 && Math.abs(dy) > Math.abs(dx) * 1.2 && home.scrollTop <= 0 ? 'pull' : 'skip';
+      if (mode === 'skip') { y0 = null; return; }
+    }
+    dist = Math.max(0, dy) * 0.55;
+    if (event.cancelable) event.preventDefault(); // 당기는 동안 웹뷰 자체 튕김을 막음
+    show(dist);
+  }, { passive: false });
+  const end = () => {
+    if (y0 == null || mode !== 'pull') { y0 = null; return; }
+    y0 = null;
+    if (dist >= TRIGGER) {
+      indicator.classList.add('is-loading');
+      label.textContent = ACTIVE_LOCALE === 'en' ? 'Refreshing…' : '새로고침 중…';
+      indicator.style.transform = `translate(-50%, ${TRIGGER - 56}px)`;
+      softRefreshHome().finally(() => setTimeout(hide, 250));
+    } else hide();
+  };
+  home.addEventListener('touchend', end, { passive: true });
+  home.addEventListener('touchcancel', () => { y0 = null; hide(); }, { passive: true });
 }
 
 async function handleDayLogPaste(text, catalogs, { skipInterpret } = {}) {
@@ -11093,6 +11535,8 @@ async function initializeApp() {
   setupHealthUi();
   setupDeepLinks();
   setupBridge();
+  setupPullToRefresh();
+  resumeDaylogPending();
   showAppScreen();
   document.body.classList.add('app-ready'); motionOnReady(); setTimeout(() => { FoodSearch.build().catch(() => {}); globalThis.MfdsDB?.load?.().catch(() => {}); }, 300);
   registerServiceWorker();

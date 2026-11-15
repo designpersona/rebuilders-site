@@ -392,7 +392,29 @@
   /** 하루 식단 통째 기록: POST /daylog 로 문장 전체를 맥 미니 그록에 맡기고 GET /jobs/<id> 로
    *  끼니별 항목(이름·브랜드·g·kcal·탄단지·공식/추정)·끼니 합계·하루 총합·코멘트를 받음.
    *  그록이 실패하면 브리지가 예전 /interpret 결과(mode: 'interpret')를 대신 돌려줌. */
-  async function daylog({ text, date, meal, time, remoteId } = {}) {
+  /** /daylog 참고값(내 저장값·오늘 기록): 숫자만, 최대 30개씩. 체중·건강 정보는 넣지 않음 */
+  function daylogRefs(rows) {
+    if (!Array.isArray(rows)) return [];
+    const n = v => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v * 10) / 10 : null);
+    return rows.slice(0, 30).map(row => {
+      const out = {
+        name: String(row?.name || '').trim().slice(0, 80),
+        brand: String(row?.brand || '').trim().slice(0, 40),
+        serving: String(row?.serving || '').trim().slice(0, 30),
+        grams: n(row?.grams), unit: row?.unit === 'ml' ? 'ml' : 'g',
+        kcal: n(row?.kcal), carbs_g: n(row?.carbs_g), protein_g: n(row?.protein_g), fat_g: n(row?.fat_g),
+      };
+      const per = row?.per100;
+      if (per && [per.kcal, per.carbs_g, per.protein_g, per.fat_g].every(v => n(v) !== null)) {
+        out.per100 = { kcal: n(per.kcal), carbs_g: n(per.carbs_g), protein_g: n(per.protein_g), fat_g: n(per.fat_g) };
+      }
+      if (row?.est) out.est = true;
+      if (row?.meal && MEALS.includes(row.meal)) out.meal = row.meal;
+      return out;
+    }).filter(row => row.name && [row.kcal, row.carbs_g, row.protein_g, row.fat_g].every(v => v !== null));
+  }
+
+  async function daylog({ text, date, meal, time, remoteId, savedFoods, todayRecords } = {}) {
     let data = null;
     if (JOB_ID_RE.test(String(remoteId || ''))) {
       try { data = await request(`/jobs/${remoteId}`, { timeoutMs: POLL_TIMEOUT_MS }); } catch (error) {
@@ -404,20 +426,42 @@
       if (date) body.date = date;
       if (meal) body.meal = meal;
       if (time) body.time = time;
-      data = await request('/daylog', { method: 'POST', body, timeoutMs: SUBMIT_TIMEOUT_MS });
+      const saved = daylogRefs(savedFoods);
+      const today = daylogRefs(todayRecords);
+      if (saved.length) body.savedFoods = saved;
+      if (today.length) body.todayRecords = today;
+      try {
+        data = await request('/daylog', { method: 'POST', body, timeoutMs: SUBMIT_TIMEOUT_MS });
+      } catch (error) {
+        // 예전 브리지가 본문이 크다고(413) 거절하면 참고값 없이 문장만 다시 보냄
+        if (error?.kind !== 'bad_request' || (!saved.length && !today.length)) throw error;
+        delete body.savedFoods; delete body.todayRecords;
+        data = await request('/daylog', { method: 'POST', body, timeoutMs: SUBMIT_TIMEOUT_MS });
+      }
     }
     const done = data.done === true;
-    return { done, remoteId: JOB_ID_RE.test(String(data.job_id || '')) ? data.job_id : '', raw: data };
+    const id = JOB_ID_RE.test(String(data.job_id || '')) ? data.job_id : (JOB_ID_RE.test(String(remoteId || '')) && !done ? remoteId : '');
+    return { done, remoteId: id, raw: data };
   }
 
-  async function daylogAndWait(payload, { maxMs = 180000, intervalMs = 2000, onTick } = {}) {
+  /** onRemoteId(id): 맡긴 작업 번호를 받자마자 알려 줌(앱이 꺼졌다 켜져도 이 번호로 결과만 다시 받게) */
+  async function daylogAndWait(payload, { maxMs = 180000, intervalMs = 2000, onTick, onRemoteId } = {}) {
     const started = Date.now();
     const end = started + maxMs;
     let result = await daylog(payload);
+    let lastRemote = payload?.remoteId || '';
+    const report = () => {
+      if (result.remoteId && result.remoteId !== lastRemote) {
+        lastRemote = result.remoteId;
+        try { onRemoteId?.(result.remoteId); } catch { /* 저장 실패는 무시 */ }
+      }
+    };
+    report();
     while (!result.done && result.remoteId && Date.now() < end) {
       try { onTick?.(Date.now() - started); } catch { /* 화면 갱신 실패는 무시 */ }
       await new Promise(resolve => setTimeout(resolve, intervalMs));
       result = await daylog({ ...payload, remoteId: result.remoteId });
+      report();
     }
     result.elapsedMs = Date.now() - started;
     if (!result.done) throw new BridgeError('timeout');

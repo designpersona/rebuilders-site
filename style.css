@@ -14136,3 +14136,62 @@ input.food-amount-value:focus {
   color: inherit;
   font: inherit;
 }
+
+/* 하루 식단(/daylog) 진행·결과 배너: 홈 날짜 아래, 스크롤해도 위에 붙어 있음 */
+#view-home .daylog-banner {
+  position: sticky; top: 6px; z-index: 30;
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: 6px 0 10px; padding: 12px 12px 12px 14px;
+  background: var(--rb-surface, #fff); color: #111;
+  border-radius: var(--rb-card-radius, 16px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.10), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  animation: daylog-banner-in 0.22s ease-out;
+}
+#view-home .daylog-banner[hidden] { display: none; }
+@keyframes daylog-banner-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+.daylog-banner-main {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: flex-start; gap: 10px;
+  background: none; border: 0; padding: 0; margin: 0; text-align: left; color: inherit; font: inherit; cursor: pointer;
+}
+.daylog-banner-texts { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.daylog-banner-title { font-size: 14px; font-weight: 700; line-height: 1.35; }
+.daylog-banner-body { font-size: 12.5px; line-height: 1.45; color: #555; white-space: pre-line; }
+.daylog-banner-body[hidden] { display: none; }
+.daylog-banner-spinner {
+  flex: 0 0 auto; width: 16px; height: 16px; margin-top: 2px; border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.12); border-top-color: #111;
+  animation: daylog-spin 0.8s linear infinite; display: none;
+}
+.daylog-banner[data-state="running"] .daylog-banner-spinner { display: block; }
+.daylog-banner[data-state="done"] .daylog-banner-main::before { content: '✓'; flex: 0 0 auto; font-weight: 800; color: #1a7f37; margin-top: 1px; }
+.daylog-banner[data-state="error"] { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.10), 0 0 0 1.5px rgba(214, 69, 65, 0.55); }
+.daylog-banner[data-state="error"] .daylog-banner-main::before { content: '!'; flex: 0 0 auto; font-weight: 800; color: #d64541; margin-top: 1px; }
+@keyframes daylog-spin { to { transform: rotate(360deg); } }
+.daylog-banner-actions { flex: 0 0 auto; display: flex; gap: 6px; align-self: center; }
+.daylog-banner-actions[hidden] { display: none; }
+.daylog-banner-action {
+  border: 0; border-radius: 999px; padding: 7px 12px; font: inherit; font-size: 12.5px; font-weight: 700;
+  background: #f1f1f1; color: #111;
+}
+.daylog-banner-action:disabled { opacity: 0.5; }
+.daylog-banner-close {
+  flex: 0 0 auto; width: 28px; height: 28px; margin: -4px -4px 0 0; border: 0; background: none;
+  font-size: 20px; line-height: 1; color: #888;
+}
+.daylog-banner-close[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { #view-home .daylog-banner { animation: none; } .daylog-banner-spinner { animation-duration: 2s; } }
+
+/* 아래로 당겨 새로고침 표시 */
+.pull-refresh {
+  position: fixed; left: 50%; top: env(safe-area-inset-top, 0px); z-index: 240;
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+  background: var(--rb-surface, #fff); color: #111; font-size: 13px; font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  transform: translate(-50%, -80px); opacity: 0; pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.pull-refresh.is-visible { opacity: 1; }
+.pull-refresh-icon { width: 14px; height: 14px; display: inline-block; position: relative; }
+.pull-refresh-icon::before { content: '↓'; position: absolute; inset: -3px 0 0 0; text-align: center; font-weight: 800; }
+.pull-refresh.is-loading .pull-refresh-icon { border-radius: 50%; border: 2px solid rgba(0, 0, 0, 0.12); border-top-color: #111; animation: daylog-spin 0.8s linear infinite; transform: none !important; }
+.pull-refresh.is-loading .pull-refresh-icon::before { content: ''; }
