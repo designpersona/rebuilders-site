@@ -12741,6 +12741,15 @@ updateTopHead();
     if (m.last_fail && (!m.last_ok || m.last_fail > m.last_ok) && m.fail_reason && !t && !String(m.status_ko || '').includes(m.fail_reason)) bits.push(en() ? `failed ${ago(m.last_fail)}` : `${ago(m.last_fail)} 실패: ${m.fail_reason}`);
     return bits.filter(Boolean).join(' · ');
   }
+  /* 접힌 카드에 보일 짧은 상태(사용 가능 / 안 됨 …) */
+  const openIds = new Set();
+  function shortText(m) {
+    const t = tests.get(m.id);
+    if (t?.state === 'running') return en() ? 'Testing…' : '확인 중…';
+    if (t?.state === 'ok') return en() ? 'Available' : '사용 가능';
+    if (t?.state === 'fail') return en() ? 'Not working' : '안 됨';
+    return (en() ? { ok: 'Available', warn: 'Check', fail: 'Not working', off: 'Not set up' } : { ok: '사용 가능', warn: '확인 필요', fail: '안 됨', off: '설정 안 됨' })[m.status] || '';
+  }
   function dotClass(m) {
     const t = tests.get(m.id);
     if (t?.state === 'running') return `is-${m.status} is-testing`;
@@ -12765,19 +12774,24 @@ updateTopHead();
     list.innerHTML = order.map((id, i) => {
       const m = byId.get(id);
       const isOn = !offSet.has(id);
-      return `<div class="ai-model-row${isOn ? '' : ' is-off'}" role="listitem" data-id="${esc(id)}">
-        <span class="ai-model-dot ${dotClass(m)}" aria-hidden="true"></span>
-        <div class="ai-model-main">
-          <div class="ai-model-name">${esc(label(m))}${id === firstOn ? `<span class="ai-model-chip">${en() ? '1st' : '1순위'}</span>` : ''}</div>
-          <div class="ai-model-sub">${esc(statusText(m))}</div>
-          <div class="ai-model-meta">${esc([m.model, m.note].filter(Boolean).join(' · '))}</div>
-        </div>
+      const isOpen = openIds.has(id);
+      return `<div class="ai-model-row${isOn ? '' : ' is-off'}${isOpen ? ' is-open' : ''}" role="listitem" data-id="${esc(id)}">
+        <button type="button" class="ai-model-head" aria-expanded="${isOpen}" aria-controls="ai-more-${esc(id)}">
+          <span class="ai-model-dot ${dotClass(m)}" aria-hidden="true"></span>
+          <span class="ai-model-name">${esc(label(m))}${id === firstOn ? `<span class="ai-model-chip">${en() ? '1st' : '1순위'}</span>` : ''}</span>
+          <span class="ai-model-short ${dotClass(m)}">${esc(shortText(m))}</span>
+          <svg class="ai-model-caret" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 5.25 7 8.75l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <label class="ai-switch"><input type="checkbox" ${isOn ? 'checked' : ''} aria-label="${esc(`${label(m)} ${en() ? 'on' : '사용'}`)}"><span></span></label>
+        <div class="ai-model-more" id="ai-more-${esc(id)}"><div class="ai-model-more-in">
+        <div class="ai-model-sub">${esc(statusText(m))}</div>
+        <div class="ai-model-meta">${esc([m.model, m.note].filter(Boolean).join(' · '))}</div>
         <div class="ai-model-ctrl">
           <button type="button" data-act="up" ${i === 0 ? 'disabled' : ''} aria-label="${esc(`${label(m)} ${en() ? 'up' : '위로'}`)}">↑</button>
           <button type="button" data-act="down" ${i === order.length - 1 ? 'disabled' : ''} aria-label="${esc(`${label(m)} ${en() ? 'down' : '아래로'}`)}">↓</button>
           <button type="button" data-act="test" ${tests.get(id)?.state === 'running' ? 'disabled' : ''}>${en() ? 'Test' : '테스트'}</button>
         </div>
+        </div></div>
       </div>`;
     }).join('');
     if (before.size) {
@@ -12838,6 +12852,15 @@ updateTopHead();
   }
 
   list.addEventListener('click', event => {
+    const head = event.target.closest('.ai-model-head');
+    if (head) {
+      const r = head.closest('.ai-model-row');
+      const open = !r.classList.contains('is-open');
+      if (open) openIds.add(r.dataset.id); else openIds.delete(r.dataset.id);
+      r.classList.toggle('is-open', open);
+      head.setAttribute('aria-expanded', String(open));
+      return;
+    }
     const btn = event.target.closest('button[data-act]');
     const row = event.target.closest('.ai-model-row');
     if (!btn || !row) return;

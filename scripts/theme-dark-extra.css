@@ -31,3 +31,8 @@ html.theme-dark .ai-model-dot.is-fail { box-shadow: 0 0 0 3px rgba(239, 68, 68, 
 /* 사진으로 등록 */
 html.theme-dark .label-review-error { color: #f87171; }
 html.theme-dark .label-basis button.active { box-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
+
+/* AI 모델 카드 짧은 상태 */
+html.theme-dark .ai-model-short.is-ok { color: #4ade80; }
+html.theme-dark .ai-model-short.is-fail { color: #f87171; }
+html.theme-dark .ai-model-short.is-warn { color: #fbbf24; }

@@ -14300,8 +14300,8 @@ body:has(.modal-overlay.open) .phone-frame > .daylog-banner { display: none; }
 /* ===== AI 모델 고르기(설정) ===== */
 .ai-model-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .ai-model-row {
-  display: grid; grid-template-columns: 12px 1fr auto; grid-template-areas: "dot main sw" ". ctrl ctrl";
-  align-items: center; column-gap: 10px; row-gap: 8px; padding: 12px; border-radius: var(--radius-sm);
+  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "head sw" "more more";
+  align-items: center; column-gap: 10px; row-gap: 0; padding: 4px 12px 4px 4px; border-radius: var(--radius-sm);
   background: var(--bg3); border: 1px solid var(--border); transition: opacity .2s ease, background-color .2s ease;
   will-change: transform;
 }
@@ -14396,3 +14396,34 @@ body:has(.modal-overlay.open) .phone-frame > .daylog-banner { display: none; }
 .label-review-actions > * { flex: 1; margin: 0 !important; }
 body.label-review-open .phone-frame > .daylog-banner { display: none; }
 @media (prefers-reduced-motion: reduce) { .label-review-overlay.is-reading .label-review-status { animation: none; color: var(--text-primary); background: none; } }
+
+/* AI 모델 카드: 접힘(점·이름·순위·짧은 상태·스위치) ↔ 펼침(자세한 상태·모델 id·↑↓·테스트). 스프링 곡선 */
+.ai-model-head {
+  grid-area: head; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 44px; padding: 8px;
+  background: none; border: 0; border-radius: 10px; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ai-model-head:active { background: var(--bg4); }
+.ai-model-head:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
+.ai-model-head .ai-model-dot { margin-top: 0; align-self: center; flex: none; }
+.ai-model-head .ai-model-name { flex: 0 1 auto; min-width: 0; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai-model-short { flex: none; margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+.ai-model-short.is-ok { color: #16a34a; }
+.ai-model-short.is-fail { color: #dc2626; }
+.ai-model-short.is-warn { color: #d97706; }
+.ai-model-caret { flex: none; color: var(--text-muted); transition: transform .32s cubic-bezier(.2, .8, .2, 1); }
+.ai-model-row.is-open .ai-model-caret { transform: rotate(180deg); }
+.ai-model-more { grid-area: more; display: grid; grid-template-rows: 0fr; transition: grid-template-rows .34s cubic-bezier(.2, .8, .2, 1); }
+.ai-model-row.is-open .ai-model-more { grid-template-rows: 1fr; }
+.ai-model-more-in { min-height: 0; overflow: hidden; padding: 0 0 0 26px; opacity: 0; transform: translateY(-4px); transition: opacity .22s ease, transform .34s cubic-bezier(.2, .8, .2, 1), padding .34s cubic-bezier(.2, .8, .2, 1); }
+.ai-model-row.is-open .ai-model-more-in { padding: 0 0 10px 26px; opacity: 1; transform: none; }
+.ai-model-more-in .ai-model-sub { margin-top: 0; }
+.ai-model-more-in .ai-model-ctrl { margin-top: 10px; justify-content: flex-start; }
+@media (prefers-reduced-motion: reduce) { .ai-model-more, .ai-model-more-in, .ai-model-caret { transition: none; } }
+
+/* 설정 카드: 고르기 버튼(끄기/켜기 등) 바로 뒤 주 버튼, 버튼끼리 붙던 간격(0·8px) → 14·12px */
+.profile-form-card .language-choice ~ .settings-save-btn,
+.profile-form-card .rb-seg ~ .settings-save-btn { margin-top: 14px; }
+.profile-form-card .profile-settings-form:not([hidden]) ~ .settings-save-btn { margin-top: 0; }
+.profile-form-card .settings-save-btn + .settings-save-btn:not([hidden]) { margin-top: 12px; }
+.profile-form-card .language-choice + .profile-settings-form { margin-top: 14px; }
