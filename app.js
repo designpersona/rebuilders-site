@@ -779,7 +779,8 @@ const FoodSearch = (() => {
   }
   function rankAndGroupDb(items, nq, alt = [], queryText = '') {
     const KIND_RANK = { '원재료': 0, '음식': 1, '가공식품': 2 };
-    const tierFor = (n, words, q) => n === q ? 0 : words[0] === q ? 1 : n.startsWith(q) ? 2 : words.some(w => w.endsWith(q) && w.length <= q.length + 3) ? 3 : words.some(w => w.startsWith(q)) ? 4 : n.includes(q) ? 5 : 6;
+    // 정확히 같은 이름 → 첫 낱말이 같음·'배추김치'처럼 짧게 끝이 같음 → 앞이 같음 → 포함
+    const tierFor = (n, words, q) => n === q ? 0 : (words[0] === q || (words.length === 1 && n.endsWith(q) && n.length <= q.length + 2)) ? 1 : n.startsWith(q) ? 2 : words.some(w => w.endsWith(q) && w.length <= q.length + 3) ? 3 : words.some(w => w.startsWith(q)) ? 4 : n.includes(q) ? 5 : 6;
     const scored = items.map(item => {
       const raw = String(item.name || '');
       const n = norm(raw);
@@ -8935,11 +8936,14 @@ function daylogItemToFood(item) {
   const official = item.source === '공식' || item.source_type === '공식';
   const mine = item.source === '저장값' || item.source === '내 기록';
   const grams = num(item.grams);
-  const unit = String(item.unit || 'g').toLowerCase() === 'ml' ? 'ml' : 'g';
+  const rawUnit = String(item.unit || 'g').toLowerCase() === 'ml' ? 'ml' : 'g';
+  // ml 은 음료·국물·소스 같은 액체만. 밥 같은 고체가 ml 로 오면 g 로(예전 브리지·모델 실수 방어)
+  const unit = globalThis.RebuildersUnits?.unitForFood ? globalThis.RebuildersUnits.unitForFood(name, rawUnit) : rawUnit;
+  const amountText = String(item.amount_text || '').trim();
   const food = {
     name,
     cal: Math.round(cal), carbs, protein, fat,
-    serving: String(item.amount_text || (grams ? `${grams}${unit}` : '')).trim().slice(0, 30) || undefined,
+    serving: String((unit !== rawUnit ? amountText.replace(/ml\b/gi, 'g') : amountText) || (grams ? `${grams}${unit}` : '')).trim().slice(0, 30) || undefined,
     sourceType: official ? '공식' : (mine ? '저장' : '추정'),
     sourceLabel: official ? '공식' : (mine ? '저장' : '추정'),
     sourceTrust: official ? 'reference' : (mine ? 'user' : 'estimate'),
@@ -9023,10 +9027,14 @@ function daylogFoodRef(name, data, extra = {}) {
   if ([kcal, carbs, protein, fat].some(v => v === null)) return null;
   const ml = daylogNum(data?.servingMl);
   const grams = ml || daylogNum(data?.servingGrams) || daylogNum(data?.packageGrams);
+  const U = globalThis.RebuildersUnits;
+  const rawUnit = ml || /ml$/i.test(String(data?.serving || '')) ? 'ml' : 'g';
+  // 밥·반찬 같은 고체는 ml 로 보내지 않음(식약처 DB 의 '쌀밥 450ml' 같은 표시)
+  const unit = U?.unitForFood ? U.unitForFood(name, rawUnit) : rawUnit;
   const ref = {
     name, brand: data?.brand || data?.maker || '',
-    serving: String(data?.serving || '').slice(0, 30),
-    grams: grams || null, unit: ml || /ml$/i.test(String(data?.serving || '')) ? 'ml' : 'g',
+    serving: unit !== rawUnit ? String(data?.serving || '').replace(/ml\b/gi, 'g').slice(0, 30) : String(data?.serving || '').slice(0, 30),
+    grams: grams || null, unit,
     kcal, carbs_g: carbs, protein_g: protein, fat_g: fat,
     est: Boolean(data?.estimate || data?.aiEstimate || data?.sourceTrust === 'estimate'),
     ...extra,
@@ -9035,6 +9043,20 @@ function daylogFoodRef(name, data, extra = {}) {
   if (b && bg) {
     const per = [b.cal, b.carbs, b.protein, b.fat].map(v => daylogNum(v));
     if (per.every(v => v !== null)) ref.per100 = { kcal: per[0] * 100 / bg, carbs_g: per[1] * 100 / bg, protein_g: per[2] * 100 / bg, fat_g: per[3] * 100 / bg };
+  } else if (data?.per100 && grams) {
+    const per = [data.per100.cal, data.per100.carbs, data.per100.protein, data.per100.fat].map(v => daylogNum(v));
+    if (per.every(v => v !== null)) ref.per100 = { kcal: per[0], carbs_g: per[1], protein_g: per[2], fat_g: per[3] };
+  }
+  // 식약처 '음식' DB 의 중량은 내 1인분이 아님(쌀밥 450). 저장 음식(S)일 때만 흔한 1인분(밥 1공기 210g)으로 바꿔 보냄
+  if (!extra.meal && data?.mfdsKind === '음식' && ref.per100) {
+    const t = U?.typicalServing?.(name);
+    if (t && t.grams && t.unit !== 'g' && t.unit !== 'ml') {
+      const f = t.grams / 100;
+      Object.assign(ref, {
+        serving: `${t.text}(${t.grams}g)`, grams: t.grams, unit: 'g',
+        kcal: Math.round(ref.per100.kcal * f), carbs_g: daylogNum(ref.per100.carbs_g * f), protein_g: daylogNum(ref.per100.protein_g * f), fat_g: daylogNum(ref.per100.fat_g * f),
+      });
+    }
   }
   return ref;
 }

@@ -64,6 +64,14 @@
       unitGrams: { '공기': 210, '그릇': 210 },
     },
     {
+      name: '김치',
+      mfdsName: '배추김치',
+      aliases: ['배추김치', '포기김치', '배추 김치'],
+      per100: { cal: 38, carbs: 6.5, protein: 2, fat: 0.4 },
+      servingGrams: 50,
+      unitGrams: { '접시': 50, '종지': 30, '조각': 15 },
+    },
+    {
       name: '계란말이',
       mfdsName: '달걀말이',
       aliases: ['달걀말이', '계란 말이', '달걀 말이'],

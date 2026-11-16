@@ -71,7 +71,10 @@
   // 한 줄 → 앱 음식 데이터. 기본 양은 식품중량(한 포장·1회)의 영양, 총중량도 같이 저장.
   function toFood(row) {
     const [name, mi, kind, unitFlag, w, kcal, carbs, protein, fat] = row;
-    const unit = unitFlag ? 'ml' : 'g';
+    // 식약처 DB 는 밥·반찬에도 ml 표시가 있음(예: 쌀밥 450ml). 고체 음식은 g 로
+    const rawUnit = unitFlag ? 'ml' : 'g';
+    // 가공식품은 포장지 표시(ml)가 맞으니 그대로, '음식'(kind 0)만 고침
+    const unit = kind === 0 && global.RebuildersUnits?.unitForFood ? global.RebuildersUnits.unitForFood(name, rawUnit) : rawUnit;
     const amount = w > 0 ? w : 100;
     const f = amount / 100;
     const maker = state.makers[mi] || '';

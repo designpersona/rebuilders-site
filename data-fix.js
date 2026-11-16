@@ -90,11 +90,17 @@
     if (cal !== null && cal > 900 && estimate && !out.some(r => r.code === 'dense')) {
       out.push({ code: 'big', text: `추정값인데 한 번에 ${Math.round(cal)}kcal로 커요` });
     }
+    // 밥·반찬 같은 고체가 ml 로 저장됨(식약처 DB '쌀밥 450ml' 등). 자동으로 바꾸지 않고 확인만
+    const phase = global.RebuildersUnits?.foodPhase?.(name);
+    const mlAmount = val(food?.servingMl) || (String(food?.serving || '').match(/(\d+(?:\.\d+)?)\s*ml\b/i) || [])[1];
+    if (phase === 'solid' && mlAmount) {
+      out.push({ code: 'unit', text: `밥·반찬 같은 고체인데 ${r1(Number(mlAmount))}ml로 저장돼 있어요(g이어야 해요)` });
+    }
     const issue = nameIssue(name);
     if (issue) out.push({ code: 'name', text: issue });
     return out;
   }
-  const SEND_BLOCK = new Set(['corrupt', 'zero', 'serving', 'dense', 'mass', 'mismatch', 'big', 'name', 'dup']);
+  const SEND_BLOCK = new Set(['corrupt', 'zero', 'serving', 'dense', 'mass', 'mismatch', 'big', 'unit', 'name', 'dup']);
 
   function sigOf(food) {
     return JSON.stringify([String(food?.name || ''), ...NUM_FIELDS.map(k => food?.[k] ?? null), gramsOf(food)]);
@@ -139,7 +145,7 @@
         });
       });
     });
-    const order = ['corrupt', 'zero', 'dense', 'mass', 'mismatch', 'big', 'name', 'dup', 'serving', 'blank'];
+    const order = ['corrupt', 'zero', 'dense', 'mass', 'mismatch', 'big', 'unit', 'name', 'dup', 'serving', 'blank'];
     const rank = it => Math.min(...it.reasons.map(r => { const i = order.indexOf(r.code); return i < 0 ? 99 : i; }));
     return items.sort((a, b) => rank(a) - rank(b) || (a.kind === b.kind ? 0 : a.kind === 'food' ? -1 : 1));
   }

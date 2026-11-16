@@ -160,6 +160,26 @@
   const STAPLE_ALT = STAPLE_NAMES.slice().sort((a, b) => b.length - a.length).join('|');
   const COMPOUND_DISH_RE = /(볶음밥|비빔밥|덮밥|김밥|주먹밥|초밥|카레밥|오므라이스|리조또|국밥|컵밥|주먹김|김초밥)$/u;
 
+  /* 액체(ml 가능) / 고체(g 만) 구분. 둘 다 아니면 ''(모름 → 그대로 둠). 액체 말이 있으면 액체 우선(초코우유·콩나물국밥) */
+  const LIQUID_RE = /(음료|드링크|커피|라떼|아메리카노|에스프레소|콜드브루|카푸치노|마끼아또|마키아토|모카|미숫가루|뱅쇼|프라푸치노|블렌디드|주스|쥬스|에이드|스무디|쉐이크|셰이크|우유|두유|밀크티|생수|탄산수|콜라|사이다|소다|맥주|와인|소주|막걸리|하이볼|위스키|사케|칵테일|식혜|수정과|국물|육수|국밥|수프|스프|소스|시럽|드레싱|간장|식초|올리브유|참기름|들기름|케첩|케찹|마요네즈|원액|요구르트|야쿠르트|milk|juice|coffee|latte|tea|soda|beer|wine|soup|sauce)/iu;
+  const LIQUID_END_RE = /(물|국|탕|찌개|전골|차|티|즙|액|라테)$/u;
+  const LIQUID_NOT_RE = /(사탕|물만두|튀김|볶음|떡볶이|부침|나물|문어|산낙지|물회|파티|과자|케이크|빵)$/u;
+  const SOLID_RE = /(밥|빵|떡|김치|계란|달걀|고기|구이|볶음|조림|무침|튀김|치킨|피자|버거|샌드위치|토스트|과자|쿠키|케이크|만두|샐러드|순대|돈까스|돈가스|스테이크|두부|바나나|사과|고구마|감자|견과|너트|비스코프|모찌|도넛|도너츠|와플|베이글|크로와상|크루아상|머핀|스콘|그래놀라|말이|갈비|햄|소시지|치즈|어묵|생선|초밥|김밥|떡갈비|찜|나물|생채|겉절이|장아찌|부침개|잡채|오므라이스|튀각|회$|전$|면$|국수|파스타|라면|우동|쌀|오트밀|시리얼|칩|젤리|초콜릿|초콜렛|양갱|단백질바|프로틴바|바$)/u;
+  function foodPhase(name) {
+    const plain = String(name || '').replace(/\([^)]*\)/g, ' ').toLowerCase();
+    const c = compact(plain);
+    if (!c) return '';
+    // 식약처 음식명은 '된장국 두부'처럼 대표 음식 + 세부명이라 낱말마다 끝을 봄
+    const words = [c, ...plain.split(/\s+/).filter(Boolean)];
+    if (LIQUID_RE.test(c) || words.some(w => LIQUID_END_RE.test(w) && !LIQUID_NOT_RE.test(w))) return 'liquid';
+    if (SOLID_RE.test(c)) return 'solid';
+    return '';
+  }
+  /** 고체 음식이면 ml 대신 g. 액체·모름은 그대로 */
+  function unitForFood(name, unit) {
+    return unit === 'ml' && foodPhase(name) === 'solid' ? 'g' : unit;
+  }
+
   function canonicalFoodName(name) {
     const raw = String(name || '').trim();
     if (!raw) return '';
@@ -728,6 +748,8 @@
     lookupFood,
     isStapleName,
     isCompoundDish,
+    foodPhase,
+    unitForFood,
     stepFor,
     nudgeAmount,
     isMassUnit,
