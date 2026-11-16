@@ -36,3 +36,14 @@ html.theme-dark .label-basis button.active { box-shadow: 0 1px 3px rgba(0, 0, 0,
 html.theme-dark .ai-model-short.is-ok { color: #4ade80; }
 html.theme-dark .ai-model-short.is-fail { color: #f87171; }
 html.theme-dark .ai-model-short.is-warn { color: #fbbf24; }
+
+/* + 음식 추가 시트(2026-11) */
+html.theme-dark #modal-sheet .chip-reco, html.theme-dark #modal-sheet .fpd-src-pill.is-official { background: rgba(74, 222, 128, 0.14); color: #4ade80; }
+html.theme-dark #modal-sheet .fpd-src-pill.is-mine { background: rgba(96, 165, 250, 0.16); color: #93c5fd; }
+html.theme-dark #modal-sheet .fpd-src-pill.is-estimate { background: rgba(251, 191, 36, 0.14); color: #fbbf24; }
+html.theme-dark #modal-sheet .fpd-src-pill { background: #2a2a2e; color: #a1a1aa; }
+html.theme-dark #modal-sheet .tray-add-btn { border-color: #52525b !important; }
+html.theme-dark #modal-sheet .tray-add-btn.is-added { background: #f4f4f5 !important; border-color: #f4f4f5 !important; color: #111216 !important; }
+html.theme-dark #modal-sheet .fm-grabber::after, html.theme-dark #modal-sheet .fpd-grabber::after { background: #3f3f46; }
+html.theme-dark #modal-sheet .fpd-backdrop { background: rgba(0, 0, 0, 0.5); }
+html.theme-dark #modal-sheet .fpd-fav.is-on { color: #fbbf24 !important; }

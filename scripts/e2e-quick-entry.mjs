@@ -66,11 +66,11 @@ try {
 
   // 4) 음식 추가 시트 검색창 빠른 입력 + Enter
   await evaluate(`openModal('breakfast'); const s = document.getElementById('food-search'); s.value = '저녁 밥 반공기 김치'; s.dispatchEvent(new Event('input')); return true;`);
-  const preview = await evaluate(`return document.querySelector('#quick-foods > :first-child')?.className + ' | ' + (document.querySelector('#quick-foods .quick-record-btn')?.textContent || '')`);
-  check('검색창 "저녁 밥 반공기 김치" → 저녁 바로 기록 미리보기', preview.startsWith('quick-record-btn') && preview.includes('저녁에 바로 기록 · 2개'), preview);
+  const preview = await evaluate(`const e = document.querySelector('#quick-foods [data-enter]'); return (e?.className || '') + ' | ' + (e?.textContent || '')`);
+  check('검색창 "저녁 밥 반공기 김치" → 저녁 바로 기록 미리보기(Enter 대상, 결과 아래 연한 보조)', preview.startsWith('quick-record-btn') && preview.includes('저녁에 바로 기록 · 2개'), preview);
   await evaluate(`document.getElementById('food-search').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await new Promise(r => setTimeout(r, 400)); return true;`);
   let dinner = await evaluate(stored('dinner'));
-  check('Enter로 저녁에 밥(반공기)·김치 기록', dinner.map(f => f.name + '/' + f.serving).join('|') === '밥/반공기|김치/null', JSON.stringify(dinner));
+  check('Enter로 저녁에 밥(반공기)·김치(기본 1접시 50g) 기록', dinner.map(f => f.name + '/' + f.serving).join('|') === '밥/반공기|김치/1접시', JSON.stringify(dinner));
   const closed = await evaluate(`return !document.getElementById('modal-overlay').classList.contains('open')`);
   check('기록 후 시트 닫힘', closed);
 
@@ -117,8 +117,8 @@ try {
 
   // 9a) 검색 결과가 없을 때 AI 찾기가 우선, 바로 기록은 보조
   await evaluate(`openModal('snack'); const s = document.getElementById('food-search'); s.value = '너트한줌럭셔리xyz테스트'; s.dispatchEvent(new Event('input')); return true;`);
-  const fallback = await evaluate(`const first = document.querySelector('#quick-foods > :first-child'); const second = document.querySelector('#quick-foods .quick-record-btn.is-secondary'); return { first: first?.textContent || '', cls: first?.className || '', bg: first && getComputedStyle(first).backgroundColor, second: second?.textContent || '' };`);
-  check('검색 실패 시 AI로 찾아서 넣기가 맨 위(어두운 버튼)', /AI로 찾아서 넣기/.test(fallback.first) && /fs-ai-find/.test(fallback.cls) && fallback.bg === 'rgb(24, 24, 27)', JSON.stringify(fallback));
+  const fallback = await evaluate(`const first = document.querySelector('#quick-foods [data-enter]'); const second = document.querySelector('#quick-foods .quick-record-btn.is-secondary:not(.fs-ai-find)'); const box = document.getElementById('quick-foods'); const sec = first?.closest('.sheet-secondary-actions'); return { first: first?.textContent || '', cls: first?.className || '', bg: first && getComputedStyle(first).backgroundColor, second: second?.textContent || '', afterRows: !!sec && sec === box.lastElementChild };`);
+  check('검색 실패 시 AI로 찾아서 넣기 = Enter 대상, 결과 아래 연한 보조 버튼', /AI로 찾아서 넣기/.test(fallback.first) && /fs-ai-find/.test(fallback.cls) && fallback.bg === 'rgba(0, 0, 0, 0)' && fallback.afterRows, JSON.stringify(fallback));
   check('바로 기록 (영양정보 미입력)이 보조', /바로 기록 \(영양정보 미입력\)/.test(fallback.second), JSON.stringify(fallback));
   const looked = await evaluate(`document.querySelector('#quick-foods .fs-ai-find').click(); await new Promise(r => setTimeout(r, 300)); return { error: document.querySelector('#quick-foods .fs-lookup-error')?.textContent || '', kcal: !!document.querySelector('#quick-foods .fs-manual-kcal'), amount: !!document.querySelector('#quick-foods .fs-manual-amount'), btn: document.querySelector('#quick-foods .fs-ai-find')?.textContent || '' };`);
   check('AI 찾기 실패 시 이유와 직접 입력 칸', looked.error === '맥 미니에 연결할 수 없어요' && looked.kcal && looked.amount && /AI로 찾아서 넣기/.test(looked.btn), JSON.stringify(looked));

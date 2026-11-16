@@ -14427,3 +14427,93 @@ body.label-review-open .phone-frame > .daylog-banner { display: none; }
 .profile-form-card .profile-settings-form:not([hidden]) ~ .settings-save-btn { margin-top: 0; }
 .profile-form-card .settings-save-btn + .settings-save-btn:not([hidden]) { margin-top: 12px; }
 .profile-form-card .language-choice + .profile-settings-form { margin-top: 14px; }
+
+/* ===== + 음식 추가 시트(2026-11): 중간↔전체 높이(손잡이 끌기·스프링), 위 줄 × + 검색, 탭 → 목록, 아래 '음식 촬영 | 음식 검색' ===== */
+#modal-overlay #modal-sheet.food-modal-sheet {
+  height: 64dvh; max-height: none; position: relative; overflow: hidden;
+  padding: 0 16px max(calc(10px + var(--safe-bottom, 0px)), calc(var(--kb-overlay-h, 0px) + 8px));
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), height 0.5s cubic-bezier(0.2, 1.08, 0.32, 1), border-radius 0.3s ease, padding-top 0.3s ease;
+}
+#modal-overlay #modal-sheet.food-modal-sheet[data-snap="full"] { height: 100dvh; border-radius: 0; padding-top: var(--safe-top, 0px); }
+#modal-overlay #modal-sheet.food-modal-sheet.is-dragging { transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+#modal-sheet .fm-grabber { position: relative; width: auto; height: 22px; margin: 0 -16px; background: none; border-radius: 0; touch-action: none; cursor: grab; flex-shrink: 0; }
+#modal-sheet .fm-grabber::after { content: ""; position: absolute; left: 50%; top: 8px; width: 36px; height: 5px; margin-left: -18px; border-radius: 99px; background: #D4D6DC; }
+#modal-sheet .fm-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--rb-label, #5E6470); text-align: center; touch-action: none; user-select: none; -webkit-user-select: none; transition: opacity 0.2s ease; }
+#modal-sheet.is-searching .fm-title { display: none; }
+#modal-sheet .fm-top { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+#modal-sheet .fm-top .fm-x { position: static; flex: none; width: 36px !important; height: 36px !important; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: transparent !important; color: var(--rb-ink, #111216); }
+#modal-sheet .fm-top .fm-x:active { background: var(--rb-btn-bg, #F1F2F5) !important; }
+#modal-sheet .fm-top .modal-food-search { flex: 1 1 auto; min-width: 0; margin: 0 !important; display: flex; align-items: center; }
+#modal-sheet .fm-top .modal-food-search input#food-search { flex: 1; min-width: 0; height: 42px; }
+#modal-sheet .food-tabs.rb-seg { margin: 0 0 6px !important; }
+#modal-sheet .food-tabs.rb-seg > .food-tab { height: 30px !important; font-size: 13px !important; }
+#modal-sheet.has-query .food-tabs { display: none !important; }
+#modal-overlay #modal-sheet .food-tab-panel.active { padding-bottom: 12px; }
+#modal-sheet .food-tab-panel > .quick-add-label:not(.food-section-label) { font-size: 12px; font-weight: 600; color: var(--rb-label, #5E6470); margin: 6px 0 2px; }
+#modal-sheet #quick-add-label { display: none; }
+/* 줄: (작은 회색 브랜드) / 굵은 이름(+추천) / '양 | kcal', 오른쪽 체크 */
+#modal-sheet .sheet-food-row { min-height: 60px; }
+#modal-sheet .sheet-food-row .quick-food-chip { padding: 10px 0 !important; }
+#modal-sheet .sheet-food-row .chip-body { gap: 2px; }
+#modal-sheet .sheet-food-row .chip-brand { font-size: 12px; font-weight: 500; color: #8A8F99; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#modal-sheet .sheet-food-row .chip-name { font-size: 15px; font-weight: 700; }
+#modal-sheet .chip-reco { flex: none; padding: 2px 6px; border-radius: 6px; background: #E9F7EF; color: #15803D; font-size: 11px; font-weight: 700; line-height: 1.2; }
+#modal-sheet .tray-add-btn { width: 26px; height: 26px; border-radius: 8px !important; border: 1.5px solid #C9CCD3 !important; background: transparent !important; color: transparent !important; transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.25s cubic-bezier(0.2, 1.6, 0.4, 1); }
+#modal-sheet .tray-add-btn .tray-check { transform: scale(0.4); opacity: 0; transition: transform 0.25s cubic-bezier(0.2, 1.6, 0.4, 1), opacity 0.15s ease; }
+#modal-sheet .tray-add-btn.is-added { background: var(--rb-ink, #111216) !important; border-color: var(--rb-ink, #111216) !important; color: #fff !important; }
+#modal-sheet .tray-add-btn.is-added .tray-check { transform: scale(1); opacity: 1; }
+#modal-sheet .tray-add-btn:active { transform: scale(0.88); }
+/* 결과 아래 연한 보조: AI로 찾기 · 바로 기록 · AI에게 물어보기 */
+#modal-sheet .sheet-secondary-actions { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 4px; }
+#modal-sheet .sheet-secondary-actions:first-child { margin-top: 2px; }
+#modal-sheet .sheet-secondary-actions > * { width: 100%; margin: 0 !important; min-height: 44px; padding: 10px 14px !important; border: 1px solid var(--rb-hairline, #E8E9ED) !important; border-radius: 12px !important; background: transparent !important; color: var(--rb-ink, #111216) !important; box-shadow: none !important; text-align: left; font-weight: 600; }
+#modal-sheet .sheet-secondary-actions .quick-record-title { color: var(--rb-ink, #111216) !important; font-size: 15px; font-weight: 600; }
+#modal-sheet .sheet-secondary-actions .quick-record-items { color: #8A8F99 !important; font-size: 12px; }
+/* 아래: '추가 (N)'(담은 게 있을 때) + '음식 촬영 | 음식 검색' 작은 바 */
+#modal-sheet .food-tray-save { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; margin: 6px 0 0; }
+#modal-sheet .food-tray-save small { font-size: 13px; font-weight: 600; opacity: 0.7; }
+#modal-sheet .fm-bottom { display: flex; align-items: center; justify-content: center; flex-shrink: 0; height: 44px; margin: 6px -16px 0; border-top: 1px solid var(--rb-hairline, #E8E9ED); }
+#modal-sheet.is-searching .fm-bottom, #modal-sheet.has-tray .fm-bottom { display: none; }
+#modal-sheet .fm-bottom-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 100%; min-height: 0 !important; padding: 0 !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; color: var(--text-secondary, #52525b) !important; font: 600 13px/1 var(--font); }
+#modal-sheet .fm-bottom-btn b { font-weight: 600; }
+#modal-sheet .fm-bottom-btn:active { color: var(--rb-ink, #111216) !important; }
+#modal-sheet .fm-bottom-sep { width: 1px; height: 18px; background: var(--rb-hairline, #E8E9ED); }
+/* 상세: 아래에서 올라오는 작은 시트(손잡이 끌어 내리면 닫힘) */
+#modal-sheet .fpd-backdrop { position: absolute; inset: 0; z-index: 19; background: rgba(17, 18, 22, 0.32); opacity: 0; transition: opacity 0.25s ease; }
+#modal-sheet .fpd-backdrop.is-open { opacity: 1; }
+#modal-sheet .fpd-backdrop[hidden] { display: none; }
+#modal-sheet .food-pick-detail { inset: auto 0 0 0; max-height: 88%; gap: 12px; padding: 0 20px calc(16px + var(--safe-bottom, 0px)); border-radius: 20px 20px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12); transform: translateY(105%); transition: transform 0.42s cubic-bezier(0.2, 1.05, 0.32, 1); }
+#modal-sheet .food-pick-detail.is-open { transform: translateY(0); }
+#modal-sheet .food-pick-detail.is-dragging { transition: none; }
+#modal-sheet .fpd-grabber { flex: none; height: 20px; margin: 0 -20px; position: relative; touch-action: none; }
+#modal-sheet .fpd-grabber::after { content: ""; position: absolute; left: 50%; top: 8px; width: 36px; height: 5px; margin-left: -18px; border-radius: 99px; background: #D4D6DC; }
+#modal-sheet .fpd-head { align-items: flex-start; gap: 4px; touch-action: none; }
+#modal-sheet .fpd-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+#modal-sheet .fpd-brand { font-size: 12px; color: #8A8F99; font-weight: 500; }
+#modal-sheet .fpd-name { font-size: 20px; white-space: normal; }
+#modal-sheet .fpd-icon { flex: none; width: 36px; height: 36px; min-height: 0 !important; padding: 0 !important; display: inline-flex; align-items: center; justify-content: center; border: 0 !important; border-radius: 50% !important; background: transparent !important; color: var(--text-secondary, #52525b) !important; }
+#modal-sheet .fpd-icon:active { background: var(--rb-btn-bg, #F1F2F5) !important; }
+#modal-sheet .fpd-fav.is-on { color: #F5A524 !important; }
+#modal-sheet .fpd-fav.is-on path { fill: currentColor; }
+#modal-sheet .fpd-serving-line { display: flex; align-items: baseline; gap: 8px; margin: -4px 0 0; font-size: 15px; color: var(--text-secondary, #52525b); }
+#modal-sheet .fpd-serving-line i { font-style: normal; color: #C9CCD3; }
+#modal-sheet .fpd-serving-line b { font-size: 17px; color: var(--rb-ink, #111216); }
+#modal-sheet .fpd-table { display: flex; flex-direction: column; border-top: 1px solid var(--rb-hairline, #E8E9ED); }
+#modal-sheet .fpd-tr { display: flex; justify-content: space-between; align-items: center; min-height: 38px; border-bottom: 1px solid var(--rb-hairline, #E8E9ED); font-size: 15px; color: var(--rb-ink, #111216); }
+#modal-sheet .fpd-tr b { font-weight: 600; }
+#modal-sheet .fpd-tr.is-sub { min-height: 32px; padding-left: 14px; font-size: 13px; color: var(--text-secondary, #52525b); }
+#modal-sheet .fpd-tr.is-sub b { font-weight: 500; }
+#modal-sheet .fpd-source-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#modal-sheet .fpd-source-row .fpd-source { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#modal-sheet .fpd-src-pill { flex: none; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #EEF0F3; color: #52525b; }
+#modal-sheet .fpd-src-pill.is-official { background: #E9F7EF; color: #15803D; }
+#modal-sheet .fpd-src-pill.is-mine { background: #EAF1FE; color: #1D4ED8; }
+#modal-sheet .fpd-src-pill.is-estimate { background: #FEF3E2; color: #B45309; }
+#modal-sheet .fpd-fix { align-self: flex-start; min-height: 0 !important; padding: 2px 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; color: #8A8F99 !important; font: 500 13px/1.3 var(--font); }
+#modal-sheet .fpd-fix b { color: var(--rb-ink, #111216); text-decoration: underline; text-underline-offset: 2px; }
+#modal-sheet .fpd-add { margin-top: 4px; flex: none; }
+/* 시트가 열려 있으면 떠 있는 AI 버튼 숨김 */
+body.food-sheet-open .ai-fab, body:has(.modal-overlay.open) .ai-fab { opacity: 0 !important; pointer-events: none !important; visibility: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  #modal-overlay #modal-sheet.food-modal-sheet, #modal-sheet .food-pick-detail, #modal-sheet .tray-add-btn, #modal-sheet .tray-add-btn .tray-check { transition: none !important; }
+}

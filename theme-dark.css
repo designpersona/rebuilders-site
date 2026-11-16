@@ -600,6 +600,41 @@ html.theme-dark .label-review-error { color: #e14747; }
 html.theme-dark .ai-model-short.is-ok { color: #81eea9; }
 html.theme-dark .ai-model-short.is-fail { color: #e14747; }
 html.theme-dark .ai-model-short.is-warn { color: #f99b2f; }
+html.theme-dark #modal-sheet .fm-grabber::after { background: #3a3c40; }
+html.theme-dark #modal-sheet .fm-title { color: var(--rb-label, #999ca2); }
+html.theme-dark #modal-sheet .fm-top .fm-x { color: var(--rb-ink, #e3e3e6); }
+html.theme-dark #modal-sheet .fm-top .fm-x:active { background: var(--rb-btn-bg, #232529) !important; }
+html.theme-dark #modal-sheet .food-tab-panel > .quick-add-label:not(.food-section-label) { color: var(--rb-label, #999ca2); }
+html.theme-dark #modal-sheet .sheet-food-row .chip-brand { color: #75787d; }
+html.theme-dark #modal-sheet .chip-reco { background: #264031; color: #84ebab; }
+html.theme-dark #modal-sheet .tray-add-btn { border: 1.5px solid #424449 !important; }
+html.theme-dark #modal-sheet .tray-add-btn.is-added { background: var(--rb-ink, #e3e3e6) !important; border-color: var(--rb-ink, #e3e3e6) !important; color: #1c1c1c !important; }
+html.theme-dark #modal-sheet .sheet-secondary-actions > * { border: 1px solid var(--rb-hairline, #2b2c30) !important; color: var(--rb-ink, #e3e3e6) !important; }
+html.theme-dark #modal-sheet .sheet-secondary-actions .quick-record-title { color: var(--rb-ink, #e3e3e6) !important; }
+html.theme-dark #modal-sheet .sheet-secondary-actions .quick-record-items { color: #75787d !important; }
+html.theme-dark #modal-sheet .fm-bottom { border-top: 1px solid var(--rb-hairline, #2b2c30); }
+html.theme-dark #modal-sheet .fm-bottom-btn { color: var(--text-secondary, #a9a9ad) !important; }
+html.theme-dark #modal-sheet .fm-bottom-btn:active { color: var(--rb-ink, #e3e3e6) !important; }
+html.theme-dark #modal-sheet .fm-bottom-sep { background: var(--rb-hairline, #2b2c30); }
+html.theme-dark #modal-sheet .fpd-backdrop { background: rgba(0, 0, 0, 0.48); }
+html.theme-dark #modal-sheet .food-pick-detail { box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.216); }
+html.theme-dark #modal-sheet .fpd-grabber::after { background: #3a3c40; }
+html.theme-dark #modal-sheet .fpd-brand { color: #75787d; }
+html.theme-dark #modal-sheet .fpd-icon { color: var(--text-secondary, #a9a9ad) !important; }
+html.theme-dark #modal-sheet .fpd-icon:active { background: var(--rb-btn-bg, #232529) !important; }
+html.theme-dark #modal-sheet .fpd-fav.is-on { color: #f6ab32 !important; }
+html.theme-dark #modal-sheet .fpd-serving-line { color: var(--text-secondary, #a9a9ad); }
+html.theme-dark #modal-sheet .fpd-serving-line i { color: #424449; }
+html.theme-dark #modal-sheet .fpd-serving-line b { color: var(--rb-ink, #e3e3e6); }
+html.theme-dark #modal-sheet .fpd-table { border-top: 1px solid var(--rb-hairline, #2b2c30); }
+html.theme-dark #modal-sheet .fpd-tr { border-bottom: 1px solid var(--rb-hairline, #2b2c30); color: var(--rb-ink, #e3e3e6); }
+html.theme-dark #modal-sheet .fpd-tr.is-sub { color: var(--text-secondary, #a9a9ad); }
+html.theme-dark #modal-sheet .fpd-src-pill { background: #25282c; color: #a9a9ad; }
+html.theme-dark #modal-sheet .fpd-src-pill.is-official { background: #264031; color: #84ebab; }
+html.theme-dark #modal-sheet .fpd-src-pill.is-mine { background: #192b4d; color: #426de6; }
+html.theme-dark #modal-sheet .fpd-src-pill.is-estimate { background: #4d3919; color: #f1b07e; }
+html.theme-dark #modal-sheet .fpd-fix { color: #75787d !important; }
+html.theme-dark #modal-sheet .fpd-fix b { color: var(--rb-ink, #e3e3e6); }
 
 /* ---- 손으로 맞춘 다크 값(scripts/theme-dark-extra.css) ---- */
 html.theme-dark {
@@ -640,3 +675,14 @@ html.theme-dark .label-basis button.active { box-shadow: 0 1px 3px rgba(0, 0, 0,
 html.theme-dark .ai-model-short.is-ok { color: #4ade80; }
 html.theme-dark .ai-model-short.is-fail { color: #f87171; }
 html.theme-dark .ai-model-short.is-warn { color: #fbbf24; }
+
+/* + 음식 추가 시트(2026-11) */
+html.theme-dark #modal-sheet .chip-reco, html.theme-dark #modal-sheet .fpd-src-pill.is-official { background: rgba(74, 222, 128, 0.14); color: #4ade80; }
+html.theme-dark #modal-sheet .fpd-src-pill.is-mine { background: rgba(96, 165, 250, 0.16); color: #93c5fd; }
+html.theme-dark #modal-sheet .fpd-src-pill.is-estimate { background: rgba(251, 191, 36, 0.14); color: #fbbf24; }
+html.theme-dark #modal-sheet .fpd-src-pill { background: #2a2a2e; color: #a1a1aa; }
+html.theme-dark #modal-sheet .tray-add-btn { border-color: #52525b !important; }
+html.theme-dark #modal-sheet .tray-add-btn.is-added { background: #f4f4f5 !important; border-color: #f4f4f5 !important; color: #111216 !important; }
+html.theme-dark #modal-sheet .fm-grabber::after, html.theme-dark #modal-sheet .fpd-grabber::after { background: #3f3f46; }
+html.theme-dark #modal-sheet .fpd-backdrop { background: rgba(0, 0, 0, 0.5); }
+html.theme-dark #modal-sheet .fpd-fav.is-on { color: #fbbf24 !important; }

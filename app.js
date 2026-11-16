@@ -111,7 +111,7 @@ const UI_COPY = {
     noRecords: '기록 없음',
     addFood: '음식 추가',
     addSnack: '+추가',
-    searchFood: '음식 이름 검색...',
+    searchFood: '음식 이름을 검색해보세요',
     quickAdd: '빠른 추가',
     search: '검색', recent: '최근', custom: '직접 등록', myProducts: '내 제품', library: '식도감', ai: 'AI', chat: '채팅', shoppingNav: '팬트리',
     home: '식단기록', stats: '건강리포트', profile: '내정보',
@@ -153,7 +153,7 @@ const UI_COPY = {
     noRecords: 'No entries',
     addFood: 'Add food',
     addSnack: '+Add',
-    searchFood: 'Search food name...',
+    searchFood: 'Search for a food',
     quickAdd: 'Quick add',
     search: 'Search', recent: 'Recent', custom: 'Custom', myProducts: 'My products', library: 'Food guide', ai: 'AI', chat: 'Chat', shoppingNav: 'Pantry',
     home: 'Meal log', stats: 'Health report', profile: 'Profile',
@@ -3898,22 +3898,26 @@ function openModal(mealId, options = {}) {
   resetCustomFoodForm();
   setFoodTab('recent');
   overlay.classList.toggle('snack-dialog', mealId === 'snack');
+  setFoodSheetSnap('medium', { instant: true });
   overlay.classList.add('open');
+  document.body.classList.add('food-sheet-open');
   requestAnimationFrame(() => syncSegmented(document.querySelector('#modal-sheet .food-tabs'), true));
-  setTimeout(() => foodSearchInput.focus(), 250);
+  renderFavoriteFoods();
   renderQuickFoods(getFoodEntries());
   renderRecentFoods();
 }
 
 function closeModal() {
   overlay.classList.remove('open');
+  document.body.classList.remove('food-sheet-open');
+  foodSearchInput.blur?.();
   overlay.classList.remove('snack-dialog');
   currentMeal = null;
   modalOpenedFromGlobal = false;
   productRegistrationMode = false;
   foodSearchInput.value = '';
   resetCustomFoodForm();
-  closeSheetFoodDetail();
+  closeSheetFoodDetail({ instant: true });
   clearFoodTray();
 }
 
@@ -3975,13 +3979,16 @@ function sheetFoodBadge(name, data) {
 function sheetFoodSubline(food) {
   const serving = sheetServingText(food);
   const kcal = isNutritionMissing(food) ? (ACTIVE_LOCALE === 'en' ? 'No nutrition info' : '영양정보 없음') : `${Math.round(Number(food.cal) || 0)}kcal`;
-  return serving ? `${serving} · ${kcal}` : kcal;
+  return serving ? `${serving} | ${kcal}` : kcal;
 }
+const TRAY_CHECK_SVG = '<svg class="tray-check" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 7.2l2.6 2.6L11 4.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 function syncTrayButton(btn, key) {
   const on = trayIndex(key) >= 0;
   btn.classList.toggle('is-added', on);
   btn.setAttribute('aria-pressed', String(on));
-  btn.innerHTML = on ? '<span aria-hidden="true">✓</span>' : '<span aria-hidden="true">+</span>';
+  btn.setAttribute('role', 'checkbox');
+  btn.setAttribute('aria-checked', String(on));
+  if (!btn.firstElementChild) btn.innerHTML = TRAY_CHECK_SVG;
 }
 function toggleTray(name, rawData) {
   const { genericHint, ...data } = rawData || {}; // 목록 표시용 힌트는 기록에 안 넣음
@@ -3999,11 +4006,12 @@ function renderFoodTray() {
   if (!bar) return;
   const n = foodTray.length;
   bar.hidden = !n;
-  if (close) close.hidden = n > 0;
+  if (close) close.hidden = true; // 닫기는 위 × 하나
+  document.getElementById('modal-sheet')?.classList.toggle('has-tray', n > 0);
   if (!n) return;
   const kcal = foodTray.reduce((sum, item) => sum + (isNutritionMissing(item.food) ? 0 : Number(item.food.cal) || 0), 0);
   const en = ACTIVE_LOCALE === 'en';
-  bar.textContent = en ? `Log ${n} food${n > 1 ? 's' : ''}${kcal ? ` · ${Math.round(kcal)}kcal` : ''}` : `담은 음식 ${n}개 · 기록${kcal ? ` (${Math.round(kcal)}kcal)` : ''}`;
+  bar.innerHTML = `<span>${en ? `Add (${n})` : `추가 (${n})`}</span>${kcal ? `<small>${Math.round(kcal)}kcal</small>` : ''}`;
 }
 function clearFoodTray() { foodTray.length = 0; renderFoodTray(); }
 /* 담은 음식 기록: 한 개씩 기존 '바로 추가'(addFood)와 똑같이 저장 → 기록 내용은 예전과 같음 */
@@ -4033,9 +4041,9 @@ function cleanMfdsName(name) {
   t = t.replace(/\s+(생것|삶은것|찐것|구운것|말린것|데친것|볶은것)$/, ' ($1)');
   return t;
 }
-function renderFoodRows(container, entries, allowCustomActions = true) {
+function renderFoodRows(container, entries, allowCustomActions = true, options = {}) {
   void allowCustomActions;
-  entries.forEach(([name, data]) => {
+  entries.forEach(([name, data], index) => {
     const food = { name, ...data };
     const visibleName = data?.source === '식약처' && !data.genericHint ? cleanMfdsName(name) : displayFoodName(food);
     const row = document.createElement('div');
@@ -4046,7 +4054,8 @@ function renderFoodRows(container, entries, allowCustomActions = true) {
     btn.className = 'quick-food-chip';
     btn.innerHTML = `
       <span class="chip-body">
-        <span class="chip-title"><span class="chip-name">${escapeHtml(visibleName)}</span>${badge ? `<span class="chip-badge">${escapeHtml(badge)}</span>` : ''}</span>
+        ${badge ? `<span class="chip-brand">${escapeHtml(badge)}</span>` : ''}
+        <span class="chip-title"><span class="chip-name">${escapeHtml(visibleName)}</span>${options.recommend && index === 0 ? `<span class="chip-reco">${ACTIVE_LOCALE === 'en' ? 'Best match' : '추천'}</span>` : ''}</span>
         <span class="chip-sub${isNutritionMissing(data) ? ' is-missing' : ''}">${escapeHtml(sheetFoodSubline(food))}</span>
       </span>`;
     btn.addEventListener('click', () => openSheetFoodDetail(name, data));
@@ -4054,7 +4063,7 @@ function renderFoodRows(container, entries, allowCustomActions = true) {
     add.type = 'button';
     add.className = 'tray-add-btn';
     add.dataset.trayKey = trayKeyOf(name, data);
-    add.setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? `Add ${visibleName}` : `${visibleName} 담기`);
+    add.setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? `Select ${visibleName}` : `${visibleName} 선택`);
     syncTrayButton(add, add.dataset.trayKey);
     add.addEventListener('click', event => { event.stopPropagation(); toggleTray(name, data); });
     row.append(btn, add);
@@ -4075,11 +4084,51 @@ function scaledSheetFood(name, data, amount) {
   const r = amount / base.amount;
   const round = v => (v == null || v === '' || Number.isNaN(Number(v)) ? v : Math.round(Number(v) * r * 10) / 10);
   const next = { name, ...data, cal: round(data.cal), carbs: round(data.carbs), protein: round(data.protein), fat: round(data.fat) };
+  for (const k of ['sugar', 'fiber', 'saturatedFat', 'transFat', 'cholesterol', 'sodium']) if (data[k] != null && data[k] !== '') next[k] = round(data[k]);
   if (data.servingAmount != null && data.servingUnit) next.servingAmount = amount;
   if (data.servingGrams != null) next.servingGrams = round(data.servingGrams);
   if (data.serving) next.serving = `${amount}${base.unit}`;
   return next;
 }
+
+/* 즐겨찾기(★): 상세에서 누르면 프로필 설정에 음식 스냅숏 저장 → '최근' 탭 맨 위에 보임. 기록·내 제품은 안 건드림 */
+function favoriteFoods() { return Array.isArray(PROFILE.favoriteFoods) ? PROFILE.favoriteFoods : []; }
+function isFavoriteFood(name) { return favoriteFoods().some(f => f?.name === name); }
+async function toggleFavoriteFood(name, data) {
+  const cur = favoriteFoods();
+  const list = cur.filter(f => f?.name !== name);
+  const on = list.length === cur.length;
+  if (on) { const { genericHint, ...rest } = data || {}; void genericHint; list.unshift({ name, ...rest }); }
+  PROFILE = { ...PROFILE, favoriteFoods: list.slice(0, 60) };
+  await saveSettings({ favoriteFoods: PROFILE.favoriteFoods });
+  renderFavoriteFoods();
+  return on;
+}
+function renderFavoriteFoods() {
+  const box = document.getElementById('fav-foods');
+  if (!box) return;
+  const list = favoriteFoods();
+  box.hidden = !list.length;
+  box.innerHTML = '';
+  if (!list.length) return;
+  const lab = document.createElement('div');
+  lab.className = 'quick-add-label food-section-label';
+  lab.textContent = ACTIVE_LOCALE === 'en' ? 'Favorites' : '즐겨찾기';
+  const rows = document.createElement('div');
+  rows.className = 'quick-foods fav-food-rows';
+  box.append(lab, rows);
+  renderFoodRows(rows, list.map(({ name, ...d }) => [name, d]), false);
+}
+
+/* 출처 한 낱말: 공식(식약처·공공 DB·포장지) / 내 기록(직접 등록·저장값) / 추정(AI 등) */
+function sheetSourceKind(name, data) {
+  const key = inferSourceLabel({ name, ...data }, name);
+  if (CUSTOM_FOODS[name] || key === '내 음식' || key === '저장') return 'mine';
+  if (key === '공식' || key === '공공DB' || key === '식약처') return 'official';
+  return 'estimate';
+}
+
+/* 시트 안 상세(아래에서 올라오는 작은 시트): 이름·✎·★, '양 | kcal', 영양성분 표, 출처, 수정 링크, 담기 */
 function openSheetFoodDetail(name, data) {
   const pane = document.getElementById('food-pick-detail');
   if (!pane) return;
@@ -4089,33 +4138,62 @@ function openSheetFoodDetail(name, data) {
   const canScale = base.amount > 0 && !isNutritionMissing(data);
   const isCustom = Boolean(CUSTOM_FOODS[name]);
   const isRecent = RECENT_FOODS.some(f => f.name === name);
-  const badge = sheetFoodBadge(name, data);
+  const brand = sheetFoodBadge(name, data);
+  const kind = sheetSourceKind(name, data);
+  const kindText = { official: en ? 'Official' : '공식', mine: en ? 'My entry' : '내 기록', estimate: en ? 'Estimate' : '추정' }[kind];
+  const srcBits = (() => { const src = sourceLabelText({ name, ...data }); const orig = data.nutritionSource?.name && data.nutritionSource.name !== name ? `${data.nutritionSource.provider || (en ? 'MFDS' : '식약처')} · ${data.nutritionSource.name}` : (data.source === '식약처' ? (en ? 'MFDS' : '식약처') : ''); return [src && !['없음', 'None', '공공DB', 'Public DB', '내 음식', 'Mine'].includes(src) ? src : '', orig, data.genericHint || ''].filter(Boolean).join(' · '); })();
+  const fav = isFavoriteFood(name);
   pane.innerHTML = `
-    <div class="fpd-head"><button type="button" class="fpd-back" id="fpd-back" aria-label="${en ? 'Back' : '뒤로'}">‹</button><strong class="fpd-name">${escapeHtml(displayFoodName({ name, ...data }))}</strong>${badge ? `<span class="chip-badge">${escapeHtml(badge)}</span>` : ''}</div>
-    ${(() => { const src = sourceLabelText({ name, ...data }); const orig = data.nutritionSource?.name && data.nutritionSource.name !== name ? `${data.nutritionSource.provider || (en ? 'MFDS' : '식약처')} · ${data.nutritionSource.name}` : ''; const hint = data.genericHint || ''; const bits = [src && src !== '없음' ? src : '', orig, hint].filter(Boolean); return bits.length ? `<p class="fpd-source">${escapeHtml(en ? 'Source' : '출처')} · ${escapeHtml(bits.join(' · '))}</p>` : ''; })()}
-    ${canScale ? `<label class="fpd-amount"><span>${en ? 'Amount' : '먹은 양'}</span><input id="fpd-amount" type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(String(base.amount))}" /><small>${escapeHtml(base.unit)}</small></label>` : `<p class="fpd-serving">${escapeHtml(sheetServingText({ name, ...data }) || '')}</p>`}
-    <div class="fpd-nutri" id="fpd-nutri"></div>
+    <div class="fpd-grabber" id="fpd-grabber" aria-hidden="true"></div>
+    <div class="fpd-head">
+      <div class="fpd-title">${brand ? `<span class="fpd-brand">${escapeHtml(brand)}</span>` : ''}<strong class="fpd-name">${escapeHtml(displayFoodName({ name, ...data }))}</strong></div>
+      <button type="button" class="fpd-icon" id="fpd-edit-icon" aria-label="${en ? 'Edit' : '수정'}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="1.8"/></svg></button>
+      <button type="button" class="fpd-icon fpd-fav${fav ? ' is-on' : ''}" id="fpd-fav" aria-pressed="${fav}" aria-label="${en ? 'Favorite' : '즐겨찾기'}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.8l2.5 5.1 5.6.8-4 3.9 1 5.6-5.1-2.7-5 2.7 1-5.6-4-3.9 5.5-.8z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></button>
+    </div>
+    <p class="fpd-serving-line" id="fpd-serving-line"></p>
+    ${canScale ? `<label class="fpd-amount"><span>${en ? 'Amount' : '먹은 양'}</span><input id="fpd-amount" type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(String(base.amount))}" /><small>${escapeHtml(base.unit)}</small></label>` : ''}
+    <div class="fpd-table" id="fpd-nutri"></div>
+    <div class="fpd-source-row"><span class="fpd-src-pill is-${kind}">${escapeHtml(kindText)}</span>${srcBits ? `<span class="fpd-source">${escapeHtml(srcBits)}</span>` : ''}</div>
+    <button type="button" class="fpd-fix" id="fpd-fix">${en ? 'Not accurate? <b>Edit</b>' : '정보가 정확하지 않나요? <b>수정</b>'}</button>
     <div class="fpd-actions">
-      ${isCustom ? `<button type="button" class="fpd-secondary" id="fpd-edit">${en ? 'Edit' : '수정'}</button><button type="button" class="fpd-secondary is-danger" id="fpd-delete">${en ? 'Delete' : '삭제'}</button>` : ''}
+      ${isCustom ? `<button type="button" class="fpd-secondary is-danger" id="fpd-delete">${en ? 'Delete product' : '내 제품에서 삭제'}</button>` : ''}
       ${!isCustom && isRecent ? `<button type="button" class="fpd-secondary is-danger" id="fpd-delete-recent">${en ? 'Remove from recent' : '최근에서 삭제'}</button>` : ''}
     </div>
     <button type="button" class="fpd-add" id="fpd-add"></button>`;
   const current = () => scaledSheetFood(name, data, Number(document.getElementById('fpd-amount')?.value) || base.amount);
   const paint = () => {
     const f = current();
-    const g = v => `${Math.round((Number(v) || 0) * 10) / 10}g`;
-    document.getElementById('fpd-nutri').innerHTML = isNutritionMissing(f)
-      ? `<p class="fpd-missing">${en ? 'No nutrition info' : '영양정보 없음'}</p>`
-      : `<div><b>${Math.round(Number(f.cal) || 0)}</b><span>kcal</span></div><div><b>${g(f.carbs)}</b><span>${en ? 'Carbs' : '탄수화물'}</span></div><div><b>${g(f.protein)}</b><span>${en ? 'Protein' : '단백질'}</span></div><div><b>${g(f.fat)}</b><span>${en ? 'Fat' : '지방'}</span></div>`;
+    const num = (v, unit) => (v == null || v === '' || Number.isNaN(Number(v)) ? '-' : `${Math.round(Number(v) * 10) / 10}${unit}`);
+    const row = (label, v, unit, sub = false) => `<div class="fpd-tr${sub ? ' is-sub' : ''}"><span>${label}</span><b>${num(v, unit)}</b></div>`;
+    const missing = isNutritionMissing(f);
+    document.getElementById('fpd-serving-line').innerHTML = `<span>${escapeHtml(sheetServingText(f) || (en ? 'Serving unknown' : '양 정보 없음'))}</span><i aria-hidden="true">|</i><b>${missing ? (en ? 'No nutrition info' : '영양정보 없음') : `${Math.round(Number(f.cal) || 0)}kcal`}</b>`;
+    document.getElementById('fpd-nutri').innerHTML = missing
+      ? `<p class="fpd-missing">${en ? 'No nutrition info yet — tap Edit to fill it in.' : '영양정보가 아직 없어요. 수정을 눌러 채울 수 있어요.'}</p>`
+      : [row(en ? 'Carbs' : '탄수화물', f.carbs, 'g'), row(en ? 'Sugars' : '당류', f.sugar, 'g', true), row(en ? 'Fiber' : '식이섬유', f.fiber, 'g', true),
+        row(en ? 'Protein' : '단백질', f.protein, 'g'),
+        row(en ? 'Fat' : '지방', f.fat, 'g'), row(en ? 'Saturated' : '포화지방', f.saturatedFat, 'g', true), row(en ? 'Trans' : '트랜스지방', f.transFat, 'g', true),
+        row(en ? 'Cholesterol' : '콜레스테롤', f.cholesterol, 'mg'), row(en ? 'Sodium' : '나트륨', f.sodium, 'mg')].join('');
     const { name: n, ...rest } = f;
     const inTray = trayIndex(trayKeyOf(n, rest)) >= 0;
-    document.getElementById('fpd-add').textContent = inTray ? (en ? 'Remove from picks' : '담은 음식에서 빼기') : (en ? 'Add to picks' : '담기');
+    document.getElementById('fpd-add').textContent = inTray ? (en ? 'Remove from selection' : '선택 빼기') : (en ? 'Select' : '선택하기');
   };
   paint();
+  const edit = () => {
+    closeSheetFoodDetail({ instant: true });
+    startEditCustomFood(name, data);
+    if (!isCustom) { editingCustomFoodName = null; updateCustomSaveLabel(); } // 기본·식약처 음식은 고친 값으로 '내 제품' 새로 저장(원래 DB는 그대로)
+    setFoodTab('custom');
+    setFoodSheetSnap('full');
+  };
   document.getElementById('fpd-amount')?.addEventListener('input', paint);
-  document.getElementById('fpd-back').addEventListener('click', closeSheetFoodDetail);
+  document.getElementById('fpd-edit-icon').addEventListener('click', edit);
+  document.getElementById('fpd-fix').addEventListener('click', edit);
+  document.getElementById('fpd-fav').addEventListener('click', async event => {
+    const btn = event.currentTarget;
+    try { const on = await toggleFavoriteFood(name, data); btn.classList.toggle('is-on', on); btn.setAttribute('aria-pressed', String(on)); showToast(on ? (en ? 'Added to favorites' : '즐겨찾기에 넣었어요') : (en ? 'Removed from favorites' : '즐겨찾기에서 뺐어요'), 'info'); }
+    catch (error) { showStorageFailure(error); }
+  });
   document.getElementById('fpd-add').addEventListener('click', () => { const { name: n, ...rest } = current(); toggleTray(n, rest); closeSheetFoodDetail(); });
-  document.getElementById('fpd-edit')?.addEventListener('click', () => { closeSheetFoodDetail(); startEditCustomFood(name, data); setFoodTab('custom'); });
   document.getElementById('fpd-delete')?.addEventListener('click', async () => {
     if (!confirm(en ? `Delete ${displayFoodName({ name, ...data })} from your custom foods?` : `${name}을(를) 등록 음식에서 삭제할까요?`)) return;
     try { await deleteCustomFood(name); } catch (error) { showStorageFailure(error); return; }
@@ -4126,14 +4204,93 @@ function openSheetFoodDetail(name, data) {
     try { await deleteRecentFood(name); } catch (error) { showStorageFailure(error); return; }
     closeSheetFoodDetail();
   });
+  const backdrop = document.getElementById('food-pick-backdrop');
+  clearTimeout(pane.__hideTimer);
   pane.hidden = false;
+  if (backdrop) backdrop.hidden = false;
+  pane.style.removeProperty('transform');
+  requestAnimationFrame(() => requestAnimationFrame(() => { pane.classList.add('is-open'); backdrop?.classList.add('is-open'); }));
 }
-function closeSheetFoodDetail() {
+function closeSheetFoodDetail({ instant = false } = {}) {
   const pane = document.getElementById('food-pick-detail');
-  if (pane) { pane.hidden = true; pane.innerHTML = ''; }
+  const backdrop = document.getElementById('food-pick-backdrop');
   sheetDetail = null;
+  if (!pane || pane.hidden) return;
+  pane.classList.remove('is-open');
+  backdrop?.classList.remove('is-open');
+  pane.style.removeProperty('transform');
+  const done = () => { if (pane.classList.contains('is-open')) return; pane.hidden = true; pane.innerHTML = ''; if (backdrop) backdrop.hidden = true; };
+  clearTimeout(pane.__hideTimer);
+  if (instant || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) done(); else pane.__hideTimer = setTimeout(done, 320);
 }
 
+/* + 시트 높이: 중간(medium) ↔ 전체(full). 손잡이·제목을 끌면 따라오고, 놓으면 속도·위치로 가까운 칸에 스프링으로 붙음.
+   중간에서 더 내리면 닫힘(담은 게 있으면 묻기). 검색칸을 누르면 전체로 */
+function setFoodSheetSnap(snap, { instant = false } = {}) {
+  const sheet = document.getElementById('modal-sheet');
+  if (!sheet) return;
+  if (instant) sheet.classList.add('is-dragging');
+  sheet.style.removeProperty('height');
+  sheet.dataset.snap = snap;
+  if (instant) { void sheet.offsetHeight; requestAnimationFrame(() => sheet.classList.remove('is-dragging')); }
+}
+(function setupFoodSheetDrag() {
+  const sheet = document.getElementById('modal-sheet');
+  if (!sheet) return;
+  const zones = [document.getElementById('food-modal-grabber'), document.getElementById('modal-title')].filter(Boolean);
+  let st = null;
+  const viewH = () => window.innerHeight; // 키보드는 화면을 덮기만(resize:'none') → 창 높이 그대로
+  const begin = (y, id) => { st = { y0: y, y, t0: performance.now(), t: performance.now(), v: 0, h0: sheet.getBoundingClientRect().height, id, moved: false }; };
+  const move = y => {
+    if (!st) return;
+    const now = performance.now();
+    st.v = (y - st.y) / Math.max(1, now - st.t); st.y = y; st.t = now;
+    const dy = y - st.y0;
+    if (!st.moved && Math.abs(dy) < 4) return;
+    if (!st.moved) { st.moved = true; sheet.classList.add('is-dragging'); }
+    const full = viewH();
+    let h = st.h0 - dy;
+    if (h > full) h = full + (h - full) * 0.2; // 위로 더 당기면 살짝만(고무줄)
+    sheet.style.height = `${Math.max(80, h)}px`;
+  };
+  const end = () => {
+    if (!st) return;
+    const s = st; st = null;
+    sheet.classList.remove('is-dragging');
+    if (!s.moved) { setFoodSheetSnap(sheet.dataset.snap === 'full' ? 'medium' : 'full'); return; } // 손잡이 톡 = 크기 바꾸기
+    const full = viewH();
+    const med = full * 0.64;
+    const h = sheet.getBoundingClientRect().height;
+    let target;
+    if (s.v < -0.45) target = 'full';
+    else if (s.v > 0.45) target = h < med * 0.98 || sheet.dataset.snap !== 'full' ? 'dismiss' : 'medium';
+    else target = h > (full + med) / 2 ? 'full' : h > med * 0.62 ? 'medium' : 'dismiss';
+    if (target === 'dismiss') {
+      if (confirmDiscardTray()) { sheet.style.removeProperty('height'); closeModal(); return; }
+      target = 'medium';
+    }
+    setFoodSheetSnap(target);
+  };
+  zones.forEach(zone => {
+    zone.addEventListener('pointerdown', event => { if (event.button !== 0) return; begin(event.clientY, event.pointerId); try { zone.setPointerCapture(event.pointerId); } catch { /* ignore */ } });
+    zone.addEventListener('pointermove', event => { if (st && event.pointerId === st.id) move(event.clientY); });
+    ['pointerup', 'pointercancel'].forEach(type => zone.addEventListener(type, event => { if (st && event.pointerId === st.id) end(); }));
+  });
+  foodSearchInput.addEventListener('focus', () => { setFoodSheetSnap('full'); sheet.classList.add('is-searching'); });
+  foodSearchInput.addEventListener('blur', () => sheet.classList.remove('is-searching'));
+  document.getElementById('food-modal-search-btn')?.addEventListener('click', () => { setFoodSheetSnap('full'); foodSearchInput.focus(); });
+  // 상세 시트: 바깥(어두운 곳) 누르거나 손잡이를 아래로 끌면 닫힘
+  document.getElementById('food-pick-backdrop')?.addEventListener('click', () => closeSheetFoodDetail());
+  const pane = document.getElementById('food-pick-detail');
+  let d = null;
+  pane?.addEventListener('pointerdown', event => { if (!event.target.closest('#fpd-grabber, .fpd-head') || event.target.closest('button')) return; d = { y0: event.clientY, y: event.clientY, t: performance.now(), v: 0, id: event.pointerId }; pane.classList.add('is-dragging'); try { pane.setPointerCapture(event.pointerId); } catch { /* ignore */ } });
+  pane?.addEventListener('pointermove', event => { if (!d || event.pointerId !== d.id) return; const now = performance.now(); d.v = (event.clientY - d.y) / Math.max(1, now - d.t); d.y = event.clientY; d.t = now; pane.style.transform = `translateY(${Math.max(0, d.y - d.y0)}px)`; });
+  ['pointerup', 'pointercancel'].forEach(type => pane?.addEventListener(type, event => {
+    if (!d || event.pointerId !== d.id) return;
+    const dy = d.y - d.y0; const v = d.v; d = null; pane.classList.remove('is-dragging');
+    if (dy > 110 || v > 0.5) closeSheetFoodDetail(); else pane.style.removeProperty('transform');
+  }));
+})();
 
 // 음식 추가 시트 검색도 같은 묶음(내 음식 → 최근 → 공식 DB → AI 추정, 5개씩 + 더 보기). 누르면 바로 이 끼니에 추가(기존 동작)
 const sheetSearchMore = { q: '', more: {} };
@@ -4141,6 +4298,10 @@ function renderGroupedQuickFoods(container, q) {
   if (sheetSearchMore.q !== q) { sheetSearchMore.q = q; sheetSearchMore.more = {}; sheetSearchMore.similar = {}; }
   const result = FoodSearch.search(q);
   if (!result) return;
+  // 이름이 검색어와 똑같은 첫 줄(예: '김치')에 작은 '추천' 표시 — 맨 위 한 개만
+  const compact = v => String(v || '').toLowerCase().replace(/[\s()_·.,\-]+/g, '');
+  const qc = compact(q);
+  let recommended = false;
   for (const section of result.sections) {
     if (!section.items.length) continue;
     const limit = sheetSearchMore.more[section.key] || FOOD_SEARCH_PAGE;
@@ -4148,7 +4309,9 @@ function renderGroupedQuickFoods(container, q) {
     if (section.key === 'db') { const lab = document.createElement('div'); lab.className = 'quick-add-label food-section-label'; lab.innerHTML = `${escapeHtml(label)}<small class="fs-attrib">${ACTIVE_LOCALE === 'en' ? 'MFDS' : '식약처'}</small>`; container.appendChild(lab); }
     else { const lab = document.createElement('div'); lab.className = 'quick-add-label food-section-label'; lab.textContent = label; container.appendChild(lab); }
     for (const item of section.items.slice(0, limit)) {
-      renderFoodRows(container, [[item.name, item.data]], false); // 식도감 결과처럼 줄만(수정·삭제는 '내 제품' 탭에서)
+      const exact = !recommended && qc && (compact(item.name) === qc || compact(item.data?.genericHint ? '' : displayFoodName({ name: item.name, ...item.data })) === qc);
+      if (exact) recommended = true;
+      renderFoodRows(container, [[item.name, item.data]], false, { recommend: exact }); // 식도감 결과처럼 줄만(수정·삭제는 '내 제품' 탭에서)
       const sim = item.similar || [];
       if (!sim.length) continue;
       const simKey = `${section.key}:${item.groupKey}`;
@@ -4192,6 +4355,7 @@ function scheduleFoodSearch() {
     `${name} ${displayFoodName({ name, ...data })}`.toLowerCase().includes(normalizedQuery)
   );
   renderQuickFoods(localEntries);
+  document.getElementById('modal-sheet')?.classList.toggle('has-query', Boolean(q));
   foodTabPanels.forEach(panel => {
     const active = q ? panel.dataset.panel === 'search' : panel.dataset.panel === activeFoodTab;
     panel.classList.toggle('active', active);
@@ -4211,38 +4375,44 @@ function renderQuickFoods(entries) {
 
   const searchResult = q && typeof FoodSearch?.search === 'function' ? FoodSearch.search(q) : null;
   const noConfident = Boolean(q && !hasConfidentSearchHit(q, searchResult));
+  const en = ACTIVE_LOCALE === 'en';
+  // 검색 결과 줄이 주인공: 'AI로 찾기'·'바로 기록'·'AI에게 물어보기'는 결과 아래 연한 보조 버튼으로.
+  // Enter 는 예전처럼 문장(끼니·여러 음식)이면 바로 기록, 못 찾았으면 AI 찾기, 아니면 첫 결과(data-enter 로 표시)
+  const secondary = document.createElement('div');
+  secondary.className = 'sheet-secondary-actions';
+  let quickButton = null;
   if (noConfident) {
-    const en = ACTIVE_LOCALE === 'en';
     const ai = document.createElement('button');
     ai.type = 'button';
-    ai.className = 'quick-record-btn fs-ai-find';
+    ai.className = 'quick-record-btn fs-ai-find is-secondary';
+    ai.dataset.enter = '1';
     ai.innerHTML = `<span class="quick-record-title">${en ? 'Find with AI and log' : 'AI로 찾아서 넣기'}</span>`;
     ai.addEventListener('click', () => runButtonAction(ai, () => findAndAddWithAi(q, ai, container)));
-    container.appendChild(ai);
-    const quickButton = buildQuickRecordButton(q);
+    secondary.appendChild(ai);
+    quickButton = buildQuickRecordButton(q);
     if (quickButton) {
       quickButton.classList.add('is-secondary');
       const title = quickButton.querySelector('.quick-record-title');
       if (title) title.textContent = en ? 'Log now (no nutrition yet)' : '바로 기록 (영양정보 미입력)';
-      container.appendChild(quickButton);
+      secondary.appendChild(quickButton);
     }
     renderGroupedQuickFoods(container, q);
+    if (secondary.childElementCount) container.appendChild(secondary);
     return;
   }
 
-  const quickButton = q ? buildQuickRecordButton(q) : null;
-  // 검색 중인 한 단어(예: "바나")는 검색 결과를 먼저, 끼니·여러 음식이 들어간 입력은 바로 기록을 먼저 보여줍니다.
+  quickButton = q ? buildQuickRecordButton(q) : null;
+  // 검색 중인 한 단어(예: "바나")는 첫 검색 결과가, 끼니·여러 음식이 들어간 입력은 바로 기록이 Enter 대상
   const quickFirst = quickButton && !(quickButton.dataset.singleUnknown === 'true' && entries.length);
-  if (quickButton && quickFirst) container.appendChild(quickButton);
+  if (quickButton) { quickButton.classList.add('is-secondary'); if (quickFirst) quickButton.dataset.enter = '1'; secondary.appendChild(quickButton); }
   const askButton = quickButton?.dataset.askItems ? buildAskAiButton(quickButton.dataset.askMeal, JSON.parse(quickButton.dataset.askItems), 'ask-ai-btn', { query: q }) : null;
-  if (askButton && quickFirst) container.appendChild(askButton);
+  if (askButton) { askButton.classList.add('is-secondary'); secondary.appendChild(askButton); }
 
-  const sectionLabel = ACTIVE_LOCALE === 'en'
+  const sectionLabel = en
     ? (q ? 'My foods · Built-in (local)' : 'My foods · Built-in')
     : (q ? '내 음식 · 기본 (로컬)' : '내 음식 · 기본');
   if (q) renderGroupedQuickFoods(container, q); else renderFoodSection(container, sectionLabel, entries, true);
-  if (quickButton && !quickFirst) container.appendChild(quickButton);
-  if (askButton && !quickFirst) container.appendChild(askButton);
+  if (secondary.childElementCount) container.appendChild(secondary);
 
   if (!entries.length && !quickButton) {
     const empty = document.createElement('div');
@@ -4527,7 +4697,7 @@ foodSearchInput.addEventListener('keydown', event => {
   if (!q) return;
   event.preventDefault();
   // 맨 위에 보이는 항목(바로 기록 또는 첫 검색 결과)을 실행
-  const button = document.querySelector('#quick-foods .quick-record-btn, #quick-foods .quick-food-chip');
+  const button = document.querySelector('#quick-foods [data-enter]') || document.querySelector('#quick-foods .quick-food-chip, #quick-foods .quick-record-btn');
   if (button) button.click();
 });
 
@@ -13281,8 +13451,8 @@ updateTopHead();
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   function syncCopy() {
     const map = en()
-      ? { 'label-photo-entry-title': 'Add from photo', 'label-photo-entry-sub': 'Take or pick a nutrition label', 'label-review-title': 'Check the label', 'lr-log-text': 'Also log it to this day', 'label-review-save': 'Save', 'label-review-cancel': 'Cancel', 'label-review-retry': 'Read again', 'lr-eat-label': 'Amount eaten' }
-      : { 'label-photo-entry-title': '사진으로 등록', 'label-photo-entry-sub': '포장지 영양정보표를 찍거나 골라요', 'label-review-title': '포장지 영양정보 확인', 'lr-log-text': '이 날짜 기록에도 넣기', 'label-review-save': '저장', 'label-review-cancel': '취소', 'label-review-retry': '다시 읽기', 'lr-eat-label': '먹은 양' };
+      ? { 'label-photo-entry-title': 'Photo', 'food-modal-search-label': 'Search', 'label-review-title': 'Check the label', 'lr-log-text': 'Also log it to this day', 'label-review-save': 'Save', 'label-review-cancel': 'Cancel', 'label-review-retry': 'Read again', 'lr-eat-label': 'Amount eaten' }
+      : { 'label-photo-entry-title': '음식 촬영', 'food-modal-search-label': '음식 검색', 'label-review-title': '포장지 영양정보 확인', 'lr-log-text': '이 날짜 기록에도 넣기', 'label-review-save': '저장', 'label-review-cancel': '취소', 'label-review-retry': '다시 읽기', 'lr-eat-label': '먹은 양' };
     Object.entries(map).forEach(([id, t]) => { const el = $(id); if (el) el.textContent = t; });
   }
   document.addEventListener('click', e => { if (e.target.closest?.('[data-language]')) setTimeout(syncCopy, 0); });
