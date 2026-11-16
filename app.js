@@ -3746,11 +3746,42 @@ function setupDragHandles() {
 }
 
 function setupMealInteractions() {
+  // 끼니 카드 펼치기/접기: 목록 칸 높이를 재서 0 ↔ 실제 높이로 부드럽게(스프링 느낌 곡선), 내용은 조금 늦게 나타남.
+  // 카드 모서리(20px)·목록 칸 모서리는 두 상태가 같아서 도중에 바뀌지 않음. 움직임 줄이기 설정이면 바로 바뀜
+  const CARD_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
   const toggleHomeCard = card => {
-    const nextExpanded = !card.classList.contains('expanded');
-    card.classList.toggle('expanded', nextExpanded);
-    card.querySelector('[aria-expanded]')?.setAttribute('aria-expanded', String(nextExpanded));
-    card.querySelector('.drag-handle')?.classList.toggle('is-disabled', nextExpanded);
+    const expBtn = card.querySelector('[aria-expanded]');
+    const nextExpanded = expBtn ? expBtn.getAttribute('aria-expanded') !== 'true' : !card.classList.contains('expanded'); // 접히는 도중에 다시 누르면 다시 펼침
+    const items = card.querySelector('.meal-items');
+    const reduce = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const setState = on => {
+      card.classList.toggle('expanded', on);
+      card.querySelector('[aria-expanded]')?.setAttribute('aria-expanded', String(on));
+      card.querySelector('.drag-handle')?.classList.toggle('is-disabled', on);
+    };
+    const running = items?.__cardAnim;
+    const midH = running ? items.getBoundingClientRect().height : null;
+    running?.cancel();
+    if (!items || reduce || typeof items.animate !== 'function') { setState(nextExpanded); return; }
+    const from = midH ?? (nextExpanded ? 0 : items.getBoundingClientRect().height);
+    if (nextExpanded) setState(true);
+    const cs = getComputedStyle(items);
+    const full = nextExpanded ? items.getBoundingClientRect().height : from;
+    const pt = cs.paddingTop, pb = cs.paddingBottom;
+    const frames = nextExpanded
+      ? [{ height: `${from}px`, paddingTop: from ? pt : '0px', paddingBottom: from ? pb : '0px' }, { height: `${full}px`, paddingTop: pt, paddingBottom: pb }]
+      : [{ height: `${from}px`, paddingTop: pt, paddingBottom: pb }, { height: '0px', paddingTop: '0px', paddingBottom: '0px' }];
+    items.style.overflow = 'hidden';
+    const anim = items.animate(frames, { duration: nextExpanded ? 320 : 260, easing: CARD_EASE });
+    items.__cardAnim = anim;
+    const kids = [...items.children];
+    kids.forEach(k => k.animate(nextExpanded
+      ? [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }]
+      : [{ opacity: 1 }, { opacity: 0 }], { duration: nextExpanded ? 220 : 140, delay: nextExpanded ? 90 : 0, easing: 'ease-out', fill: 'backwards' }));
+    const done = () => { if (items.__cardAnim !== anim) return; items.__cardAnim = null; items.style.removeProperty('overflow'); if (!nextExpanded) setState(false); };
+    anim.onfinish = done;
+    anim.oncancel = () => { if (items.__cardAnim === anim) { items.__cardAnim = null; items.style.removeProperty('overflow'); } };
+    if (!nextExpanded) card.querySelector('[aria-expanded]')?.setAttribute('aria-expanded', 'false');
   };
 
   MEAL_IDS.forEach(id => {
@@ -5082,7 +5113,7 @@ function openFoodDex(food) {
   document.body.classList.add('food-dex-open');
   const content = foodDex.querySelector('.food-dex-content');
   if (content) content.scrollTop = 0;
-  requestAnimationFrame(() => foodDex.classList.add('open'));
+  requestAnimationFrame(() => requestAnimationFrame(() => foodDex.classList.add('open'))); // 두 프레임 뒤: 처음 위치에서 시작해 부드럽게 들어옴
   document.getElementById('food-dex-close')?.focus();
 }
 
@@ -5251,7 +5282,7 @@ function closeFoodDex() {
   if (!foodDex) return;
   foodDex.classList.remove('open');
   document.body.classList.remove('food-dex-open');
-  window.setTimeout(() => { foodDex.hidden = true; }, 220);
+  window.setTimeout(() => { if (!foodDex.classList.contains('open')) foodDex.hidden = true; }, 300); // 닫히는 도중 다시 열면 숨기지 않음
 }
 
 document.getElementById('food-dex-close')?.addEventListener('click', closeFoodDex);

@@ -14432,9 +14432,9 @@ body.label-review-open .phone-frame > .daylog-banner { display: none; }
 #modal-overlay #modal-sheet.food-modal-sheet {
   height: 64dvh; max-height: none; position: relative; overflow: hidden;
   padding: 0 16px max(calc(10px + var(--safe-bottom, 0px)), calc(var(--kb-overlay-h, 0px) + 8px));
-  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), height 0.5s cubic-bezier(0.2, 1.08, 0.32, 1), border-radius 0.3s ease, padding-top 0.3s ease;
+  transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.5s cubic-bezier(0.2, 1.08, 0.32, 1), padding-top 0.3s ease;
 }
-#modal-overlay #modal-sheet.food-modal-sheet[data-snap="full"] { height: 100dvh; border-radius: 0; padding-top: var(--safe-top, 0px); }
+#modal-overlay #modal-sheet.food-modal-sheet[data-snap="full"] { height: 100dvh; padding-top: var(--safe-top, 0px); }
 #modal-overlay #modal-sheet.food-modal-sheet.is-dragging { transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
 #modal-sheet .fm-grabber { position: relative; width: auto; height: 22px; margin: 0 -16px; background: none; border-radius: 0; touch-action: none; cursor: grab; flex-shrink: 0; }
 #modal-sheet .fm-grabber::after { content: ""; position: absolute; left: 50%; top: 8px; width: 36px; height: 5px; margin-left: -18px; border-radius: 99px; background: #D4D6DC; }
@@ -14482,7 +14482,7 @@ body.label-review-open .phone-frame > .daylog-banner { display: none; }
 #modal-sheet .fpd-backdrop { position: absolute; inset: 0; z-index: 19; background: rgba(17, 18, 22, 0.32); opacity: 0; transition: opacity 0.25s ease; }
 #modal-sheet .fpd-backdrop.is-open { opacity: 1; }
 #modal-sheet .fpd-backdrop[hidden] { display: none; }
-#modal-sheet .food-pick-detail { inset: auto 0 0 0; max-height: 88%; gap: 12px; padding: 0 20px calc(16px + var(--safe-bottom, 0px)); border-radius: 20px 20px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12); transform: translateY(105%); transition: transform 0.42s cubic-bezier(0.2, 1.05, 0.32, 1); }
+#modal-sheet .food-pick-detail { inset: auto 0 0 0; max-height: 88%; gap: 12px; padding: 0 20px calc(16px + var(--safe-bottom, 0px)); border-radius: 20px 20px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12); transform: translateY(105%); transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1); }
 #modal-sheet .food-pick-detail.is-open { transform: translateY(0); }
 #modal-sheet .food-pick-detail.is-dragging { transition: none; }
 #modal-sheet .fpd-grabber { flex: none; height: 20px; margin: 0 -20px; position: relative; touch-action: none; }
@@ -14517,3 +14517,25 @@ body.food-sheet-open .ai-fab, body:has(.modal-overlay.open) .ai-fab { opacity: 0
 @media (prefers-reduced-motion: reduce) {
   #modal-overlay #modal-sheet.food-modal-sheet, #modal-sheet .food-pick-detail, #modal-sheet .tray-add-btn, #modal-sheet .tray-add-btn .tray-check { transition: none !important; }
 }
+
+/* ===== 모서리 둥글기 한 벌(2026-11): 카드 20 · 시트 위 24 · 안쪽(버튼·입력·작은 카드) 14 · 아주 작은 칩·체크 8 · 알약 999 · 동그라미 50%
+   두 상태(접힘/펼침, 중간/전체)가 같은 값이라 움직이는 도중 모서리가 바뀌지 않음 ===== */
+:root { --r-card: 20px; --r-sheet: 24px; --r-inner: 14px; --r-xs: 8px; --r-pill: 999px; }
+/* 홈 끼니·간식 카드: 펼침/접힘 모두 20, 목록 칸 아래 모서리도 카드와 같게. 높이는 JS(Web Animations)가 움직이므로 CSS 전환 끔 */
+#view-home .meal-card, #view-home .snack-card, #view-home .snack-card.has-items, #view-home .meal-card.expanded, #view-home .snack-card.expanded, #view-home .day-summary { border-radius: var(--r-card) !important; }
+#view-home .meal-card .meal-items, #view-home .snack-card .meal-items, #view-home .meal-card.expanded .meal-items, #view-home .snack-card.expanded .meal-items { border-radius: 0 0 var(--r-card) var(--r-card) !important; transition: none !important; min-height: 0 !important; } /* min-height 0: 카드가 세로 flex 라 목록 칸이 내용 높이 밑으로 안 줄던(펼칠 때 53px 먼저 튀던) 문제 */
+#view-home .snack-card, #view-home .snack-card.has-items { transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease, transform 0.2s ease, opacity 0.2s ease !important; }
+/* 아래에서 올라오는 시트: 위 모서리 24로 모두 같게(음식 추가·상세·수정·링크·사진 확인·데이터 점검) */
+.modal-sheet:not(.time-edit-sheet), .datafix-sheet, #modal-sheet .food-pick-detail { border-radius: var(--r-sheet) var(--r-sheet) 0 0 !important; }
+/* 가운데 뜨는 작은 창·떠 있는 카드: 카드와 같은 20 */
+.modal-sheet.time-edit-sheet, .phone-frame > .daylog-banner { border-radius: var(--r-card) !important; }
+/* 안쪽 버튼·입력·작은 카드: 14 */
+.time-period-toggle, .datafix-row, .label-review-thumb, .food-dex-delete-actions button, #modal-sheet .sheet-secondary-actions > *, #modal-sheet .fpd-secondary, .label-review-sheet input:not([type=checkbox]):not([type=radio]), .label-review-sheet select { border-radius: var(--r-inner) !important; }
+/* 아주 작은 칩·체크박스·작은 숫자칸: 8 */
+#modal-sheet .chip-reco, #modal-sheet .chip-badge, #modal-sheet .tray-add-btn, .food-amount-split-total, .food-amount-split-eaten { border-radius: var(--r-xs) !important; }
+/* 음식 정보(도감) 화면: 오른쪽에서 살짝 밀려 들어오며 나타남(같은 곡선) */
+.food-dex { transform: translateX(24px); transition: opacity 0.24s ease, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) !important; }
+.food-dex.open { transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) { .food-dex, .modal-sheet, .modal-overlay { transition: none !important; } }
+/* 펼친 카드 최소 높이(118px)를 없앰: 펼치는 순간 카드가 53px 먼저 튀고, 접을 때 마지막에 툭 떨어지던 원인(높이는 목록 칸 애니메이션이 정함) */
+#view-home .meal-card.expanded, #view-home .snack-card.expanded { min-height: 0 !important; }
