@@ -1938,25 +1938,73 @@ function applyExtendedStaticCopy() {
 }
 
 async function goToToday() {
-  if (activeView === 'home' && typeof slideDateStripTo === 'function') {
-    const today = new Date();
-    if (dateKey(today) !== dateKey(currentDate) && await slideDateStripTo(today)) return;
+  // 여러 주를 밀던 중에도 항상 오늘로 스냅. 진행 중인 주 이동 애니메이션을
+  // 기다리지 않는다(3주 칩만 있는 트랙을 N주 이동시키면 빈 줄이 보이거나,
+  // 이전 settle의 timer가 새 약속을 취소해 버튼이 멈추기도 했다).
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (typeof cancelDateStripMotion === 'function') cancelDateStripMotion({ resetFlags: true });
+  currentDate = today;
+  dateStripKey = dateKey(today);
+  dateStripWeekKey = null;
+  if (typeof setDateStripOffset === 'function') setDateStripOffset(0);
+  if (typeof homeCalMonth !== 'undefined') {
+    homeCalMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   }
-  currentDate = new Date();
-  await loadCurrentDay();
+  try {
+    if (!homeCalOpen && typeof homeCalProgress === 'number' && homeCalProgress > 0.01 && typeof closeHomeCal === 'function') {
+      closeHomeCal({ animate: false });
+    }
+  } catch { /* 달력이 아직 없으면 무시 */ }
+  try {
+    await loadCurrentDay();
+  } catch (err) {
+    console.error(err);
+  }
+  // 다른 제스처가 이미 다른 날을 골랐으면 덮지 않는다. 날짜 줄을 만지는 중이면
+  // 그 제스처에 트랙을 맡기고, 선택·리포트만 오늘로 맞춰 둔다.
+  if (dateKey(currentDate) !== dateKey(today)) return;
   updateDateDisplay();
+  if (!dateStripDragging && typeof renderDateStrip === 'function') renderDateStrip(true);
   renderAll(true);
+  if (activeView === 'search') renderSearchHub();
+  if (activeView === 'stats') rerenderStats();
+  if (homeCalOpen && typeof renderHomeMonthCalendar === 'function') renderHomeMonthCalendar();
 }
 
 document.getElementById('prev-day').addEventListener('click', () => changeDate(-1, { animate: true }));
 document.getElementById('next-day').addEventListener('click', () => changeDate(+1, { animate: true }));
 document.getElementById('go-today')?.addEventListener('click', goToToday);
-// 날짜를 누르면 언제나 오늘로 (이미 오늘이면 그대로)
-document.getElementById('date-display')?.addEventListener('click', async () => {
-  if (isToday(currentDate)) return;
-  await goToToday();
-  if (typeof playPageEnter === 'function' && activeView === 'home') playPageEnter(document.getElementById('view-home'));
-});
+// 날짜를 누르면 언제나 오늘로 (이미 오늘이면 그대로).
+// 날짜 줄과 같이, 캡처된 제스처가 합성 click을 삼켜도 touchend에서 동작하게 한다.
+(function setupGoTodayControl() {
+  const el = document.getElementById('date-display');
+  if (!el || el._goTodayBound) return;
+  el._goTodayBound = true;
+  let x0 = 0, y0 = 0, handled = false;
+  const run = async () => {
+    if (isToday(currentDate)) return;
+    await goToToday();
+    if (typeof playPageEnter === 'function' && activeView === 'home') playPageEnter(document.getElementById('view-home'));
+  };
+  el.addEventListener('touchstart', event => {
+    if (event.touches.length !== 1) return;
+    const t = event.touches[0];
+    x0 = t.clientX; y0 = t.clientY; handled = false;
+  }, { passive: true });
+  el.addEventListener('touchend', event => {
+    const t = event.changedTouches?.[0];
+    if (!t) return;
+    if (Math.hypot(t.clientX - x0, t.clientY - y0) > 8) return;
+    handled = true;
+    if (event.cancelable) event.preventDefault();
+    run();
+  }, { passive: false });
+  el.addEventListener('click', event => {
+    if (handled) { handled = false; event.preventDefault(); return; }
+    run();
+  });
+})();
 // 전체삭제: 편집할 때만, 식단 목록 아래 오른쪽에 회색 글자(빨강은 확인 창 안에서만)
 document.getElementById('clear-day-btn')?.addEventListener('click', clearCurrentDay);
 
@@ -13645,8 +13693,36 @@ let dateStripWeekKey = null; // 보이는 주의 일요일
 let dateStripOffset = 0;
 let dateStripDragging = false;
 let dateStripLock = false;
+let dateStripMotionGen = 0;
+let dateStripSettleDone = null;
 let slideDateStripBy = null;
 let slideDateStripTo = null;
+
+function cancelDateStripMotion({ resetFlags = true } = {}) {
+  dateStripMotionGen += 1;
+  const track = document.getElementById('date-strip-track');
+  if (track) {
+    if (track._onSettle) {
+      track.removeEventListener('transitionend', track._onSettle);
+      track._onSettle = null;
+    }
+    if (track._settleTimer) {
+      clearTimeout(track._settleTimer);
+      track._settleTimer = 0;
+    }
+  }
+  const pending = dateStripSettleDone;
+  dateStripSettleDone = null;
+  if (pending) {
+    try { pending(false); } catch { /* 이미 끝난 약속 */ }
+  }
+  if (resetFlags) {
+    dateStripDragging = false;
+    dateStripLock = false;
+    document.getElementById('date-strip')?.classList.remove('is-dragging');
+  }
+  return dateStripMotionGen;
+}
 
 function startOfWeek(d) {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -13790,13 +13866,15 @@ function renderDateStrip(force = false) {
   applyDateStripMagnify();
 }
 
-async function commitDateStripTo(nextDate) {
+async function commitDateStripTo(nextDate, gen = dateStripMotionGen) {
   const next = new Date(nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate());
   const key = dateKey(next);
   if (key === dateKey(currentDate)) {
     dateStripKey = key;
-    dateStripLock = false;
-    renderDateStrip(true);
+    if (gen === dateStripMotionGen) {
+      dateStripLock = false;
+      renderDateStrip(true);
+    }
     return;
   }
   dateStripLock = true;
@@ -13804,6 +13882,7 @@ async function commitDateStripTo(nextDate) {
   dateStripKey = key;
   try {
     await loadCurrentDay();
+    if (gen !== dateStripMotionGen) return;
     updateDateDisplay();
     renderAll(true);
     if (activeView === 'search') renderSearchHub();
@@ -13813,27 +13892,51 @@ async function commitDateStripTo(nextDate) {
       renderHomeMonthCalendar();
     }
   } finally {
-    dateStripLock = false;
-    renderDateStrip(true);
+    if (gen === dateStripMotionGen) {
+      dateStripLock = false;
+      renderDateStrip(true);
+    }
   }
 }
 
 function settleDateStripToOffset(targetPx) {
   return new Promise(resolve => {
+    cancelDateStripMotion({ resetFlags: false });
+    const gen = dateStripMotionGen;
     const p = dateStripParts();
-    if (!p || reduceMotion() || Math.abs(targetPx - dateStripOffset) < 0.5) {
-      resolve();
+    let settled = false;
+    const done = (ok = true) => {
+      if (settled) return;
+      settled = true;
+      if (dateStripSettleDone === done) dateStripSettleDone = null;
+      if (p?.track) {
+        if (p.track._onSettle) {
+          p.track.removeEventListener('transitionend', p.track._onSettle);
+          p.track._onSettle = null;
+        }
+        if (p.track._settleTimer) {
+          clearTimeout(p.track._settleTimer);
+          p.track._settleTimer = 0;
+        }
+      }
+      resolve(ok && gen === dateStripMotionGen);
+    };
+    dateStripSettleDone = done;
+    if (!p) { done(false); return; }
+    if (reduceMotion() || Math.abs(targetPx - dateStripOffset) < 0.5) {
+      setDateStripOffset(targetPx);
+      done(true);
       return;
     }
-    const track = p.track;
-    const done = () => {
-      track.removeEventListener('transitionend', done);
-      clearTimeout(track._settleTimer);
-      resolve();
+    const onEnd = event => {
+      if (event.target !== p.track) return;
+      if (event.propertyName && event.propertyName !== 'transform') return;
+      done(true);
     };
+    p.track._onSettle = onEnd;
     setDateStripOffset(targetPx, 'ease');
-    track.addEventListener('transitionend', done);
-    track._settleTimer = setTimeout(done, (HOME_MOTION_MS || 280) + 40);
+    p.track.addEventListener('transitionend', onEnd);
+    p.track._settleTimer = setTimeout(() => done(true), (HOME_MOTION_MS || 280) + 40);
   });
 }
 
@@ -13843,15 +13946,23 @@ slideDateStripBy = async function (delta) {
   const sameWeek = weekStartKey(next) === weekStartKey(currentDate);
   if (sameWeek) {
     await commitDateStripTo(next);
-    return true;
+    return dateKey(currentDate) === dateKey(next);
   }
   const p = dateStripParts();
   if (!p) return false;
   const weeks = Math.round((startOfWeek(next) - startOfWeek(currentDate)) / 86400000 / 7);
+  if (!weeks) {
+    await commitDateStripTo(next);
+    return true;
+  }
+  // 트랙에는 앞뒤 한 주만 그려져 있으므로, 멀리 점프할 때는 ±1주만 밀고 바로 고친다.
+  const dir = weeks > 0 ? 1 : -1;
   dateStripHaptic();
-  await settleDateStripToOffset(-weeks * p.W);
-  await commitDateStripTo(next);
-  return true;
+  const ok = await settleDateStripToOffset(-dir * p.W);
+  if (!ok) return false;
+  const gen = dateStripMotionGen;
+  await commitDateStripTo(next, gen);
+  return gen === dateStripMotionGen && dateKey(currentDate) === dateKey(next);
 };
 
 slideDateStripTo = async function (date) {
@@ -13912,6 +14023,7 @@ slideDateStripTo = async function (date) {
     const p = dateStripParts();
     weekW = p ? p.W : (strip.clientWidth || innerWidth);
     active = true;
+    cancelDateStripMotion({ resetFlags: false });
     dateStripDragging = false;
     window._homeCalPullApi?.prepCal?.();
   }, { passive: true, capture: true });
@@ -13987,7 +14099,7 @@ slideDateStripTo = async function (date) {
       if (!weeks) { settleDateStripToOffset(0); return; }
       const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + weeks * 7);
       dateStripHaptic();
-      settleDateStripToOffset(-weeks * p.W).then(() => commitDateStripTo(next));
+      settleDateStripToOffset(-weeks * p.W).then(ok => { if (ok) commitDateStripTo(next); });
       return;
     }
     // 탭: click에 기대지 않고 touchend/pointerup에서 바로 고름.
