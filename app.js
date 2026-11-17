@@ -9199,6 +9199,17 @@ function daylogSummaryText(raw, savedCount) {
    - 맡긴 작업 번호는 localStorage 에 남겨, 앱이 다시 열리거나 새로고침돼도 결과만 이어서 받음 */
 const DAYLOG_PENDING_KEY = 'rebuilders-daylog-pending';
 const DAYLOG_RESUME_MAX_MS = 6 * 60 * 60 * 1000;
+/* 기다리기 상한: 브리지 daylog 예산(기본 270초) + 여유. 이 시간이 지나면 타이머를 멈추고 '실패 · 다시 시도' */
+const DAYLOG_WAIT_BUFFER_MS = 30000;
+const DAYLOG_WAIT_DEFAULT_MS = 270000;
+function daylogWaitMaxMs() {
+  const s = Number(globalThis.RebuildersBridge?.getModelCache?.()?.budget_s);
+  const budget = Number.isFinite(s) && s >= 60 && s <= 600 ? Math.round(s * 1000) : DAYLOG_WAIT_DEFAULT_MS;
+  return budget + DAYLOG_WAIT_BUFFER_MS;
+}
+function daylogElapsedMs(entry) {
+  return Math.max(0, Date.now() - (entry?.startedAt || Date.now()));
+}
 const daylogRun = { queue: [], running: false, applying: false, banner: null, tickTimer: 0 };
 
 function readDaylogPending() {
@@ -9390,17 +9401,19 @@ function syncDaylogBannerDate() {
 }
 function daylogRunningTitle(entry) {
   const en = ACTIVE_LOCALE === 'en';
-  const sec = Math.max(0, Math.round((Date.now() - entry.startedAt) / 1000));
+  const cap = daylogWaitMaxMs();
+  const elapsed = daylogElapsedMs(entry);
+  const sec = Math.min(Math.round(elapsed / 1000), Math.round(cap / 1000));
   const day = daylogDateLabel(entry.date);
   const waiting = daylogRun.queue.filter(e => !e.done && e !== entry).length;
   const prog = entry.progress || {};
-  const failedNow = (Array.isArray(prog.failed) ? prog.failed : []).filter(f => f && f.label && f.kind !== 'other');
-  const switched = prog.trying_label && (failedNow.length || prog.trying !== 'grok');
+  const failedNow = daylogPriorModels({ failed_models: prog.failed, skipped_models: prog.skipped });
+  const switched = prog.trying_label && (failedNow.length || (prog.trying && prog.trying !== 'grok'));
   const base = switched
     ? (en ? `Sorting with ${prog.trying_label}… ${sec}s` : `${withRo(prog.trying_label)} 정리하는 중… ${sec}초`)
     : (en ? `Grok is splitting meals and looking up nutrition… ${sec}s` : `그록이 끼니를 나누고 영양을 찾는 중… ${sec}초`);
   const parts = [];
-  if (failedNow.length) parts.push(failedNow.map(f => (en ? `${f.label} failed` : `${f.label} 실패${f.reason ? `(${f.reason})` : ''}`)).join(' → '));
+  if (failedNow.length) parts.push(failedNow.map(f => daylogModelDescribe(f, en)).join(' → '));
   if (day) parts.push(en ? `saving to ${day}` : `${day}에 저장`);
   if (waiting) parts.push(en ? `${waiting} more waiting` : `${waiting}개 더 대기`);
   return { title: base, body: parts.join(' · ') };
@@ -9408,6 +9421,10 @@ function daylogRunningTitle(entry) {
 function startDaylogTicker(entry) {
   clearInterval(daylogRun.tickTimer);
   const tick = () => {
+    if (daylogElapsedMs(entry) >= daylogWaitMaxMs()) {
+      stopDaylogTicker();
+      globalThis.RebuildersBridge?.wakeJobPolls?.();
+    }
     const { title, body } = daylogRunningTitle(entry);
     setDaylogBanner('running', { title, body });
     const live = liveAgentMessage(entry.message);
@@ -9489,14 +9506,31 @@ function withIga(word) {
   return `${w}${batchim ? '이' : '가'}`;
 }
 /** 어떤 모델이 답했는지: '그록으로 정리' / '그록 실패(로그인 만료) → 제미나이로 정리' */
+function daylogModelDescribe(f, en) {
+  if (f.kind === 'quota') return en ? `${f.label} quota exceeded` : `${f.label} 할당량 초과`;
+  return en ? `${f.label} failed${f.reason ? ` (${f.reason})` : ''}` : `${f.label} 실패${f.reason ? `(${f.reason})` : ''}`;
+}
+function daylogPriorModels(raw) {
+  const skipped = (Array.isArray(raw?.skipped_models) ? raw.skipped_models : []).filter(f => f && f.label && f.kind !== 'other');
+  const failed = (Array.isArray(raw?.failed_models) ? raw.failed_models : []).filter(f => f && f.label && f.kind !== 'other');
+  const seen = new Set();
+  const out = [];
+  [...skipped, ...failed].forEach(f => { if (!seen.has(f.id || f.label)) { seen.add(f.id || f.label); out.push(f); } });
+  return out;
+}
 function daylogModelLine(raw) {
   const en = ACTIVE_LOCALE === 'en';
   const by = raw?.answered_by?.label;
-  const failed = (Array.isArray(raw?.failed_models) ? raw.failed_models : []).filter(f => f && f.label && f.kind !== 'other');
-  if (!by) return '';
-  if (!failed.length) return en ? `Sorted by ${by}` : `${withRo(by)} 정리`;
-  const fails = failed.map(f => (en ? `${f.label} failed` : `${f.label} 실패${f.reason ? `(${f.reason})` : ''}`)).join(' → ');
-  return en ? `${fails} → sorted by ${by}` : `${fails} → ${withRo(by)} 정리`;
+  const prior = daylogPriorModels(raw);
+  if (!by && !prior.length) return '';
+  if (!by) return prior.map(f => daylogModelDescribe(f, en)).join(' → ');
+  if (!prior.length) return en ? `Sorted by ${by}` : `${withRo(by)} 정리`;
+  const head = prior.map(f => daylogModelDescribe(f, en)).join(' → ');
+  const local = raw?.provider === 'ollama' || raw?.provider === 'interpret' || String(raw?.answered_by?.id || '').startsWith('ollama') || raw?.answered_by?.id === 'basic';
+  if (local && prior.some(f => f.kind === 'quota')) {
+    return en ? `${head} → logged with a local model (${by})` : `${head} → 로컬 모델로 기록했어요`;
+  }
+  return en ? `${head} → sorted by ${by}` : `${head} → ${withRo(by)} 정리`;
 }
 function daylogBannerSummary(raw, entry, dupCount) {
   const en = ACTIVE_LOCALE === 'en';
@@ -9504,7 +9538,9 @@ function daylogBannerSummary(raw, entry, dupCount) {
   const t = raw.total || {};
   const fmt = n => Math.round(Number(n || 0) * 10) / 10;
   const day = daylogDateLabel(entry.date);
-  const sec = Math.round((Date.now() - entry.startedAt) / 1000);
+  const wall = Math.max(0, Math.round((Date.now() - entry.startedAt) / 1000));
+  const jobSec = raw.total_ms != null ? (Number(raw.total_ms) > 1000 ? Math.round(Number(raw.total_ms) / 1000) : Math.round(Number(raw.total_ms))) : null;
+  const sec = jobSec != null ? jobSec : Math.min(wall, Math.round(daylogWaitMaxMs() / 1000));
   const title = en
     ? `Saved ${(raw.items || []).length}${day ? ` to ${day}` : ''} · ${Math.round(t.kcal || 0)} kcal · P ${fmt(t.protein_g)}g`
     : `${day ? `${day}에 ` : ''}${(raw.items || []).length}개 저장 · 하루 ${Math.round(t.kcal || 0)}kcal · 단백질 ${fmt(t.protein_g)}g`;
@@ -9604,10 +9640,14 @@ async function runDaylogEntry(entry) {
     savedFoods: savedFoodsForDaylog(entry.text), todayRecords,
     remoteId: entry.remoteId || undefined,
   };
-  const left = Math.max(60000, 300000 - (Date.now() - entry.startedAt));
+  const cap = daylogWaitMaxMs();
+  // 이미 상한을 넘었고 맡긴 번호도 없으면 새로 검색하지 않음. 번호가 있으면 결과는 한 번 받아 봄.
+  if (daylogElapsedMs(entry) >= cap && !entry.remoteId) {
+    throw new RebuildersBridge.BridgeError('timeout');
+  }
   try {
     const result = await RebuildersBridge.daylogAndWait(payload, {
-      maxMs: left, intervalMs: 2000,
+      maxMs: cap, deadline: entry.startedAt + cap, intervalMs: 2000,
       onRemoteId: id => { entry.remoteId = id; writeDaylogPending(); },
       onProgress: p => { entry.progress = p; },
     });
@@ -9658,6 +9698,7 @@ async function runDaylogEntry(entry) {
       }
     }
     if (Array.isArray(raw.failed_models) && raw.failed_models.length) entry.failedModels = raw.failed_models;
+    if (Array.isArray(raw.skipped_models) && raw.skipped_models.length) entry.skippedModels = raw.skipped_models;
     throw new RebuildersBridge.BridgeError(raw.error || 'agent_failed');
   } catch (error) {
     stopDaylogTicker();
@@ -9712,6 +9753,7 @@ function daylogFailWhy(kind) {
     unauthorized: en ? 'The Mac mini token does not match' : '맥 미니 연결 비밀번호(토큰)가 맞지 않아요',
     not_configured: en ? 'The Mac mini is not set up' : '맥 미니 연결이 설정되지 않았어요',
     all_failed: en ? 'Every AI model that is on failed' : '켜 둔 AI 모델이 모두 실패했어요',
+    not_found: en ? 'The request expired. Please try again.' : '요청이 만료됐어요. 다시 시도해 주세요',
   })[kind] || (en ? 'Grok could not sort this one out' : '그록이 이번 문장을 정리하지 못했어요');
 }
 function daylogFailHint(kind) {
@@ -9802,8 +9844,8 @@ async function saveDaylogFallback(entry, kind) {
   return { known, waiting, ids };
 }
 function daylogFailedModelsLine(entry) {
-  const list = (entry?.failedModels || []).filter(f => f && f.label && f.kind !== 'other');
-  return list.length ? list.map(f => `${f.label}: ${f.reason || ''}`).join(' · ') : '';
+  const list = daylogPriorModels({ failed_models: entry?.failedModels, skipped_models: entry?.skippedModels });
+  return list.length ? list.map(f => daylogModelDescribe(f, ACTIVE_LOCALE === 'en')).join(' · ') : '';
 }
 function showDaylogFailBanner(entry, kind, { known = 0, waiting = 0, saved = 0, again = false } = {}) {
   const en = ACTIVE_LOCALE === 'en';
@@ -12449,12 +12491,18 @@ function setupBridge() {
     if (state === 'ok') processBridgeQueue({ announce: true });
   }));
   document.getElementById('bridge-pending')?.addEventListener('click', () => processBridgeQueue({ announce: true, force: true }));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { processBridgeQueue({ fresh: true }); retryDaylogFallbacks(); } });
+  const onAppForeground = () => {
+    RebuildersBridge.wakeJobPolls?.();
+    processBridgeQueue({ fresh: true });
+    retryDaylogFallbacks();
+    if (!daylogRun.running) resumeDaylogPending();
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) onAppForeground(); });
   window.addEventListener('online', () => processBridgeQueue({ force: true }));
   setInterval(() => { if (!document.hidden && RebuildersBridge.getQueue().length) processBridgeQueue(); }, 120000);
   const cap = globalThis.Capacitor;
   const appPlugin = cap?.isNativePlatform?.() ? (cap.Plugins?.App || cap.registerPlugin?.('App')) : null;
-  appPlugin?.addListener?.('appStateChange', state => { if (state?.isActive) { processBridgeQueue({ fresh: true }); retryDaylogFallbacks(); } });
+  appPlugin?.addListener?.('appStateChange', state => { if (state?.isActive) onAppForeground(); });
 }
 
 function setupDeepLinks() {
@@ -12948,8 +12996,20 @@ updateTopHead();
     const t = tests.get(m.id);
     if (t?.state === 'running') return en() ? 'Testing…' : '확인 중…';
     if (t?.state === 'ok') return en() ? 'Available' : '사용 가능';
-    if (t?.state === 'fail') return en() ? 'Not working' : '안 됨';
+    if (t?.state === 'fail') {
+      if (m.fail_kind === 'quota' || /할당량/.test(m.status_ko || m.fail_reason || '')) return en() ? 'Quota exceeded' : '할당량 초과';
+      if (m.fail_kind === 'auth' || /로그인/.test(m.status_ko || m.fail_reason || '')) return en() ? 'Sign-in expired' : '로그인 만료';
+      return en() ? 'Not working' : '안 됨';
+    }
     return (en() ? { ok: 'Available', warn: 'Check', fail: 'Not working', off: 'Not set up' } : { ok: '사용 가능', warn: '확인 필요', fail: '안 됨', off: '설정 안 됨' })[m.status] || '';
+  }
+  function quotaNotice(models) {
+    const hits = (models || []).filter(m => m && m.status === 'fail' && (m.fail_kind === 'quota' || m.fail_kind === 'auth' || /할당량|로그인 만료/.test(m.status_ko || m.fail_reason || '')));
+    if (!hits.length) return '';
+    const parts = hits.map(m => `${label(m)} ${m.status_ko || m.fail_reason || shortText(m)}`);
+    return en()
+      ? `${parts.join(' · ')}. Skipped for now — next model is used.`
+      : `${parts.join(' · ')}. 지금은 그 모델을 건너뛰고 다음으로 넘어가요.`;
   }
   function dotClass(m) {
     const t = tests.get(m.id);
@@ -13021,7 +13081,8 @@ updateTopHead();
       data = { ...fresh, saved: Date.now() };
       fromCache = false;
       const ok = fresh.models.filter(m => m.status === 'ok' || m.status === 'warn').length;
-      setStatus(en() ? `${ok} of ${fresh.models.length} available.` : `${fresh.models.length}개 중 ${ok}개 사용 가능해요.`);
+      const notice = quotaNotice(fresh.models);
+      setStatus(notice || (en() ? `${ok} of ${fresh.models.length} available.` : `${fresh.models.length}개 중 ${ok}개 사용 가능해요.`));
     } catch (error) {
       data = B.getModelCache() || data;
       fromCache = true;
@@ -13115,7 +13176,7 @@ updateTopHead();
   document.addEventListener('click', event => { if (event.target.closest?.('[data-language]')) setTimeout(() => { syncCopy(); render(); }, 0); });
   syncCopy();
   render();
-  if (fromCache) setStatus('');
+  if (fromCache) setStatus(quotaNotice(data?.models) || '');
   // 설정 화면에서 이 카드가 보이면 불러옴(30초에 한 번만, 맥 미니 쪽도 60초 캐시)
   if ('IntersectionObserver' in globalThis) {
     new IntersectionObserver(entries => {

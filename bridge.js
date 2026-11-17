@@ -301,7 +301,8 @@
     let result = await lookup(job);
     const items = [...result.items];
     while (result.pending.length && result.remoteId && Date.now() < end) {
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      await waitInterval(intervalMs);
+      if (Date.now() >= end) break;
       result = await lookup({ ...job, remoteId: result.remoteId });
       result.items.forEach(item => { if (!items.some(seen => seen?.name === item?.name)) items.push(item); });
     }
@@ -350,7 +351,8 @@
     let data = null;
     if (JOB_ID_RE.test(String(remoteId || ''))) {
       try { data = await request(`/jobs/${remoteId}`, { timeoutMs: POLL_TIMEOUT_MS }); } catch (error) {
-        if (error?.kind !== 'not_found') throw error;
+        // 만료·사라진 작업은 새로 맡기지 않고 앱이 실패·다시 시도를 보여 주게
+        throw error;
       }
     }
     if (!data) {
@@ -376,12 +378,28 @@
     };
   }
 
+  /* 앱이 다시 앞에 오면 waitInterval 을 깨워 바로 GET /jobs 하게 */
+  const pollWaiters = [];
+  function wakeJobPolls() {
+    const fns = pollWaiters.splice(0, pollWaiters.length);
+    fns.forEach(fn => { try { fn(); } catch { /* 화면 복귀 깨우기 */ } });
+  }
+  function waitInterval(ms) {
+    return new Promise(resolve => {
+      let done = false;
+      const finish = () => { if (done) return; done = true; const i = pollWaiters.indexOf(finish); if (i >= 0) pollWaiters.splice(i, 1); clearTimeout(t); resolve(); };
+      const t = setTimeout(finish, ms);
+      pollWaiters.push(finish);
+    });
+  }
+
   async function interpretAndWait(payload, { maxMs = 45000, intervalMs = 1500 } = {}) {
     const started = Date.now();
     const end = started + maxMs;
     let result = await interpret(payload);
     while (!result.done && result.remoteId && Date.now() < end) {
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      await waitInterval(intervalMs);
+      if (Date.now() >= end) break;
       result = await interpret({ ...payload, remoteId: result.remoteId });
     }
     result.elapsedMs = Date.now() - started;
@@ -446,7 +464,7 @@
   async function models({ refresh = false } = {}) {
     const data = await request(`/models${refresh ? '?refresh=1' : ''}`, { timeoutMs: 25000 });
     if (!data || !Array.isArray(data.models)) throw new BridgeError('error');
-    try { localStorage.setItem(MODEL_CACHE_KEY, JSON.stringify({ models: data.models, default_order: data.default_order || [], checked_at: data.checked_at || 0, saved: Date.now() })); } catch { /* 무시 */ }
+    try { localStorage.setItem(MODEL_CACHE_KEY, JSON.stringify({ models: data.models, default_order: data.default_order || [], checked_at: data.checked_at || 0, budget_s: data.budget_s, saved: Date.now() })); } catch { /* 무시 */ }
     return data;
   }
   async function testModel(id) {
@@ -465,8 +483,14 @@
     const id = JOB_ID_RE.test(String(data?.job_id || '')) ? data.job_id : '';
     while (!data?.done && id && Date.now() - started < maxMs) {
       if (data?.progress) { try { onProgress?.(data.progress); } catch { /* 무시 */ } }
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
-      data = await request(`/jobs/${id}`, { timeoutMs: POLL_TIMEOUT_MS });
+      await waitInterval(intervalMs);
+      if (Date.now() - started >= maxMs) break;
+      try {
+        data = await request(`/jobs/${id}`, { timeoutMs: POLL_TIMEOUT_MS });
+      } catch (error) {
+        if (error?.kind === 'not_found') throw error;
+        throw error;
+      }
     }
     if (!data?.done) throw new BridgeError('timeout');
     return data;
@@ -476,7 +500,8 @@
     let data = null;
     if (JOB_ID_RE.test(String(remoteId || ''))) {
       try { data = await request(`/jobs/${remoteId}`, { timeoutMs: POLL_TIMEOUT_MS }); } catch (error) {
-        if (error?.kind !== 'not_found') throw error;
+        // 만료된 작업(job_not_found)을 새 검색으로 바꾸면 타이머가 계속 올라감
+        throw error;
       }
     }
     if (!data) {
@@ -505,9 +530,9 @@
   }
 
   /** onRemoteId(id): 맡긴 작업 번호를 받자마자 알려 줌(앱이 꺼졌다 켜져도 이 번호로 결과만 다시 받게) */
-  async function daylogAndWait(payload, { maxMs = 300000, intervalMs = 2000, onTick, onRemoteId, onProgress } = {}) {
+  async function daylogAndWait(payload, { maxMs = 300000, deadline, intervalMs = 2000, onTick, onRemoteId, onProgress } = {}) {
     const started = Date.now();
-    const end = started + maxMs;
+    const end = deadline || (started + maxMs);
     let result = await daylog(payload);
     let lastRemote = payload?.remoteId || '';
     const report = () => {
@@ -519,7 +544,8 @@
     report();
     while (!result.done && result.remoteId && Date.now() < end) {
       try { onTick?.(Date.now() - started); } catch { /* 화면 갱신 실패는 무시 */ }
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      await waitInterval(intervalMs);
+      if (Date.now() >= end) break;
       result = await daylog({ ...payload, remoteId: result.remoteId });
       report();
       if (!result.done && result.raw?.progress) { try { onProgress?.(result.raw.progress); } catch { /* 화면 갱신 실패는 무시 */ } }
@@ -529,7 +555,7 @@
     return result;
   }
 
-  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, daylog, daylogAndWait, labelAndWait, models, testModel, getModelPrefs, setModelPrefs, getModelCache, modelOrderForDaylog, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
+  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, daylog, daylogAndWait, labelAndWait, models, testModel, getModelPrefs, setModelPrefs, getModelCache, modelOrderForDaylog, wakeJobPolls, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
   global.RebuildersBridge = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
