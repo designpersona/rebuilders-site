@@ -12863,8 +12863,8 @@ body.no-character #view-home .dash-card .dash-vitals .vital-icon { display: none
 .app-content.view-panel:is(#view-home, #view-search, #view-stats, #view-profile, #view-meal-detail, #view-ai) { padding-left: var(--rb-page-pad) !important; padding-right: var(--rb-page-pad) !important; }
 /* 끌기 복제본은 항상 화면 기준으로 떠 있게(카드 규칙의 position 이 이기지 않게) */
 .meal-drag-ghost.meal-drag-ghost { position: fixed !important; margin: 0 !important; z-index: 220 !important; pointer-events: none !important; transform: none !important; background: var(--rb-surface) !important; border-radius: var(--rb-card-radius) !important; }
-/* 펼친 끼니 카드 안 구분선도 머리카락 선 */
-#view-home .meal-card *:not(.timeline-time-button) { border-color: var(--rb-hairline) !important; }
+/* 펼친 끼니·간식 카드 안 구분선도 머리카락 선 */
+#view-home :is(.meal-card, .snack-card) *:not(.timeline-time-button) { border-color: var(--rb-hairline) !important; }
 /* 끼니 상세 머리: 배경 없이, 뒤로 버튼은 원래 크기 */
 #view-meal-detail .meal-page-header { background: transparent !important; }
 #view-meal-detail .meal-page-back { width: auto !important; height: auto !important; min-height: 36px; padding: 0 12px 0 8px !important; }
