@@ -12259,7 +12259,25 @@ body.has-ai-dock .toast-host { bottom: calc(150px + var(--safe-bottom)); }
   box-shadow: 0 14px 36px rgba(15, 23, 42, 0.22);
 }
 .ai-dock-panel .agent-log.ai-dock-log { flex: 1 1 auto; max-height: none; }
-.ai-dock-panel-head .ai-dock-text-btn#ai-dock-panel-close { color: var(--text-primary); font-size: 13px; padding: 6px 4px; }
+.ai-dock-panel-head .ai-dock-text-btn#ai-dock-panel-close,
+.ai-dock-panel-head #ai-dock-panel-close.ai-dock-close-x {
+  color: var(--text-primary);
+  font-size: 13px;
+  padding: 6px 4px;
+}
+#ai-dock-panel-close.ai-dock-close-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--rb-ink, var(--text-primary));
+  -webkit-tap-highlight-color: transparent;
+}
+#ai-dock-panel-close.ai-dock-close-x svg { display: block; }
 body.has-ai-dock #view-home { padding-bottom: 48px; scroll-padding-bottom: 48px; }
 body.fab-open .ai-dock-toggle { display: none !important; }
 
@@ -13458,7 +13476,7 @@ body #view-home#view-home > .day-ghost *,
 
 /* =====================================================================
    맨 위 날짜 줄 + 맨 아래 검정 아이콘 페이지 띠 (10/26)
-   - 맨 위: 식단기록은 7일 날짜 줄, 고른 날이 가운데에서 크게(독 확대), 밑줄은 가운데 렌즈
+   - 맨 위: 식단기록은 일월화수목금토 한 주, 고른 날이 제자리에서 크게(독 확대)
    - 다른 페이지: 같은 자리에 제목 20/700
    - 맨 아래: 채팅 입력줄 바로 밑 검정 띠, 아이콘만(이름은 화면낭독기용으로 남김)
    ===================================================================== */
@@ -13492,7 +13510,6 @@ body #view-home#view-home > .day-ghost *,
   opacity: 0.9;
 }
 @media (max-width: 360px) { .date-chip-num { font-size: 13px; } }
-body.top-head-title .home-cal-head { display: none !important; }
 .page-title {
   margin: 0; height: 100%; display: flex; align-items: center;
   padding: 0 max(28px, var(--safe-right)) 0 max(28px, var(--safe-left));
@@ -14900,19 +14917,64 @@ body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expandin
    ===================================================================== */
 #view-home { overscroll-behavior-y: none; }
 
-/* 날짜 줄 ↔ 월 제목 교차 페이드 (같은 48px 헤더) */
-.home-cal-head {
+/* 기록 탭 월간 달력: 페이지 흐름 안에 접혀 있다가, 당기면 아래 내용을 밀어 내림 */
+body:not(.home-page) .home-cal-slot { display: none !important; }
+.home-cal-slot {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--bg);
+  --home-cal-h: 360px;
+}
+.home-cal-slot.is-pulling,
+.home-cal-slot.is-settling {
+  height: var(--home-cal-h);
+  margin-bottom: calc(-1 * var(--home-cal-h));
+  pointer-events: auto;
+}
+.home-cal-slot.is-open {
+  height: var(--home-cal-h);
+  margin-bottom: 0;
+  pointer-events: auto;
+}
+.home-cal-slot.is-measure {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: auto !important;
+  margin-bottom: 0 !important;
+  overflow: visible !important;
+}
+.home-cal-panel {
+  position: relative;
+  padding: 4px 16px 0;
+  padding-left: max(16px, var(--safe-left));
+  padding-right: max(16px, var(--safe-right));
+  background: var(--bg);
+  will-change: transform;
+  backface-visibility: hidden;
+  transform: translate3d(0, -100%, 0);
+}
+.home-cal-slot.is-open .home-cal-panel { transform: none; will-change: auto; }
+.home-cal-slot.is-settling .home-cal-panel,
+body.home-page #view-home.home-cal-shifting {
+  transition: transform 280ms cubic-bezier(.2, .8, .2, 1);
+}
+.home-cal-slot.is-pulling .home-cal-panel,
+body.home-page #view-home.home-cal-dragging {
+  transition: none !important;
+}
+.home-cal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 10px;
-  opacity: 0;
-  pointer-events: none;
-  transform: translate3d(0, 6px, 0);
-  will-change: transform, opacity;
-  z-index: 3;
+  min-height: 40px;
+  padding: 0 2px;
 }
 .home-cal-head .cal-month-label {
   font: 600 17px/1.2 var(--font) !important;
@@ -14933,47 +14995,7 @@ body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expandin
   pointer-events: none;
 }
 .home-cal-head .nav-btn { color: var(--rb-ink); }
-body.home-page #top-head.is-cal-open #date-strip { pointer-events: none; }
-
-/* 월간 달력은 날짜 줄 바로 아래에서 펼쳐 칼로리/식단을 덮음 */
-.home-cal-expand {
-  position: absolute;
-  top: 48px;
-  left: 0;
-  right: 0;
-  z-index: 250;
-  pointer-events: none;
-  overflow: hidden;
-  background: transparent;
-}
-.home-cal-expand:not([hidden]) { pointer-events: auto; }
-.home-cal-expand.is-measure {
-  visibility: hidden !important;
-  pointer-events: none !important;
-}
-.home-cal-expand.is-measure .home-cal-clip { transform: none !important; }
-.home-cal-clip {
-  background: var(--bg);
-  transform: translate3d(0, -100%, 0);
-  will-change: transform;
-  backface-visibility: hidden;
-}
-.home-cal-expand.is-settling .home-cal-clip,
-body.home-page #top-head.is-cal-morph #date-strip,
-body.home-page #top-head.is-cal-morph .home-cal-head {
-  transition: transform 280ms cubic-bezier(.2, .8, .2, 1), opacity 280ms cubic-bezier(.2, .8, .2, 1);
-}
-body.home-page #top-head.is-cal-dragging #date-strip,
-body.home-page #top-head.is-cal-dragging .home-cal-head,
-.home-cal-expand.is-pulling .home-cal-clip { transition: none !important; }
-.home-cal-panel {
-  position: relative;
-  padding: 2px 10px 0;
-  background: var(--bg);
-  box-shadow: 0 10px 0 var(--bg);
-  overflow: hidden;
-}
-#home-cal-expand .cal-weekdays {
+#home-cal-slot .cal-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   margin: 0 0 2px;
@@ -14981,8 +15003,8 @@ body.home-page #top-head.is-cal-dragging .home-cal-head,
   color: var(--rb-label);
   text-align: center;
 }
-#home-cal-expand .cal-viewport { position: relative; overflow: hidden; }
-#home-cal-expand .cal-grid {
+#home-cal-slot .cal-viewport { position: relative; overflow: hidden; }
+#home-cal-slot .cal-grid {
   display: grid !important;
   grid-template-columns: repeat(7, 1fr) !important;
   grid-auto-rows: 54px !important;
@@ -14990,7 +15012,7 @@ body.home-page #top-head.is-cal-dragging .home-cal-head,
   column-gap: 0 !important;
   margin: 0 !important;
 }
-#home-cal-expand .cal-day {
+#home-cal-slot .cal-day {
   position: relative;
   display: flex !important;
   flex-direction: column;
@@ -15007,7 +15029,7 @@ body.home-page #top-head.is-cal-dragging .home-cal-head,
   color: var(--rb-ink);
   cursor: pointer;
 }
-#home-cal-expand .cal-day .cal-day-mark {
+#home-cal-slot .cal-day .cal-day-mark {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -15018,15 +15040,15 @@ body.home-page #top-head.is-cal-dragging .home-cal-head,
   border-radius: 14px;
   padding: 3px 0 2px;
 }
-#home-cal-expand .cal-day .cal-day-num { width: auto !important; height: auto !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; color: inherit !important; font: 500 15px/1.1 var(--font) !important; }
-#home-cal-expand .cal-day .cal-day-kcal { display: block !important; min-height: 11px; margin: 0 !important; font: 500 10px/1.1 var(--font) !important; letter-spacing: -0.2px; color: var(--rb-label) !important; white-space: nowrap; }
-#home-cal-expand .cal-day.level-under .cal-day-kcal { color: #3F8F6B !important; }
-#home-cal-expand .cal-day.level-ok .cal-day-kcal { color: #A8862B !important; }
-#home-cal-expand .cal-day.level-over .cal-day-kcal { color: #C25B5B !important; }
-#home-cal-expand .cal-day.is-outside { color: #B4B8C0; }
-#home-cal-expand .cal-day.is-outside .cal-day-kcal { opacity: 0.6; }
-#home-cal-expand .cal-day .cal-day-dot { display: none !important; }
-#home-cal-expand .cal-day-flags {
+#home-cal-slot .cal-day .cal-day-num { width: auto !important; height: auto !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; color: inherit !important; font: 500 15px/1.1 var(--font) !important; }
+#home-cal-slot .cal-day .cal-day-kcal { display: block !important; min-height: 11px; margin: 0 !important; font: 500 10px/1.1 var(--font) !important; letter-spacing: -0.2px; color: var(--rb-label) !important; white-space: nowrap; }
+#home-cal-slot .cal-day.level-under .cal-day-kcal { color: #3F8F6B !important; }
+#home-cal-slot .cal-day.level-ok .cal-day-kcal { color: #A8862B !important; }
+#home-cal-slot .cal-day.level-over .cal-day-kcal { color: #C25B5B !important; }
+#home-cal-slot .cal-day.is-outside { color: #B4B8C0; }
+#home-cal-slot .cal-day.is-outside .cal-day-kcal { opacity: 0.6; }
+#home-cal-slot .cal-day .cal-day-dot { display: none !important; }
+#home-cal-slot .cal-day-flags {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -15034,25 +15056,25 @@ body.home-page #top-head.is-cal-dragging .home-cal-head,
   height: 7px;
   margin-top: 1px;
 }
-#home-cal-expand .cal-day-status,
-#home-cal-expand .cal-day-protein {
+#home-cal-slot .cal-day-status,
+#home-cal-slot .cal-day-protein {
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: transparent;
 }
-#home-cal-expand .cal-day.level-under .cal-day-status { background: #3F8F6B; }
-#home-cal-expand .cal-day.level-ok .cal-day-status { background: #C9A227; }
-#home-cal-expand .cal-day.level-over .cal-day-status { background: #C25B5B; }
-#home-cal-expand .cal-day.protein-met .cal-day-protein { background: var(--rb-ink); }
-#home-cal-expand .cal-day.is-today .cal-day-mark { box-shadow: inset 0 0 0 1.5px var(--rb-ink); }
-#home-cal-expand .cal-day.is-selected .cal-day-mark { background: var(--rb-pill-dark, #1C1D21); color: #fff; box-shadow: none; }
-#home-cal-expand .cal-day.is-selected .cal-day-num { font-weight: 700 !important; color: #fff !important; }
-#home-cal-expand .cal-day.is-selected .cal-day-kcal { color: rgba(255, 255, 255, 0.8) !important; }
-#home-cal-expand .cal-day.is-selected.level-under .cal-day-status { background: #8EE0BC; }
-#home-cal-expand .cal-day.is-selected.level-ok .cal-day-status { background: #F0D56A; }
-#home-cal-expand .cal-day.is-selected.level-over .cal-day-status { background: #F0A0A0; }
-#home-cal-expand .cal-day.is-selected.protein-met .cal-day-protein { background: #fff; }
+#home-cal-slot .cal-day.level-under .cal-day-status { background: #3F8F6B; }
+#home-cal-slot .cal-day.level-ok .cal-day-status { background: #C9A227; }
+#home-cal-slot .cal-day.level-over .cal-day-status { background: #C25B5B; }
+#home-cal-slot .cal-day.protein-met .cal-day-protein { background: var(--rb-ink); }
+#home-cal-slot .cal-day.is-today .cal-day-mark { box-shadow: inset 0 0 0 1.5px var(--rb-ink); }
+#home-cal-slot .cal-day.is-selected .cal-day-mark { background: var(--rb-pill-dark, #1C1D21); color: #fff; box-shadow: none; }
+#home-cal-slot .cal-day.is-selected .cal-day-num { font-weight: 700 !important; color: #fff !important; }
+#home-cal-slot .cal-day.is-selected .cal-day-kcal { color: rgba(255, 255, 255, 0.8) !important; }
+#home-cal-slot .cal-day.is-selected.level-under .cal-day-status { background: #8EE0BC; }
+#home-cal-slot .cal-day.is-selected.level-ok .cal-day-status { background: #F0D56A; }
+#home-cal-slot .cal-day.is-selected.level-over .cal-day-status { background: #F0A0A0; }
+#home-cal-slot .cal-day.is-selected.protein-met .cal-day-protein { background: #fff; }
 .home-cal-summary {
   margin: 6px 6px 0;
   min-height: 18px;
@@ -15061,7 +15083,7 @@ body.home-page #top-head.is-cal-dragging .home-cal-head,
   color: var(--rb-label);
   letter-spacing: -0.2px;
 }
-#home-cal-expand .cal-expand-toggle {
+#home-cal-slot .cal-expand-toggle {
   display: flex !important;
   flex-direction: column;
   align-items: center;
@@ -15072,8 +15094,7 @@ body.home-page #top-head.is-cal-dragging .home-cal-head,
   border: 0 !important;
   background: none !important;
 }
-#home-cal-expand .cal-grabber { width: 36px; height: 4px; border-radius: 2px; background: var(--rb-hairline); }
-body.home-cal-open #view-home { overflow: hidden !important; }
+#home-cal-slot .cal-grabber { width: 36px; height: 4px; border-radius: 2px; background: var(--rb-hairline); }
 
 /* 끼니 영역 ↔ 하루 리포트 */
 .home-day-pager { position: relative; margin: 0 -4px; overflow: hidden; }
@@ -15178,10 +15199,8 @@ body.home-page.keyboard-open.ai-sheet-open #home-ai-dock.home-ai-dock {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-cal-clip,
-  .home-cal-expand.is-settling .home-cal-clip,
-  body.home-page #top-head.is-cal-morph #date-strip,
-  body.home-page #top-head.is-cal-morph .home-cal-head,
+  .home-cal-slot.is-settling .home-cal-panel,
+  body.home-page #view-home.home-cal-shifting,
   .home-day-pager.is-animating .home-day-pager-track,
   body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock,
   body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock,

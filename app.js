@@ -10293,8 +10293,9 @@ async function softRefreshHome() {
   }
 }
 /* ============================
-   기록 탭 월간 달력: 5일이 아니라 맨 위 날짜 줄 자체가 아래로 커져 월간이 됨.
-   당기는 동안은 transform만, 놓으면 스프링 감속. 새로고침은 하지 않음.
+   기록 탭 월간 달력: 페이지 흐름 안에 높이 0으로 접혀 있다가,
+   아래로 당기면 아래 내용(칼로리·식단)을 밀어 내리며 펼침. 새로고침은 하지 않음.
+   당기는 동안은 transform/clip만, 놓으면 레이아웃을 확정.
    ============================ */
 const HOME_MOTION_MS = 280;
 const HOME_EASE = 'cubic-bezier(.2, .8, .2, 1)';
@@ -10307,16 +10308,14 @@ let homeCalRaf = 0;
 let homeCalPending = null;
 
 function homeCalEls() {
-  const expand = document.getElementById('home-cal-expand');
-  const clip = document.getElementById('home-cal-clip');
+  const slot = document.getElementById('home-cal-slot');
   const panel = document.getElementById('home-cal-panel');
   const grid = document.getElementById('home-cal-grid');
-  if (!expand || !clip || !panel || !grid) return null;
+  if (!slot || !panel || !grid) return null;
   return {
-    expand, clip, panel, grid,
+    slot, panel, grid,
     head: document.getElementById('home-cal-head'),
-    strip: document.getElementById('date-strip'),
-    top: document.getElementById('top-head'),
+    home: document.getElementById('view-home'),
     summary: document.getElementById('home-cal-summary'),
   };
 }
@@ -10324,17 +10323,12 @@ function homeCalEls() {
 function measureHomeCalHeight() {
   const els = homeCalEls();
   if (!els) return 360;
-  const { expand, panel, clip } = els;
-  const wasHidden = expand.hidden;
-  const prev = clip.style.transform;
-  expand.hidden = false;
-  expand.classList.add('is-measure');
-  clip.style.transform = 'none';
+  const { slot, panel } = els;
+  slot.classList.add('is-measure');
   const h = panel.offsetHeight || 360;
-  clip.style.transform = prev;
-  expand.classList.remove('is-measure');
-  if (wasHidden && homeCalProgress <= 0.01 && !homeCalOpen) expand.hidden = true;
+  slot.classList.remove('is-measure');
   homeCalHeight = h;
+  slot.style.setProperty('--home-cal-h', `${h}px`);
   return h;
 }
 
@@ -10344,27 +10338,33 @@ function applyHomeCalProgress(p, settling = false) {
   const prog = Math.max(0, Math.min(1, p));
   homeCalProgress = prog;
   const H = homeCalHeight || measureHomeCalHeight();
-  els.expand.hidden = false;
-  els.expand.setAttribute('aria-hidden', prog <= 0.01 && !homeCalOpen ? 'true' : 'false');
-  els.expand.classList.toggle('is-pulling', !settling && !homeCalOpen);
-  els.expand.classList.toggle('is-settling', settling);
-  els.expand.classList.toggle('is-open', homeCalOpen && prog >= 0.995);
-  els.top?.classList.toggle('is-cal-morph', prog > 0.02);
-  els.top?.classList.toggle('is-cal-open', homeCalOpen && prog >= 0.995);
-  els.top?.classList.toggle('is-cal-dragging', !settling);
-  const y = (prog - 1) * H;
-  els.clip.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`;
-  if (els.strip) {
-    els.strip.style.opacity = String(1 - prog);
-    els.strip.style.transform = `translate3d(0, ${(-6 * prog).toFixed(2)}px, 0)`;
-    els.strip.style.pointerEvents = prog > 0.55 ? 'none' : '';
+  els.slot.style.setProperty('--home-cal-h', `${H}px`);
+  els.slot.setAttribute('aria-hidden', prog <= 0.01 && !homeCalOpen ? 'true' : 'false');
+
+  const commitOpen = homeCalOpen && prog >= 0.995 && !settling;
+  const commitClosed = !homeCalOpen && prog <= 0.01 && !settling;
+
+  els.home?.classList.toggle('home-cal-dragging', !settling && !commitOpen && !commitClosed);
+  els.home?.classList.toggle('home-cal-shifting', settling);
+
+  if (commitOpen) {
+    els.slot.classList.add('is-open');
+    els.slot.classList.remove('is-pulling', 'is-settling');
+    els.panel.style.transform = '';
+    if (els.home) els.home.style.transform = '';
+    els.home?.classList.remove('home-cal-dragging', 'home-cal-shifting');
+    return;
   }
-  if (els.head) {
-    els.head.style.opacity = String(prog);
-    els.head.style.transform = `translate3d(0, ${(6 * (1 - prog)).toFixed(2)}px, 0)`;
-    els.head.style.pointerEvents = prog > 0.55 ? 'auto' : 'none';
-    els.head.setAttribute('aria-hidden', prog > 0.55 ? 'false' : 'true');
+  if (commitClosed) {
+    resetHomeCalChrome(els);
+    return;
   }
+
+  els.slot.classList.remove('is-open');
+  els.slot.classList.toggle('is-pulling', !settling);
+  els.slot.classList.toggle('is-settling', settling);
+  els.panel.style.transform = `translate3d(0, ${((prog - 1) * H).toFixed(2)}px, 0)`;
+  if (els.home) els.home.style.transform = `translate3d(0, ${(prog * H).toFixed(2)}px, 0)`;
 }
 
 function setHomeCalProgress(p, settling = false) {
@@ -10380,29 +10380,35 @@ function setHomeCalProgress(p, settling = false) {
 
 function resetHomeCalChrome(els) {
   if (!els) return;
-  els.expand.classList.remove('is-open', 'is-pulling', 'is-settling');
-  els.expand.hidden = true;
-  els.expand.setAttribute('aria-hidden', 'true');
-  els.clip.style.transform = '';
-  els.top?.classList.remove('is-cal-morph', 'is-cal-open', 'is-cal-dragging');
-  if (els.strip) { els.strip.style.opacity = ''; els.strip.style.transform = ''; els.strip.style.pointerEvents = ''; }
-  if (els.head) { els.head.style.opacity = ''; els.head.style.transform = ''; els.head.style.pointerEvents = 'none'; els.head.setAttribute('aria-hidden', 'true'); }
+  els.slot.classList.remove('is-open', 'is-pulling', 'is-settling');
+  els.slot.setAttribute('aria-hidden', 'true');
+  els.panel.style.transform = '';
+  if (els.home) els.home.style.transform = '';
+  els.home?.classList.remove('home-cal-dragging', 'home-cal-shifting');
+  homeCalProgress = 0;
 }
 
 function closeHomeCal({ animate = true } = {}) {
   const els = homeCalEls();
   if (!els) return;
+  const wasOpen = homeCalOpen;
   homeCalOpen = false;
   document.body.classList.remove('home-cal-open');
-  const finish = () => {
-    homeCalProgress = 0;
-    resetHomeCalChrome(els);
-  };
-  if (!animate || reduceMotion()) { applyHomeCalProgress(0, false); finish(); return; }
+  const finish = () => { applyHomeCalProgress(0, false); };
+  if (!animate || reduceMotion()) { finish(); return; }
+  const H = homeCalHeight || measureHomeCalHeight();
+  // 확정된 펼침 레이아웃을, 같은 모양의 transform으로 바꾼 뒤 접음
+  if (wasOpen) {
+    els.slot.classList.remove('is-open');
+    els.slot.classList.add('is-settling');
+    els.panel.style.transform = 'none';
+    if (els.home) els.home.style.transform = `translate3d(0, ${H}px, 0)`;
+    homeCalProgress = 1;
+  }
   applyHomeCalProgress(homeCalProgress || 1, true);
   requestAnimationFrame(() => applyHomeCalProgress(0, true));
-  clearTimeout(els.expand._closeTimer);
-  els.expand._closeTimer = setTimeout(finish, HOME_MOTION_MS + 20);
+  clearTimeout(els.slot._closeTimer);
+  els.slot._closeTimer = setTimeout(finish, HOME_MOTION_MS + 20);
 }
 
 async function openHomeCal({ animate = true } = {}) {
@@ -10411,24 +10417,22 @@ async function openHomeCal({ animate = true } = {}) {
   homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   if (!els.grid.childElementCount) renderHomeMonthCalendar();
   measureHomeCalHeight();
-  els.expand.hidden = false;
   homeCalOpen = true;
   document.body.classList.add('home-cal-open');
-  ensureHomeCalData().then(() => renderHomeMonthCalendar());
+  ensureHomeCalData().then(() => {
+    renderHomeMonthCalendar();
+    measureHomeCalHeight();
+    if (homeCalOpen && homeCalProgress >= 0.995) applyHomeCalProgress(1, false);
+  });
   if (!animate || reduceMotion()) {
     applyHomeCalProgress(1, false);
-    els.expand.classList.add('is-open');
-    els.top?.classList.add('is-cal-open');
     return;
   }
   const from = homeCalProgress > 0.02 ? homeCalProgress : 0;
   applyHomeCalProgress(from, false);
   requestAnimationFrame(() => applyHomeCalProgress(1, true));
-  clearTimeout(els.expand._closeTimer);
-  els.expand._closeTimer = setTimeout(() => {
-    els.expand.classList.remove('is-settling', 'is-pulling');
-    els.top?.classList.remove('is-cal-dragging');
-  }, HOME_MOTION_MS + 20);
+  clearTimeout(els.slot._closeTimer);
+  els.slot._closeTimer = setTimeout(() => applyHomeCalProgress(1, false), HOME_MOTION_MS + 20);
 }
 
 async function ensureHomeCalData() {
@@ -10524,7 +10528,7 @@ function setupHomeCalendarPull() {
   const blocked = target => {
     const b = document.body.classList;
     if (activeView !== 'home' || b.contains('ai-sheet-open') || b.contains('ai-sheet-expanding') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing')) return true;
-    if (target?.closest?.('input, textarea, select, [contenteditable="true"], .home-ai-dock, .modal, dialog, .home-cal-panel, .home-cal-head, .date-strip, .home-day-pager')) return true;
+    if (target?.closest?.('input, textarea, select, [contenteditable="true"], .home-ai-dock, .modal, dialog, .home-cal-panel, .date-strip, .home-day-pager')) return true;
     return false;
   };
   const rubber = raw => {
@@ -10570,7 +10574,6 @@ function setupHomeCalendarPull() {
   home.addEventListener('touchend', endOpen, { passive: true });
   home.addEventListener('touchcancel', () => { if (!homeCalOpen && mode === 'pull') { y0 = null; closeHomeCal({ animate: true }); } else y0 = null; }, { passive: true });
 
-  // 날짜 줄에서 아래로 당기는 것은 setupDateStripGestures 가 같은 API 를 씀
   window._homeCalPullApi = { TRIGGER, rubber, prepCal };
 
   const panel = els0.panel;
@@ -10610,19 +10613,16 @@ function setupHomeCalendarPull() {
   panel.addEventListener('touchend', onCloseEnd, { passive: true });
   panel.addEventListener('touchcancel', onCloseEnd, { passive: true });
 
-  home.addEventListener('click', event => {
-    if (!homeCalOpen) return;
-    if (event.target.closest?.('.home-cal-expand, .home-cal-head, .date-strip, button, a, input')) return;
-    closeHomeCal();
-  });
   document.getElementById('home-cal-grabber')?.addEventListener('click', () => closeHomeCal());
   document.getElementById('home-cal-prev')?.addEventListener('click', () => {
     homeCalMonth = new Date(homeCalMonth.getFullYear(), homeCalMonth.getMonth() - 1, 1);
     renderHomeMonthCalendar();
+    if (homeCalOpen) { measureHomeCalHeight(); applyHomeCalProgress(1, false); }
   });
   document.getElementById('home-cal-next')?.addEventListener('click', () => {
     homeCalMonth = new Date(homeCalMonth.getFullYear(), homeCalMonth.getMonth() + 1, 1);
     renderHomeMonthCalendar();
+    if (homeCalOpen) { measureHomeCalHeight(); applyHomeCalProgress(1, false); }
   });
   document.getElementById('home-cal-picker')?.addEventListener('change', event => {
     const v = event.target.value || '';
@@ -10630,6 +10630,7 @@ function setupHomeCalendarPull() {
     if (!y || !m) return;
     homeCalMonth = new Date(y, m - 1, 1);
     renderHomeMonthCalendar();
+    if (homeCalOpen) { measureHomeCalHeight(); applyHomeCalProgress(1, false); }
   });
   document.getElementById('home-cal-grid')?.addEventListener('click', event => {
     const cell = event.target.closest?.('.cal-day');
@@ -10678,7 +10679,7 @@ function setupHomeDayPager() {
   const blocked = target => {
     const b = document.body.classList;
     if (activeView !== 'home' || homeCalOpen || b.contains('ai-sheet-open') || b.contains('ai-sheet-expanding') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing') || b.contains('keyboard-open')) return true;
-    if (target?.closest?.('.date-strip, .top-head, .home-cal-expand, .home-cal-head, input, textarea, select, [contenteditable="true"], button, a, .drag-handle, .food-drag-handle, .add-btn, .timeline-edit-btn, .timeline-snack-add, .clear-day-btn')) return true;
+    if (target?.closest?.('.date-strip, .top-head, .home-cal-slot, .home-cal-head, input, textarea, select, [contenteditable="true"], button, a, .drag-handle, .food-drag-handle, .add-btn, .timeline-edit-btn, .timeline-snack-add, .clear-day-btn')) return true;
     return false;
   };
   let sx = 0, sy = 0, mode = null, tracking = false, lastDx = 0, samples = [], pendingX = 0, raf = 0, startW = 0;
@@ -11692,7 +11693,7 @@ function pageSwipeBlocked(target, x) {
   if (document.body.classList.contains('meal-page-open') || document.body.classList.contains('food-dex-open') || document.body.classList.contains('foodex-library-open')) return true;
   if (document.querySelector('.modal-overlay.open, .agent-help-overlay.open')) return true;
   if (!document.getElementById('ai-dock-panel')?.hidden) return true;
-  if (target.closest('.swipe-row, .page-tabs, input, textarea, select, [contenteditable="true"], .ai-dock-panel, .home-ai-dock, .no-page-swipe, .date-strip, .home-cal-expand, .home-day-pager')) return true;
+  if (target.closest('.swipe-row, .page-tabs, input, textarea, select, [contenteditable="true"], .ai-dock-panel, .home-ai-dock, .no-page-swipe, .date-strip, .home-cal-slot, .home-day-pager')) return true;
   // 가로로 스크롤되는 영역 안에서 시작하면 그 영역이 우선
   for (let el = target; el && el !== panel; el = el.parentElement) {
     const ox = getComputedStyle(el).overflowX;
@@ -13633,18 +13634,26 @@ setTimeout(() => syncAllSegmented(true), 0);
 restoreAgentLog();
 
 /* ============================
-   맨 위 머리: 식단기록 = 7일 날짜 줄(한 주), 고른 날이 가운데에서 크게(독 확대).
-   가로 밀기는 이 줄에서만: 날을 넘기고 가운데에 온 날에 스냅. 세로로 당기면 월간 달력.
-   끼니 영역 가로 밀기(하루 리포트)와 겹치지 않게 줄에서 시작한 터치는 밖으로 보내지 않음.
+   맨 위 머리: 식단기록 = 일월화수목금토 한 주. 고른 날은 제자리에서 크게(독 확대).
+   가로 밀기는 이 줄에서만, 한 주 단위로 넘김. 탭하면 그 날을 고름.
+   세로로 당기면 페이지 안의 월간 달력이 펼쳐짐.
    ============================ */
 const DATE_STRIP_VISIBLE = 7;
-const DATE_STRIP_SPAN = 21;
 const DATE_STRIP_EASE = 'cubic-bezier(.2, .8, .2, 1)';
-let dateStripKey = null;
+let dateStripKey = null; // 고른 날
+let dateStripWeekKey = null; // 보이는 주의 일요일
 let dateStripOffset = 0;
 let dateStripDragging = false;
+let dateStripLock = false;
 let slideDateStripBy = null;
 let slideDateStripTo = null;
+
+function startOfWeek(d) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - x.getDay());
+  return x;
+}
+function weekStartKey(d) { return dateKey(startOfWeek(d)); }
 
 function dateStripParts() {
   const strip = document.getElementById('date-strip');
@@ -13657,36 +13666,38 @@ function dateStripHaptic() {
   try { globalThis.Capacitor?.Plugins?.Haptics?.impact?.({ style: 'Light' }); } catch {}
 }
 
-function dateStripScale(distItems) {
-  const d = Math.abs(distItems);
-  return 0.78 + 0.50 * Math.exp(-0.62 * d * d);
-}
-
-function applyDateStripMagnify(offsetPx) {
+function applyDateStripMagnify() {
   const p = dateStripParts();
-  if (!p) return 0;
-  let focusK = 0;
-  let best = Infinity;
+  if (!p) return;
+  const selKey = dateKey(currentDate);
   const chips = p.track.children;
+  let selDow = -1;
   for (let i = 0; i < chips.length; i++) {
     const chip = chips[i];
-    const k = Number(chip.dataset.offset);
-    const dist = k + offsetPx / p.itemW;
-    const s = dateStripScale(dist);
-    const inner = chip.firstElementChild;
-    if (inner) inner.style.transform = `translate3d(0,0,0) scale(${s.toFixed(3)})`;
-    chip.style.opacity = String((0.48 + 0.52 * Math.exp(-0.28 * dist * dist)).toFixed(3));
-    const ad = Math.abs(dist);
-    if (ad < best) { best = ad; focusK = k; }
-  }
-  for (let i = 0; i < chips.length; i++) {
-    const chip = chips[i];
-    const on = Number(chip.dataset.offset) === focusK;
+    const on = chip.dataset.key === selKey;
+    if (on) selDow = Number(chip.dataset.dow);
     chip.classList.toggle('is-focus', on);
     chip.classList.toggle('active', on);
     chip.setAttribute('aria-selected', String(on));
   }
-  return focusK;
+  for (let i = 0; i < chips.length; i++) {
+    const chip = chips[i];
+    const dow = Number(chip.dataset.dow);
+    const week = Number(chip.dataset.week);
+    // 보이는 주(그리고 밀리는 옆 주)에서, 고른 요일과의 거리로만 확대. 위치는 고정.
+    const dist = Math.abs(dow - (selDow < 0 ? currentDate.getDay() : selDow)) + (week !== 0 && !dateStripDragging ? 8 : 0);
+    const s = 0.92 + 0.36 * Math.exp(-0.85 * dist * dist);
+    const inner = chip.firstElementChild;
+    if (inner) inner.style.transform = `translate3d(0,0,0) scale(${s.toFixed(3)})`;
+    chip.style.opacity = dist === 0 ? '1' : '0.82';
+  }
+  const ind = document.getElementById('date-strip-indicator');
+  if (ind) {
+    const dow = selDow < 0 ? currentDate.getDay() : selDow;
+    const w = Math.min(22, p.itemW * 0.4);
+    ind.style.width = `${w}px`;
+    ind.style.left = `${dow * p.itemW + (p.itemW - w) / 2}px`;
+  }
 }
 
 function setDateStripOffset(px, transition = 'none') {
@@ -13694,12 +13705,12 @@ function setDateStripOffset(px, transition = 'none') {
   dateStripOffset = px;
   p.track.style.transition = transition === 'none' ? 'none' : `transform ${HOME_MOTION_MS || 280}ms ${DATE_STRIP_EASE}`;
   p.track.style.transform = `translate3d(${px}px, 0, 0)`;
-  applyDateStripMagnify(px);
 }
 
 function dateStripFollow(fraction, transition = 'none') {
+  // 호환용: 더 이상 가운데 정렬을 따라가지 않음
   const p = dateStripParts(); if (!p || activeView !== 'home') return;
-  setDateStripOffset(fraction * p.itemW, transition);
+  setDateStripOffset(0, transition);
 }
 
 function dateStripLabelParts(d) {
@@ -13714,16 +13725,17 @@ function dateStripLabel(d) {
   return `${month}.${num} ${dow}`;
 }
 
-function fillDateChip(b, d, k, itemW, W, todayKey) {
+function fillDateChip(b, d, week, dow, itemW, todayKey) {
   const key = dateKey(d);
-  const { num, dow } = dateStripLabelParts(d);
-  b.className = `date-chip${k === 0 ? ' active is-focus' : ''}${key === todayKey ? ' is-today' : ''}`;
-  b.dataset.offset = String(k);
+  const { num, dow: dowLabel } = dateStripLabelParts(d);
+  b.className = `date-chip${key === dateKey(currentDate) ? ' active is-focus' : ''}${key === todayKey ? ' is-today' : ''}`;
+  b.dataset.week = String(week);
+  b.dataset.dow = String(dow);
   b.dataset.key = key;
   b.setAttribute('role', 'tab');
-  b.setAttribute('aria-selected', String(k === 0));
+  b.setAttribute('aria-selected', String(key === dateKey(currentDate)));
   b.setAttribute('aria-label', `${formatDate(d)}${key === todayKey ? (ACTIVE_LOCALE === 'en' ? ', today' : ', 오늘') : ''}`);
-  b.style.left = `${W / 2 + (k - 0.5) * itemW}px`;
+  b.style.left = `${week * itemW * DATE_STRIP_VISIBLE + dow * itemW}px`;
   b.style.width = `${itemW}px`;
   let inner = b.firstElementChild;
   if (!inner || !inner.classList.contains('date-chip-inner')) {
@@ -13731,24 +13743,22 @@ function fillDateChip(b, d, k, itemW, W, todayKey) {
     inner = b.firstElementChild;
   }
   inner.querySelector('.date-chip-num').textContent = num;
-  inner.querySelector('.date-chip-dow').textContent = key === todayKey && ACTIVE_LOCALE !== 'en' ? '오늘' : dow;
+  inner.querySelector('.date-chip-dow').textContent = key === todayKey && ACTIVE_LOCALE !== 'en' ? '오늘' : dowLabel;
 }
 
-let dateStripLock = false;
 function renderDateStrip(force = false) {
   const p = dateStripParts(); if (!p) return;
   if ((dateStripDragging || dateStripLock) && !force) return;
   const key = dateKey(currentDate);
-  const sel = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+  const week0 = startOfWeek(currentDate);
+  const weekKeyNow = dateKey(week0);
   const todayKey = dateKey(new Date());
-  const prev = dateStripKey ? parseDateKey(dateStripKey) : null;
-  const diff = prev ? Math.round((sel - prev) / 86400000) : 0;
-  const needBuild = force || !p.track.childElementCount || key !== dateStripKey;
+  const needBuild = force || p.track.childElementCount !== 21 || weekKeyNow !== dateStripWeekKey;
   if (needBuild) {
     let chips = p.track.children;
-    if (chips.length !== DATE_STRIP_SPAN * 2 + 1) {
+    if (chips.length !== 21) {
       const frag = document.createDocumentFragment();
-      for (let k = -DATE_STRIP_SPAN; k <= DATE_STRIP_SPAN; k++) {
+      for (let i = 0; i < 21; i++) {
         const b = document.createElement('button');
         b.type = 'button';
         frag.appendChild(b);
@@ -13757,25 +13767,27 @@ function renderDateStrip(force = false) {
       chips = p.track.children;
     }
     let i = 0;
-    for (let k = -DATE_STRIP_SPAN; k <= DATE_STRIP_SPAN; k++, i++) {
-      const d = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() + k);
-      fillDateChip(chips[i], d, k, p.itemW, p.W, todayKey);
+    for (let week = -1; week <= 1; week++) {
+      for (let dow = 0; dow < 7; dow++, i++) {
+        const d = new Date(week0.getFullYear(), week0.getMonth(), week0.getDate() + week * 7 + dow);
+        fillDateChip(chips[i], d, week, dow, p.itemW, todayKey);
+      }
     }
-    dateStripKey = key;
-  }
-  const start = dateStripOffset + diff * p.itemW;
-  if (needBuild && diff && Math.abs(diff) <= DATE_STRIP_SPAN && !reduceMotion() && activeView === 'home' && Math.abs(start) > 0.5 && !dateStripDragging) {
-    setDateStripOffset(start);
-    requestAnimationFrame(() => setDateStripOffset(0, 'ease'));
+    dateStripWeekKey = weekKeyNow;
   } else {
-    setDateStripOffset(0);
+    // 같은 주면 선택 표시만 갱신
+    const chips = p.track.children;
+    for (let i = 0; i < chips.length; i++) {
+      const chip = chips[i];
+      const on = chip.dataset.key === key;
+      chip.classList.toggle('is-focus', on);
+      chip.classList.toggle('active', on);
+      chip.setAttribute('aria-selected', String(on));
+    }
   }
-  const ind = document.getElementById('date-strip-indicator');
-  if (ind) {
-    const w = Math.min(22, p.itemW * 0.4);
-    ind.style.width = `${w}px`;
-    ind.style.left = `${(p.W - w) / 2}px`;
-  }
+  dateStripKey = key;
+  setDateStripOffset(0);
+  applyDateStripMagnify();
 }
 
 async function commitDateStripTo(nextDate) {
@@ -13796,6 +13808,10 @@ async function commitDateStripTo(nextDate) {
     renderAll(true);
     if (activeView === 'search') renderSearchHub();
     if (activeView === 'stats') rerenderStats();
+    if (homeCalOpen) {
+      homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      renderHomeMonthCalendar();
+    }
   } finally {
     dateStripLock = false;
     renderDateStrip(true);
@@ -13822,13 +13838,18 @@ function settleDateStripToOffset(targetPx) {
 }
 
 slideDateStripBy = async function (delta) {
-  if (activeView !== 'home' || homeCalOpen || dateStripDragging) return false;
+  if (activeView !== 'home' || dateStripDragging) return false;
+  const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + delta);
+  const sameWeek = weekStartKey(next) === weekStartKey(currentDate);
+  if (sameWeek) {
+    await commitDateStripTo(next);
+    return true;
+  }
   const p = dateStripParts();
   if (!p) return false;
-  const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + delta);
-  const target = dateStripOffset - delta * p.itemW;
+  const weeks = Math.round((startOfWeek(next) - startOfWeek(currentDate)) / 86400000 / 7);
   dateStripHaptic();
-  await settleDateStripToOffset(target);
+  await settleDateStripToOffset(-weeks * p.W);
   await commitDateStripTo(next);
   return true;
 };
@@ -13844,8 +13865,8 @@ slideDateStripTo = async function (date) {
   const strip = document.getElementById('date-strip');
   if (!strip || strip._gestures) return;
   strip._gestures = true;
-  let x0 = 0, y0 = 0, mode = null, active = false, lastX = 0, lastT = 0, samples = [];
-  let startOffset = 0, lastFocus = 0, moved = false, raf = 0, pending = 0, itemW = 0;
+  let x0 = 0, y0 = 0, mode = null, active = false, samples = [];
+  let startOffset = 0, moved = false, raf = 0, pending = 0, weekW = 0;
   const stop = event => { event.stopPropagation(); };
 
   const applySoon = px => {
@@ -13854,23 +13875,20 @@ slideDateStripTo = async function (date) {
     raf = requestAnimationFrame(() => {
       raf = 0;
       setDateStripOffset(pending);
-      const focus = applyDateStripMagnify(pending);
-      if (focus !== lastFocus) { lastFocus = focus; dateStripHaptic(); }
     });
   };
 
   strip.addEventListener('touchstart', event => {
     stop(event);
     active = false; mode = null; moved = false; samples = [];
-    if (event.touches.length !== 1 || activeView !== 'home' || homeCalOpen) return;
+    if (event.touches.length !== 1 || activeView !== 'home') return;
     const b = document.body.classList;
     if (b.contains('ai-sheet-open') || b.contains('ai-sheet-expanding') || b.contains('timeline-editing')) return;
     const t = event.touches[0];
-    x0 = lastX = t.clientX; y0 = t.clientY; lastT = performance.now();
+    x0 = t.clientX; y0 = t.clientY;
     startOffset = dateStripOffset;
     const p = dateStripParts();
-    itemW = p ? p.itemW : (strip.clientWidth || innerWidth) / DATE_STRIP_VISIBLE;
-    lastFocus = applyDateStripMagnify(startOffset);
+    weekW = p ? p.W : (strip.clientWidth || innerWidth);
     active = true;
     dateStripDragging = false;
     window._homeCalPullApi?.prepCal?.();
@@ -13897,15 +13915,19 @@ slideDateStripTo = async function (date) {
       const now = performance.now();
       samples.push({ x: t.clientX, t: now });
       while (samples.length > 2 && now - samples[0].t > 80) samples.shift();
-      lastX = t.clientX; lastT = now;
       applySoon(startOffset + dx);
     } else if (mode === 'v') {
       const api = window._homeCalPullApi;
       if (!api) return;
-      if (dy > 0) {
+      if (!homeCalOpen && dy > 0) {
         if (event.cancelable) event.preventDefault();
         moved = true;
         setHomeCalProgress(Math.min(1, api.rubber(dy) / (api.TRIGGER + 40)), false);
+      } else if (homeCalOpen && dy < 0) {
+        if (event.cancelable) event.preventDefault();
+        moved = true;
+        const travel = homeCalHeight || 360;
+        setHomeCalProgress(Math.max(0, 1 - api.rubber(-dy) / travel), false);
       }
     }
   }, { passive: false, capture: true });
@@ -13922,7 +13944,11 @@ slideDateStripTo = async function (date) {
     dateStripDragging = false;
     if (wasV) {
       const prog = homeCalProgress;
-      if (prog * ((window._homeCalPullApi?.TRIGGER || 72) + 40) >= (window._homeCalPullApi?.TRIGGER || 72) || prog >= 0.55) openHomeCal();
+      const trigger = window._homeCalPullApi?.TRIGGER || 72;
+      if (homeCalOpen) {
+        if (prog <= 0.55) closeHomeCal();
+        else openHomeCal({ animate: true });
+      } else if (prog * (trigger + 40) >= trigger || prog >= 0.55) openHomeCal();
       else closeHomeCal();
       return;
     }
@@ -13931,17 +13957,16 @@ slideDateStripTo = async function (date) {
     if (!p) return;
     const a = samples[0]; const z = samples[samples.length - 1];
     const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
-    let focusK = Math.round(-dateStripOffset / p.itemW);
-    if (Math.abs(vx) > 0.7 && Math.abs(dateStripOffset) > p.itemW * 0.15) {
-      // 빠르게 튕기면 한 주(7일) 점프, 아니면 가운데에 가장 가까운 날
-      if (Math.abs(vx) > 1.15) focusK = Math.round(-dateStripOffset / p.itemW) + (vx < 0 ? 7 : -7);
-      else if (Math.sign(vx) && Math.sign(focusK) !== Math.sign(-vx) && Math.abs(dateStripOffset) < p.itemW * 0.5) {
-        focusK += vx < 0 ? 1 : -1;
-      }
+    let weeks = 0;
+    if (Math.abs(vx) > 0.45 && Math.abs(dateStripOffset) > p.W * 0.08) weeks = vx < 0 ? 1 : -1;
+    else if (Math.abs(dateStripOffset) >= p.W * 0.25) weeks = dateStripOffset < 0 ? 1 : -1;
+    if (!weeks) {
+      settleDateStripToOffset(0);
+      return;
     }
-    const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + focusK);
+    const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + weeks * 7);
     dateStripHaptic();
-    settleDateStripToOffset(-focusK * p.itemW).then(() => commitDateStripTo(next));
+    settleDateStripToOffset(-weeks * p.W).then(() => commitDateStripTo(next));
   };
 
   strip.addEventListener('touchend', finish, { passive: true, capture: true });
@@ -13949,12 +13974,13 @@ slideDateStripTo = async function (date) {
 
   strip.addEventListener('click', event => {
     stop(event);
-    if (moved || homeCalOpen) { moved = false; return; }
+    if (moved) { moved = false; return; }
     const chip = event.target.closest?.('.date-chip');
-    if (!chip) return;
-    const k = Number(chip.dataset.offset);
-    if (!k) return;
-    slideDateStripBy(k);
+    if (!chip?.dataset.key) return;
+    const d = parseDateKey(chip.dataset.key);
+    if (!d || dateKey(d) === dateKey(currentDate)) return;
+    dateStripHaptic();
+    commitDateStripTo(d);
   }, { capture: true });
 })();
 
