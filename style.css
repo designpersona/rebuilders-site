@@ -15350,3 +15350,56 @@ body.home-page.home-cal-dock-hide:not(.ai-sheet-open):not(.ai-sheet-closing):not
     transition: none !important;
   }
 }
+
+
+/* =====================================================================
+   v69 전체 화면 채팅: 시트가 탭 띠를 덮고, 입력줄은 흰 시트 맨 아래에
+   안전 영역만 두고 앉는다. 키보드가 열리면 그 위로 함께 올라간다.
+   예전 패널 max-height: 72dvh !important 가 입력줄 아래에 회색 빈칸을
+   남기던 것을 여기서 덮어 쓴다.
+   ===================================================================== */
+body.home-page.ai-sheet-open #page-tabs,
+body.home-page.ai-sheet-expanding #page-tabs,
+body.home-page.ai-sheet-closing #page-tabs {
+  display: none !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock,
+body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock,
+body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock {
+  background: #fff !important;
+  padding: calc(var(--safe-top, 0px) + 8px) 0 var(--safe-bottom, 0px) !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-panel,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-panel {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  z-index: auto !important;
+  flex: 1 1 auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-bar {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding: 8px 12px 8px !important;
+  background: #fff !important;
+}
+html.kb-up body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock,
+body.home-page.keyboard-open.ai-sheet-open #home-ai-dock.home-ai-dock,
+html.kb-up body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock,
+body.home-page.keyboard-open.ai-sheet-expanding #home-ai-dock.home-ai-dock {
+  padding-bottom: 8px !important;
+}
