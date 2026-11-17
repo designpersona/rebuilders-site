@@ -58,6 +58,11 @@
       </div>
       <h1 class="page-title" id="page-title" hidden></h1>
     </header>
+    <button type="button" class="home-cal-chevron" id="home-cal-chevron" aria-label="달력 펼치기" aria-expanded="false">
+      <svg class="home-cal-chevron-ico" width="12" height="8" viewBox="0 0 12 8" fill="none" aria-hidden="true">
+        <path d="M1.5 1.5L6 6L10.5 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
     <!-- 기록 탭: 페이지 안에 접혀 있는 월간 달력. 아래로 당기면 펼쳐 아래 내용을 밀어 내림. 새로고침은 하지 않음 -->
     <div class="home-cal-slot" id="home-cal-slot" aria-hidden="true">
       <div class="home-cal-panel" id="home-cal-panel" role="region" aria-labelledby="home-cal-month-label">
@@ -80,9 +85,6 @@
           <div class="cal-grid" id="home-cal-grid" role="grid" aria-label="날짜 선택"></div>
         </div>
         <p class="home-cal-summary" id="home-cal-summary"></p>
-        <button type="button" class="cal-expand-toggle" id="home-cal-grabber" aria-label="달력 접기">
-          <span class="cal-grabber" aria-hidden="true"></span>
-        </button>
       </div>
     </div>
     <div class="app-content view-panel" id="view-home">

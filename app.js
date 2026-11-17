@@ -10349,11 +10349,16 @@ const HOME_MOTION_MS = 280;
 const HOME_EASE = 'cubic-bezier(.2, .8, .2, 1)';
 let homeCalMonth = new Date();
 let homeCalOpen = false;
+let homeCalClosing = false;
 let homeCalReady = false;
 let homeCalProgress = 0;
 let homeCalHeight = 0;
 let homeCalRaf = 0;
 let homeCalPending = null;
+let homeCalMorph = 0;
+const HOME_CAL_STRIP_H = 48;
+const HOME_CAL_PEEK_PX = 52;
+const HOME_CAL_PEEK_KEY = 'rb.homeCalPeekHint';
 
 function homeCalEls() {
   const slot = document.getElementById('home-cal-slot');
@@ -10365,6 +10370,9 @@ function homeCalEls() {
     head: document.getElementById('home-cal-head'),
     home: document.getElementById('view-home'),
     summary: document.getElementById('home-cal-summary'),
+    chevron: document.getElementById('home-cal-chevron'),
+    strip: document.getElementById('date-strip'),
+    topHead: document.getElementById('top-head'),
   };
 }
 
@@ -10380,27 +10388,82 @@ function measureHomeCalHeight() {
   return h;
 }
 
+function homeCalMorphMetrics(els, H) {
+  const stripH = HOME_CAL_STRIP_H;
+  const headH = els.head?.offsetHeight || 32;
+  const cell = els.grid?.querySelector('.cal-day');
+  const rowH = cell ? (cell.getBoundingClientRect().height || 42) : 42;
+  const selWeek = Number(els.grid?.dataset.selWeek || 0);
+  const extraTop = headH + selWeek * rowH;
+  return { stripH, headH, rowH, selWeek, extraTop, H: H || homeCalHeight || 360 };
+}
+
+function markHomeCalPeekSeen() {
+  try { localStorage.setItem(HOME_CAL_PEEK_KEY, '1'); } catch { /* 힌트만, 기록 데이터와는 별개 */ }
+}
+
+function cancelHomeCalPeek() {
+  const slot = document.getElementById('home-cal-slot');
+  if (slot?._peekTimer) { clearTimeout(slot._peekTimer); slot._peekTimer = 0; }
+  markHomeCalPeekSeen();
+}
+
+function syncHomeCalChevron(els, prog) {
+  const chevron = els?.chevron;
+  if (!chevron) return;
+  const expanded = !!(homeCalOpen && prog > 0.6);
+  const en = ACTIVE_LOCALE === 'en';
+  chevron.classList.toggle('is-expanded', expanded);
+  chevron.setAttribute('aria-expanded', homeCalOpen && prog > 0.5 ? 'true' : 'false');
+  chevron.setAttribute('aria-label', expanded
+    ? (en ? 'Collapse calendar' : '달력 접기')
+    : (en ? 'Expand calendar' : '달력 펼치기'));
+}
+
 function applyHomeCalProgress(p, settling = false) {
   const els = homeCalEls();
   if (!els) return;
   const prog = Math.max(0, Math.min(1, p));
   homeCalProgress = prog;
   const H = homeCalHeight || measureHomeCalHeight();
+  const stripH = HOME_CAL_STRIP_H;
   els.slot.style.setProperty('--home-cal-h', `${H}px`);
   els.slot.setAttribute('aria-hidden', prog <= 0.01 && !homeCalOpen ? 'true' : 'false');
 
   const commitOpen = homeCalOpen && prog >= 0.995 && !settling;
-  const commitClosed = !homeCalOpen && prog <= 0.01 && !settling;
+  const commitClosed = !homeCalOpen && !homeCalClosing && prog <= 0.01 && !settling;
+  const morph = homeCalOpen
+    ? (settling ? prog : (prog >= 0.995 ? 1 : 0))
+    : (homeCalClosing ? prog : 0);
+  homeCalMorph = morph;
+
+  document.body.classList.toggle('home-cal-active', homeCalOpen || homeCalClosing || prog > 0.04);
+  document.body.classList.toggle('home-cal-pulling', !commitOpen && !commitClosed && (prog > 0.02 || settling));
+  document.body.classList.toggle('home-cal-open', !!(commitOpen || (homeCalOpen && prog >= 0.995 && !homeCalClosing)));
+  // 살짝 엿보는 힌트에서는 입력줄을 그대로 두고, 본격적으로 펼칠 때만 숨긴다
+  document.body.classList.toggle('home-cal-dock-hide', homeCalOpen || homeCalClosing || prog > 0.45);
 
   els.home?.classList.toggle('home-cal-dragging', !settling && !commitOpen && !commitClosed);
   els.home?.classList.toggle('home-cal-shifting', settling);
+  els.slot.classList.toggle('is-morphing', morph > 0.02 && !commitOpen);
+
+  if (els.strip) {
+    els.strip.style.opacity = String(Math.max(0, 1 - morph));
+    els.strip.style.pointerEvents = morph > 0.25 ? 'none' : '';
+  }
+  syncHomeCalChevron(els, prog);
 
   if (commitOpen) {
     els.slot.classList.add('is-open');
-    els.slot.classList.remove('is-pulling', 'is-settling');
+    els.slot.classList.remove('is-pulling', 'is-settling', 'is-morphing');
     els.panel.style.transform = '';
+    els.panel.style.clipPath = '';
+    els.slot.style.clipPath = '';
     if (els.home) els.home.style.transform = '';
+    if (els.chevron) els.chevron.style.transform = '';
     els.home?.classList.remove('home-cal-dragging', 'home-cal-shifting');
+    document.body.classList.add('home-cal-open');
+    document.body.classList.remove('home-cal-pulling');
     return;
   }
   if (commitClosed) {
@@ -10411,8 +10474,22 @@ function applyHomeCalProgress(p, settling = false) {
   els.slot.classList.remove('is-open');
   els.slot.classList.toggle('is-pulling', !settling);
   els.slot.classList.toggle('is-settling', settling);
-  els.panel.style.transform = `translate3d(0, ${((prog - 1) * H).toFixed(2)}px, 0)`;
-  if (els.home) els.home.style.transform = `translate3d(0, ${(prog * H).toFixed(2)}px, 0)`;
+
+  const { extraTop, rowH } = homeCalMorphMetrics(els, H);
+  // 접힌 채 엿볼 때는 고른 주 바로 다음 줄이 날짜 줄 아래에 나타난다.
+  const anchor = extraTop + rowH;
+  const tBelow = -anchor;
+  const tMorph = extraTop * (prog - 1) - stripH;
+  const t = tBelow * (1 - morph) + tMorph * morph;
+  els.panel.style.transform = `translate3d(0, ${t.toFixed(2)}px, 0)`;
+  const yBelow = prog * H;
+  const yMorph = (H - stripH) * prog;
+  const yHome = yBelow * (1 - morph) + yMorph * morph;
+  if (els.home) els.home.style.transform = `translate3d(0, ${yHome.toFixed(2)}px, 0)`;
+  const reveal = Math.max(0, Math.min(H, prog * H));
+  const clipBottom = (1 - morph) * Math.max(0, H - reveal);
+  if (clipBottom > 0.5) els.slot.style.clipPath = `inset(0 0 ${clipBottom.toFixed(1)}px 0)`;
+  else els.slot.style.clipPath = '';
 }
 
 function setHomeCalProgress(p, settling = false) {
@@ -10428,29 +10505,36 @@ function setHomeCalProgress(p, settling = false) {
 
 function resetHomeCalChrome(els) {
   if (!els) return;
-  els.slot.classList.remove('is-open', 'is-pulling', 'is-settling');
+  homeCalClosing = false;
+  homeCalMorph = 0;
+  homeCalProgress = 0;
+  els.slot.classList.remove('is-open', 'is-pulling', 'is-settling', 'is-morphing');
   els.slot.setAttribute('aria-hidden', 'true');
   els.panel.style.transform = '';
+  els.panel.style.clipPath = '';
+  els.slot.style.clipPath = '';
   if (els.home) els.home.style.transform = '';
+  if (els.chevron) els.chevron.style.transform = '';
+  if (els.strip) { els.strip.style.opacity = ''; els.strip.style.pointerEvents = ''; }
   els.home?.classList.remove('home-cal-dragging', 'home-cal-shifting');
-  homeCalProgress = 0;
+  document.body.classList.remove('home-cal-open', 'home-cal-pulling', 'home-cal-active', 'home-cal-dock-hide');
+  syncHomeCalChevron(els, 0);
 }
 
 function closeHomeCal({ animate = true } = {}) {
   const els = homeCalEls();
   if (!els) return;
+  cancelHomeCalPeek();
   const wasOpen = homeCalOpen;
+  homeCalClosing = wasOpen;
   homeCalOpen = false;
-  document.body.classList.remove('home-cal-open');
   const finish = () => { applyHomeCalProgress(0, false); };
   if (!animate || reduceMotion()) { finish(); return; }
-  const H = homeCalHeight || measureHomeCalHeight();
   // 확정된 펼침 레이아웃을, 같은 모양의 transform으로 바꾼 뒤 접음
   if (wasOpen) {
     els.slot.classList.remove('is-open');
     els.slot.classList.add('is-settling');
-    els.panel.style.transform = 'none';
-    if (els.home) els.home.style.transform = `translate3d(0, ${H}px, 0)`;
+    document.body.classList.remove('home-cal-open');
     homeCalProgress = 1;
   }
   applyHomeCalProgress(homeCalProgress || 1, true);
@@ -10462,11 +10546,13 @@ function closeHomeCal({ animate = true } = {}) {
 async function openHomeCal({ animate = true } = {}) {
   const els = homeCalEls();
   if (!els) return;
+  cancelHomeCalPeek();
+  homeCalClosing = false;
   homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   if (!els.grid.childElementCount) renderHomeMonthCalendar();
   measureHomeCalHeight();
   homeCalOpen = true;
-  document.body.classList.add('home-cal-open');
+  document.body.classList.add('home-cal-active');
   ensureHomeCalData().then(() => {
     renderHomeMonthCalendar();
     measureHomeCalHeight();
@@ -10521,11 +10607,20 @@ function renderHomeMonthCalendar() {
     [...weekdays.children].forEach((el, i) => { el.textContent = names[i] || ''; });
   }
   const startPad = new Date(year, month, 1).getDay();
-  const todayKey = dateKey(new Date());
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const weekCount = Math.max(4, Math.min(6, Math.ceil((startPad + daysInMonth) / 7)));
+  const today = new Date();
+  const todayKey = dateKey(today);
   const selectedKey = dateKey(currentDate);
+  let selWeek = 0;
+  if (currentDate.getFullYear() === year && currentDate.getMonth() === month) {
+    selWeek = Math.floor((startPad + currentDate.getDate() - 1) / 7);
+  } else if (today.getFullYear() === year && today.getMonth() === month) {
+    selWeek = Math.floor((startPad + today.getDate() - 1) / 7);
+  }
   const pGoal = TARGETS?.protein || 0;
   const frag = document.createDocumentFragment();
-  for (let i = 0; i < 42; i++) {
+  for (let i = 0; i < weekCount * 7; i++) {
     const date = new Date(year, month, 1 - startPad + i);
     const key = dateKey(date);
     const outside = date.getMonth() !== month;
@@ -10539,10 +10634,13 @@ function renderHomeMonthCalendar() {
     btn.type = 'button';
     btn.className = `cal-day${outside ? ' is-outside' : ''}${key === todayKey ? ' is-today' : ''}${key === selectedKey ? ' is-selected' : ''}${has ? ` has-log level-${level}` : ''}${proteinMet ? ' protein-met' : ''}`;
     btn.dataset.key = key;
+    btn.dataset.week = String(Math.floor(i / 7));
     btn.setAttribute('aria-label', `${formatDate(date)}${has ? `, ${kcal}kcal` : ''}${proteinMet ? (en ? ', protein goal met' : ', 단백질 목표 달성') : ''}${key === todayKey ? (en ? ', today' : ', 오늘') : ''}`);
     btn.innerHTML = `<span class="cal-day-mark"><span class="cal-day-num">${date.getDate()}</span><span class="cal-day-kcal">${has ? kcal : ''}</span><span class="cal-day-flags" aria-hidden="true"><i class="cal-day-status"></i><i class="cal-day-protein"></i></span></span>`;
     frag.appendChild(btn);
   }
+  els.grid.dataset.selWeek = String(selWeek);
+  els.grid.dataset.weekCount = String(weekCount);
   els.grid.replaceChildren(frag);
   const stats = homeCalMonthStats(year, month);
   if (els.summary) {
@@ -10563,6 +10661,34 @@ async function selectHomeCalDate(key) {
   await loadCurrentDay();
   updateDateDisplay();
   renderAll(true);
+}
+
+function setupHomeCalPeekHint() {
+  try { if (localStorage.getItem(HOME_CAL_PEEK_KEY) === '1') return; } catch {}
+  if (reduceMotion()) { markHomeCalPeekSeen(); return; }
+  const run = () => {
+    if (activeView !== 'home' || homeCalOpen || homeCalClosing) { markHomeCalPeekSeen(); return; }
+    try { if (localStorage.getItem(HOME_CAL_PEEK_KEY) === '1') return; } catch {}
+    const els = homeCalEls();
+    if (!els) return;
+    homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    if (!els.grid.childElementCount) renderHomeMonthCalendar();
+    const H = measureHomeCalHeight() || 360;
+    const peek = Math.min(0.95, HOME_CAL_PEEK_PX / H);
+    applyHomeCalProgress(0, false);
+    requestAnimationFrame(() => {
+      applyHomeCalProgress(peek, true);
+      clearTimeout(els.slot._peekTimer);
+      els.slot._peekTimer = setTimeout(() => {
+        applyHomeCalProgress(0, true);
+        els.slot._peekTimer = setTimeout(() => {
+          applyHomeCalProgress(0, false);
+          markHomeCalPeekSeen();
+        }, HOME_MOTION_MS + 24);
+      }, 440);
+    });
+  };
+  setTimeout(run, 560);
 }
 
 function setupHomeCalendarPull() {
@@ -10586,6 +10712,7 @@ function setupHomeCalendarPull() {
   let y0 = null, x0 = 0, mode = null, dist = 0;
 
   const prepCal = () => {
+    cancelHomeCalPeek();
     homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     if (!document.getElementById('home-cal-grid')?.childElementCount) renderHomeMonthCalendar();
     if (!homeCalHeight) measureHomeCalHeight();
@@ -10661,7 +10788,61 @@ function setupHomeCalendarPull() {
   panel.addEventListener('touchend', onCloseEnd, { passive: true });
   panel.addEventListener('touchcancel', onCloseEnd, { passive: true });
 
-  document.getElementById('home-cal-grabber')?.addEventListener('click', () => closeHomeCal());
+  const chevron = document.getElementById('home-cal-chevron');
+  if (chevron && !chevron._bound) {
+    chevron._bound = true;
+    let cx = 0, cy = 0, cMoved = false, cHandled = false, cPulling = false;
+    const snapChevron = () => {
+      if (homeCalOpen) {
+        if (homeCalProgress <= 0.55) closeHomeCal();
+        else openHomeCal({ animate: true });
+      } else if (homeCalProgress * (TRIGGER + 40) >= TRIGGER || homeCalProgress >= 0.55) openHomeCal();
+      else closeHomeCal();
+    };
+    chevron.addEventListener('touchstart', event => {
+      if (event.touches.length !== 1) return;
+      cancelHomeCalPeek();
+      cx = event.touches[0].clientX;
+      cy = event.touches[0].clientY;
+      cMoved = false;
+      cHandled = false;
+      cPulling = false;
+      if (!homeCalOpen) prepCal();
+    }, { passive: true });
+    chevron.addEventListener('touchmove', event => {
+      const t = event.touches[0];
+      if (!t) return;
+      const dy = t.clientY - cy;
+      if (Math.abs(dy) > 8) cMoved = true;
+      if (!homeCalOpen && dy > 8) {
+        cPulling = true;
+        if (event.cancelable) event.preventDefault();
+        setHomeCalProgress(Math.min(1, rubber(dy) / (TRIGGER + 40)), false);
+      } else if (homeCalOpen && dy < -8) {
+        cPulling = true;
+        if (event.cancelable) event.preventDefault();
+        const travel = homeCalHeight || measureHomeCalHeight();
+        setHomeCalProgress(Math.max(0, 1 - rubber(-dy) / travel), false);
+      }
+    }, { passive: false });
+    const endChevron = () => {
+      if (cHandled) return;
+      if (cPulling) { cHandled = true; snapChevron(); return; }
+      if (!cMoved) {
+        cHandled = true;
+        if (homeCalOpen) closeHomeCal();
+        else openHomeCal();
+      }
+    };
+    chevron.addEventListener('touchend', endChevron, { passive: true });
+    chevron.addEventListener('touchcancel', endChevron, { passive: true });
+    chevron.addEventListener('click', event => {
+      if (cHandled) { cHandled = false; event.preventDefault(); return; }
+      if (homeCalOpen) closeHomeCal();
+      else openHomeCal();
+    });
+  }
+
   document.getElementById('home-cal-prev')?.addEventListener('click', () => {
     homeCalMonth = new Date(homeCalMonth.getFullYear(), homeCalMonth.getMonth() - 1, 1);
     renderHomeMonthCalendar();
@@ -13352,6 +13533,7 @@ async function initializeApp() {
   setupBridge();
   setupPullToRefresh();
   setupHomeCalendarPull();
+  setupHomeCalPeekHint();
   setupHomeDayPager();
   setupHomeChatSheetOpen();
   resumeDaylogPending();
