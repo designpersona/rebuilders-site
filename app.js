@@ -10432,9 +10432,8 @@ function applyHomeCalProgress(p, settling = false) {
 
   const commitOpen = homeCalOpen && prog >= 0.995 && !settling;
   const commitClosed = !homeCalOpen && !homeCalClosing && prog <= 0.01 && !settling;
-  const morph = homeCalOpen
-    ? (settling ? prog : (prog >= 0.995 ? 1 : 0))
-    : (homeCalClosing ? prog : 0);
+  // 닫힌 채 당길 때는 다음 주만 엿보고(morph 0), 이미 열린 달력을 접을 때는 prog 를 따라 형태가 줄어든다.
+  const morph = (homeCalOpen || homeCalClosing) ? prog : 0;
   homeCalMorph = morph;
 
   document.body.classList.toggle('home-cal-active', homeCalOpen || homeCalClosing || prog > 0.04);
@@ -10521,14 +10520,47 @@ function resetHomeCalChrome(els) {
   syncHomeCalChevron(els, 0);
 }
 
+function flushHomeCalProgress() {
+  if (homeCalRaf) { cancelAnimationFrame(homeCalRaf); homeCalRaf = 0; }
+  const next = homeCalPending;
+  homeCalPending = null;
+  if (next) applyHomeCalProgress(next.p, next.settling);
+}
+
+function cancelHomeCalTimer() {
+  const slot = document.getElementById('home-cal-slot');
+  if (slot?._closeTimer) { clearTimeout(slot._closeTimer); slot._closeTimer = 0; }
+  flushHomeCalProgress();
+}
+
+function prepHomeCalendar() {
+  cancelHomeCalPeek();
+  homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  const grid = document.getElementById('home-cal-grid');
+  if (!grid?.childElementCount && typeof renderHomeMonthCalendar === 'function') renderHomeMonthCalendar();
+  if (!homeCalHeight && typeof measureHomeCalHeight === 'function') measureHomeCalHeight();
+  if (typeof ensureHomeCalData === 'function') {
+    ensureHomeCalData().then(() => { if (!homeCalOpen && typeof renderHomeMonthCalendar === 'function') renderHomeMonthCalendar(); });
+  }
+}
+
 function closeHomeCal({ animate = true } = {}) {
   const els = homeCalEls();
   if (!els) return;
   cancelHomeCalPeek();
+  cancelHomeCalTimer();
+  if (!homeCalOpen && homeCalProgress <= 0.02 && !homeCalClosing) {
+    resetHomeCalChrome(els);
+    return;
+  }
   const wasOpen = homeCalOpen;
-  homeCalClosing = wasOpen;
+  homeCalClosing = wasOpen || homeCalProgress > 0.02;
   homeCalOpen = false;
-  const finish = () => { applyHomeCalProgress(0, false); };
+  const finish = () => {
+    homeCalClosing = false;
+    homeCalOpen = false;
+    resetHomeCalChrome(els);
+  };
   if (!animate || reduceMotion()) { finish(); return; }
   // 확정된 펼침 레이아웃을, 같은 모양의 transform으로 바꾼 뒤 접음
   if (wasOpen) {
@@ -10547,6 +10579,11 @@ async function openHomeCal({ animate = true } = {}) {
   const els = homeCalEls();
   if (!els) return;
   cancelHomeCalPeek();
+  cancelHomeCalTimer();
+  if (homeCalOpen && homeCalProgress >= 0.995 && !homeCalClosing) {
+    applyHomeCalProgress(1, false);
+    return;
+  }
   homeCalClosing = false;
   homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   if (!els.grid.childElementCount) renderHomeMonthCalendar();
@@ -10691,153 +10728,279 @@ function setupHomeCalPeekHint() {
   setTimeout(run, 560);
 }
 
+/* 기록 탭 제스처는 한 곳에서만 처리한다.
+   약 10px 후 세로/가로를 잠근다. 맨 위에서 아래로 당기면 달력, 날짜 줄 가로는 주 이동,
+   끼니 영역 가로는 하루 리포트, 탭은 탭으로 남긴다. stopPropagation 은 쓰지 않는다. */
+const HOME_GESTURE_LOCK = 10;
+const HOME_CAL_TRIGGER = 72;
+
+function homeGestureRubber(raw) {
+  const v = Math.max(0, raw);
+  return 200 * (1 - 1 / (v / 200 + 1));
+}
+
+function homeStripChipAt(x, y, fallback) {
+  const el = document.elementFromPoint(x, y);
+  const hit = el?.closest?.('.date-chip') || fallback?.closest?.('.date-chip');
+  if (hit) return hit;
+  const p = dateStripParts();
+  if (!p) return null;
+  const r = p.strip.getBoundingClientRect();
+  const dow = Math.max(0, Math.min(6, Math.floor((x - r.left) / p.itemW)));
+  return p.track.querySelector(`.date-chip[data-week="0"][data-dow="${dow}"]`);
+}
+
+function homeStripSelectChip(chip) {
+  if (!chip?.dataset.key) return false;
+  const d = parseDateKey(chip.dataset.key);
+  if (!d || Number.isNaN(d.getTime())) return false;
+  if (dateKey(d) === dateKey(currentDate)) { applyDateStripMagnify(); return true; }
+  dateStripHaptic();
+  commitDateStripTo(d);
+  return true;
+}
+
+function setupHomeGestures() {
+  if (setupHomeGestures.ready) return;
+  const home = document.getElementById('view-home');
+  const strip = document.getElementById('date-strip');
+  const pager = document.getElementById('home-day-pager');
+  const pagerTrack = document.getElementById('home-day-pager-track');
+  const frame = document.querySelector('.phone-frame');
+  if (!home || !frame) return;
+  setupHomeGestures.ready = true;
+
+  let g = null;
+  let stripTapHandled = false;
+
+  const ignoreStart = target => {
+    const b = document.body.classList;
+    if (activeView !== 'home') return true;
+    if (b.contains('ai-sheet-open') || b.contains('ai-sheet-expanding') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing') || b.contains('keyboard-open')) return true;
+    if (target?.closest?.('input, textarea, select, [contenteditable="true"], .modal, dialog, .drag-handle, .food-drag-handle')) return true;
+    // 달력이 열린 동안에는 입력줄·탭을 포함한 화면 어디서나 위로 밀면 접힌다.
+    if (!homeCalOpen && target?.closest?.('#home-ai-dock, #page-tabs')) return true;
+    return false;
+  };
+
+  const zoneOf = target => {
+    if (target?.closest?.('#date-strip, .date-strip')) return 'strip';
+    if (target?.closest?.('#home-cal-chevron')) return 'chevron';
+    if (target?.closest?.('#home-day-pager')) return 'pager';
+    if (target?.closest?.('#home-cal-grid .cal-day, .cal-day')) return 'cal-day';
+    if (target?.closest?.('#home-cal-slot, #top-head')) return 'top';
+    return 'page';
+  };
+
+  const onStart = event => {
+    if (event.touches.length !== 1) { g = null; return; }
+    const target = event.target;
+    if (ignoreStart(target)) { g = null; return; }
+    const t = event.touches[0];
+    g = {
+      x0: t.clientX, y0: t.clientY, t0: performance.now(),
+      mode: null, zone: zoneOf(target), startTarget: target,
+      topY: (home.scrollTop || 0) <= 0.5 ? t.clientY : null,
+      scroll0: home.scrollTop || 0,
+      samples: [],
+      startOffset: typeof dateStripOffset === 'number' ? dateStripOffset : 0,
+      pagerW: pager?.getBoundingClientRect().width || innerWidth,
+      lastDx: 0, lastX: t.clientX, lastY: t.clientY, lastT: performance.now(),
+      vx: 0, vy: 0, pending: 0, raf: 0,
+    };
+  };
+
+  const flushStrip = px => {
+    if (g) g.pending = px;
+    if (g?.raf) return;
+    if (!g) { setDateStripOffset(px); return; }
+    g.raf = requestAnimationFrame(() => {
+      if (!g) return;
+      g.raf = 0;
+      setDateStripOffset(g.pending);
+    });
+  };
+
+  const onMove = event => {
+    if (!g || event.touches.length !== 1) return;
+    const t = event.touches[0];
+    const dx = t.clientX - g.x0;
+    const dy = t.clientY - g.y0;
+    const now = performance.now();
+    if (now > g.lastT) {
+      g.vx = (t.clientX - g.lastX) / (now - g.lastT);
+      g.vy = (t.clientY - g.lastY) / (now - g.lastT);
+    }
+    g.lastX = t.clientX; g.lastY = t.clientY; g.lastT = now;
+
+    if (!g.mode) {
+      if (Math.abs(dx) < HOME_GESTURE_LOCK && Math.abs(dy) < HOME_GESTURE_LOCK) return;
+      if (Math.abs(dy) >= Math.abs(dx)) {
+        g.mode = 'v';
+        cancelHomeCalTimer();
+        if (!homeCalOpen) prepHomeCalendar();
+      } else if (g.zone === 'strip' && !homeCalOpen) {
+        g.mode = 'h-strip';
+        dateStripDragging = true;
+        strip?.classList.add('is-dragging');
+        const p = dateStripParts();
+        if (p) p.track.style.transition = 'none';
+        cancelDateStripMotion({ resetFlags: false });
+      } else if (g.zone === 'pager' && !homeCalOpen) {
+        g.mode = 'h-pager';
+        g.x0 = t.clientX;
+        g.lastDx = 0;
+        pager?.classList.add('is-dragging');
+        pager?.classList.remove('is-animating');
+      } else {
+        g.mode = 'h-ignore';
+      }
+    }
+
+    if (g.mode === 'h-strip') {
+      if (event.cancelable) event.preventDefault();
+      g.samples.push({ x: t.clientX, t: now });
+      while (g.samples.length > 2 && now - g.samples[0].t > 80) g.samples.shift();
+      flushStrip(g.startOffset + dx);
+      return;
+    }
+    if (g.mode === 'h-pager') {
+      if (event.cancelable) event.preventDefault();
+      g.lastDx = t.clientX - g.x0;
+      g.samples.push({ x: t.clientX, t: now });
+      while (g.samples.length > 2 && now - g.samples[0].t > 80) g.samples.shift();
+      const w = g.pagerW;
+      const base = homeDayPage ? -w : 0;
+      const nx = Math.max(-w, Math.min(0, base + g.lastDx));
+      if (pagerTrack) pagerTrack.style.transform = `translate3d(${nx}px, 0, 0)`;
+      return;
+    }
+    if (g.mode !== 'v') return;
+
+    if (homeCalOpen || homeCalClosing) {
+      if (dy < 0) {
+        if (event.cancelable) event.preventDefault();
+        const travel = Math.max(160, homeCalHeight || measureHomeCalHeight() || 360);
+        // 접을 때는 손가락을 거의 1:1 로 따라가 짧은 스와이프로도 닫히게 한다.
+        setHomeCalProgress(Math.max(0, 1 - Math.max(0, -dy) / travel), false);
+      }
+      return;
+    }
+
+    // 스크롤이 아래에 있으면 먼저 맨 위로, 맨 위에 닿은 뒤 더 당기면 달력.
+    // scrollTop 은 touchmove 중에 아직 갱신되지 않을 수 있어, 시작 시점의 scroll0 만큼을 당김에서 뺀다.
+    const pull = (t.clientY - g.y0) - (g.scroll0 || 0);
+    if (pull <= 0) {
+      g.topY = null;
+      return;
+    }
+    if (home.scrollTop > 0.5) home.scrollTop = 0;
+    if (g.topY == null) g.topY = g.y0 + (g.scroll0 || 0);
+    if (event.cancelable) event.preventDefault();
+    setHomeCalProgress(Math.min(1, homeGestureRubber(pull) / (HOME_CAL_TRIGGER + 40)), false);
+  };
+
+  const onEnd = event => {
+    if (!g) return;
+    const gest = g;
+    g = null;
+    if (gest.raf) { cancelAnimationFrame(gest.raf); gest.raf = 0; setDateStripOffset(gest.pending); }
+    const pt = event?.changedTouches?.[0];
+    const x = pt ? pt.clientX : gest.lastX;
+    const y = pt ? pt.clientY : gest.lastY;
+    const dist = Math.hypot(x - gest.x0, y - gest.y0);
+    const mode = gest.mode;
+
+    if (mode === 'h-strip') {
+      strip?.classList.remove('is-dragging');
+      dateStripDragging = false;
+      const p = dateStripParts();
+      if (!p) return;
+      const a = gest.samples[0]; const z = gest.samples[gest.samples.length - 1];
+      const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
+      let weeks = 0;
+      if (Math.abs(vx) > 0.45 && Math.abs(dateStripOffset) > p.W * 0.08) weeks = vx < 0 ? 1 : -1;
+      else if (Math.abs(dateStripOffset) >= p.W * 0.25) weeks = dateStripOffset < 0 ? 1 : -1;
+      if (!weeks) { settleDateStripToOffset(0); return; }
+      const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + weeks * 7);
+      dateStripHaptic();
+      settleDateStripToOffset(-weeks * p.W).then(ok => { if (ok) commitDateStripTo(next); });
+      return;
+    }
+    if (mode === 'h-pager') {
+      pager?.classList.remove('is-dragging');
+      const a = gest.samples[0]; const z = gest.samples[gest.samples.length - 1];
+      const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
+      const flick = Math.abs(vx) > 0.45 && Math.abs(gest.lastDx) >= 16;
+      const w = gest.pagerW;
+      let next = homeDayPage;
+      if (flick) next = vx < 0 ? 1 : 0;
+      else if (Math.abs(gest.lastDx) >= w * 0.22) next = gest.lastDx < 0 ? 1 : 0;
+      setHomeDayPage(next, { animate: true });
+      return;
+    }
+    if (mode === 'v') {
+      flushHomeCalProgress();
+      const prog = homeCalProgress;
+      if (homeCalOpen || homeCalClosing) {
+        const pullUp = Math.max(0, gest.y0 - y);
+        const flick = gest.vy < -0.25;
+        if (prog <= 0.7 || pullUp >= HOME_CAL_TRIGGER || flick) closeHomeCal();
+        else openHomeCal({ animate: true });
+      } else if (prog * (HOME_CAL_TRIGGER + 40) >= HOME_CAL_TRIGGER || prog >= 0.55) {
+        openHomeCal();
+      } else if (prog > 0.01) {
+        closeHomeCal();
+      }
+      return;
+    }
+
+    // 탭: 날짜 줄은 합성 click 이 안 올 수 있어 touchend 에서 고른다. 다른 탭은 click 에 맡긴다.
+    if (dist <= HOME_GESTURE_LOCK) {
+      if (gest.zone === 'strip') {
+        stripTapHandled = true;
+        homeStripSelectChip(homeStripChipAt(x, y, gest.startTarget));
+      } else if (gest.zone === 'chevron') {
+        const el = document.getElementById('home-cal-chevron');
+        if (el) el._tapHandled = true;
+        if (homeCalOpen) closeHomeCal();
+        else openHomeCal();
+      }
+    }
+  };
+
+  frame.addEventListener('touchstart', onStart, { passive: true });
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('touchend', onEnd, { passive: true });
+  window.addEventListener('touchcancel', onEnd, { passive: true });
+
+  // 마우스(개발자 도구): 날짜 줄 탭만
+  strip?.addEventListener('click', event => {
+    if (stripTapHandled) { stripTapHandled = false; event.preventDefault(); return; }
+    if (activeView !== 'home') return;
+    const chip = event.target.closest?.('.date-chip') || homeStripChipAt(event.clientX, event.clientY, event.target);
+    homeStripSelectChip(chip);
+  });
+}
+
 function setupHomeCalendarPull() {
   if (homeCalReady) return;
   const home = document.getElementById('view-home');
   const els0 = homeCalEls();
   if (!home || !els0) return;
   homeCalReady = true;
-  const TRIGGER = 72;
-  const MAX = 200;
-  const blocked = target => {
-    const b = document.body.classList;
-    if (activeView !== 'home' || b.contains('ai-sheet-open') || b.contains('ai-sheet-expanding') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing')) return true;
-    if (target?.closest?.('input, textarea, select, [contenteditable="true"], .home-ai-dock, .modal, dialog, .home-cal-panel, .date-strip, .home-day-pager')) return true;
-    return false;
+  window._homeCalPullApi = {
+    TRIGGER: 72,
+    rubber: raw => { const v = Math.max(0, raw); return 200 * (1 - 1 / (v / 200 + 1)); },
+    prepCal: prepHomeCalendar,
   };
-  const rubber = raw => {
-    const v = Math.max(0, raw);
-    return MAX * (1 - 1 / (v / MAX + 1));
-  };
-  let y0 = null, x0 = 0, mode = null, dist = 0;
-
-  const prepCal = () => {
-    cancelHomeCalPeek();
-    homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-    if (!document.getElementById('home-cal-grid')?.childElementCount) renderHomeMonthCalendar();
-    if (!homeCalHeight) measureHomeCalHeight();
-    ensureHomeCalData().then(() => { if (!homeCalOpen) renderHomeMonthCalendar(); });
-  };
-
-  home.addEventListener('touchstart', event => {
-    y0 = null; mode = null; dist = 0;
-    if (event.touches.length !== 1 || blocked(event.target)) return;
-    if (homeCalOpen) return;
-    if (home.scrollTop > 1) return;
-    y0 = event.touches[0].clientY; x0 = event.touches[0].clientX;
-    prepCal();
-  }, { passive: true });
-  home.addEventListener('touchmove', event => {
-    if (y0 == null || homeCalOpen) return;
-    const t = event.touches[0];
-    const dy = t.clientY - y0; const dx = t.clientX - x0;
-    if (!mode) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-      mode = dy > 0 && Math.abs(dy) > Math.abs(dx) * 1.2 && home.scrollTop <= 1 ? 'pull' : 'skip';
-      if (mode === 'skip') { y0 = null; return; }
-    }
-    dist = rubber(dy);
-    if (event.cancelable) event.preventDefault();
-    setHomeCalProgress(Math.min(1, dist / (TRIGGER + 40)), false);
-  }, { passive: false });
-  const endOpen = () => {
-    if (y0 == null || mode !== 'pull') { y0 = null; return; }
-    y0 = null;
-    if (dist >= TRIGGER) openHomeCal();
-    else closeHomeCal();
-  };
-  home.addEventListener('touchend', endOpen, { passive: true });
-  home.addEventListener('touchcancel', () => { if (!homeCalOpen && mode === 'pull') { y0 = null; closeHomeCal({ animate: true }); } else y0 = null; }, { passive: true });
-
-  window._homeCalPullApi = { TRIGGER, rubber, prepCal };
-
-  const panel = els0.panel;
-  let cy0 = null, cdist = 0, cmode = null, lastCy = 0, lastCt = 0, cVel = 0;
-  const onCloseStart = event => {
-    cy0 = null; cmode = null; cdist = 0; cVel = 0;
-    if (!homeCalOpen || event.touches.length !== 1) return;
-    if (event.target.closest?.('button.cal-day, .nav-btn, input, .cal-month-picker-wrap')) return;
-    cy0 = event.touches[0].clientY; lastCy = cy0; lastCt = performance.now();
-  };
-  const onCloseMove = event => {
-    if (cy0 == null || !homeCalOpen) return;
-    const y = event.touches[0].clientY;
-    const dy = y - cy0;
-    const now = performance.now();
-    if (now > lastCt) cVel = (y - lastCy) / (now - lastCt);
-    lastCy = y; lastCt = now;
-    if (!cmode) {
-      if (Math.abs(dy) < 8) return;
-      cmode = dy < 0 ? 'up' : 'down';
-    }
-    if (cmode !== 'up') return;
-    cdist = rubber(-dy);
-    if (event.cancelable) event.preventDefault();
-    const travel = homeCalHeight || measureHomeCalHeight();
-    setHomeCalProgress(Math.max(0, 1 - cdist / travel), false);
-  };
-  const onCloseEnd = () => {
-    if (cy0 == null) return;
-    cy0 = null;
-    const flick = cmode === 'up' && cVel < -0.4;
-    if ((cmode === 'up' && cdist >= 56) || flick) closeHomeCal();
-    else if (homeCalOpen) openHomeCal({ animate: true });
-  };
-  panel.addEventListener('touchstart', onCloseStart, { passive: true });
-  panel.addEventListener('touchmove', onCloseMove, { passive: false });
-  panel.addEventListener('touchend', onCloseEnd, { passive: true });
-  panel.addEventListener('touchcancel', onCloseEnd, { passive: true });
+  setupHomeGestures();
 
   const chevron = document.getElementById('home-cal-chevron');
   if (chevron && !chevron._bound) {
     chevron._bound = true;
-    let cx = 0, cy = 0, cMoved = false, cHandled = false, cPulling = false;
-    const snapChevron = () => {
-      if (homeCalOpen) {
-        if (homeCalProgress <= 0.55) closeHomeCal();
-        else openHomeCal({ animate: true });
-      } else if (homeCalProgress * (TRIGGER + 40) >= TRIGGER || homeCalProgress >= 0.55) openHomeCal();
-      else closeHomeCal();
-    };
-    chevron.addEventListener('touchstart', event => {
-      if (event.touches.length !== 1) return;
-      cancelHomeCalPeek();
-      cx = event.touches[0].clientX;
-      cy = event.touches[0].clientY;
-      cMoved = false;
-      cHandled = false;
-      cPulling = false;
-      if (!homeCalOpen) prepCal();
-    }, { passive: true });
-    chevron.addEventListener('touchmove', event => {
-      const t = event.touches[0];
-      if (!t) return;
-      const dy = t.clientY - cy;
-      if (Math.abs(dy) > 8) cMoved = true;
-      if (!homeCalOpen && dy > 8) {
-        cPulling = true;
-        if (event.cancelable) event.preventDefault();
-        setHomeCalProgress(Math.min(1, rubber(dy) / (TRIGGER + 40)), false);
-      } else if (homeCalOpen && dy < -8) {
-        cPulling = true;
-        if (event.cancelable) event.preventDefault();
-        const travel = homeCalHeight || measureHomeCalHeight();
-        setHomeCalProgress(Math.max(0, 1 - rubber(-dy) / travel), false);
-      }
-    }, { passive: false });
-    const endChevron = () => {
-      if (cHandled) return;
-      if (cPulling) { cHandled = true; snapChevron(); return; }
-      if (!cMoved) {
-        cHandled = true;
-        if (homeCalOpen) closeHomeCal();
-        else openHomeCal();
-      }
-    };
-    chevron.addEventListener('touchend', endChevron, { passive: true });
-    chevron.addEventListener('touchcancel', endChevron, { passive: true });
     chevron.addEventListener('click', event => {
-      if (cHandled) { cHandled = false; event.preventDefault(); return; }
+      if (chevron._tapHandled) { chevron._tapHandled = false; event.preventDefault(); return; }
       if (homeCalOpen) closeHomeCal();
       else openHomeCal();
     });
@@ -10905,66 +11068,7 @@ function setupHomeDayPager() {
   const track = document.getElementById('home-day-pager-track');
   if (!pager || !track || pager._ready) return;
   pager._ready = true;
-  const blocked = target => {
-    const b = document.body.classList;
-    if (activeView !== 'home' || homeCalOpen || b.contains('ai-sheet-open') || b.contains('ai-sheet-expanding') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing') || b.contains('keyboard-open')) return true;
-    if (target?.closest?.('.date-strip, .top-head, .home-cal-slot, .home-cal-head, input, textarea, select, [contenteditable="true"], button, a, .drag-handle, .food-drag-handle, .add-btn, .timeline-edit-btn, .timeline-snack-add, .clear-day-btn')) return true;
-    return false;
-  };
-  let sx = 0, sy = 0, mode = null, tracking = false, lastDx = 0, samples = [], pendingX = 0, raf = 0, startW = 0;
-  const follow = x => {
-    const w = startW || homeDayPagerWidth || pager.getBoundingClientRect().width || innerWidth;
-    const base = homeDayPage ? -w : 0;
-    const nx = Math.max(-w, Math.min(0, base + x));
-    pager.classList.add('is-dragging');
-    pager.classList.remove('is-animating');
-    track.style.transform = `translate3d(${nx}px, 0, 0)`;
-  };
-  const followSoon = x => {
-    pendingX = x;
-    if (raf) return;
-    raf = requestAnimationFrame(() => { raf = 0; follow(pendingX); });
-  };
-  pager.addEventListener('touchstart', event => {
-    tracking = false; mode = null; samples = []; lastDx = 0;
-    if (event.touches.length !== 1 || blocked(event.target)) return;
-    tracking = true;
-    sx = event.touches[0].clientX; sy = event.touches[0].clientY;
-    startW = homeDayPagerWidth = pager.getBoundingClientRect().width || innerWidth;
-  }, { passive: true });
-  pager.addEventListener('touchmove', event => {
-    if (!tracking) return;
-    const t = event.touches[0];
-    let dx = t.clientX - sx; const dy = t.clientY - sy;
-    if (!mode) {
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-      mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
-      if (mode === 'v') { tracking = false; return; }
-      sx = t.clientX; dx = 0;
-    }
-    if (event.cancelable) event.preventDefault();
-    lastDx = dx;
-    const now = performance.now();
-    samples.push({ x: t.clientX, t: now });
-    while (samples.length > 2 && now - samples[0].t > 80) samples.shift();
-    followSoon(dx);
-  }, { passive: false });
-  const finish = () => {
-    if (!tracking) return;
-    tracking = false;
-    if (raf) { cancelAnimationFrame(raf); raf = 0; follow(pendingX); }
-    if (mode !== 'h') { setHomeDayPage(homeDayPage, { animate: true }); return; }
-    const a = samples[0]; const z = samples[samples.length - 1];
-    const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
-    const flick = Math.abs(vx) > 0.45 && Math.abs(lastDx) >= 16;
-    const w = startW || homeDayPagerWidth || pager.getBoundingClientRect().width || innerWidth;
-    let next = homeDayPage;
-    if (flick) next = vx < 0 ? 1 : 0;
-    else if (Math.abs(lastDx) >= w * 0.22) next = lastDx < 0 ? 1 : 0;
-    setHomeDayPage(next, { animate: true });
-  };
-  pager.addEventListener('touchend', finish, { passive: true });
-  pager.addEventListener('touchcancel', finish, { passive: true });
+  // 가로 밀기는 setupHomeGestures 에서 처리한다. 점은 그대로 탭한다.
   document.getElementById('home-day-dots')?.addEventListener('click', event => {
     const dot = event.target.closest?.('.home-day-dot');
     if (!dot) return;
@@ -11085,80 +11189,8 @@ function setupHomeChatSheetOpen() {
 }
 
 function setupPullToRefresh() {
-  // 기록 탭 당겨서는 새로고침하지 않음(월간 달력을 연다). 함수는 남겨 두되 제스처는 붙이지 않음.
-  if (pullRefreshReady) return;
+  // 기록 탭 당겨서는 새로고침하지 않음(월간 달력을 연다). 제스처는 setupHomeGestures 가 맡는다.
   pullRefreshReady = true;
-  return;
-  const home = document.getElementById('view-home');
-  if (!home) return;
-  const TRIGGER = 70;
-  const indicator = document.createElement('div');
-  indicator.className = 'pull-refresh';
-  indicator.setAttribute('aria-hidden', 'true');
-  indicator.innerHTML = '<span class="pull-refresh-icon"></span><span class="pull-refresh-text"></span>';
-  document.body.appendChild(indicator);
-  const label = indicator.querySelector('.pull-refresh-text');
-  let y0 = null, x0 = 0, mode = null, dist = 0;
-  const blocked = target => {
-    const b = document.body.classList;
-    if (activeView !== 'home' || b.contains('ai-sheet-open') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing')) return true;
-    if (target?.closest?.('input, textarea, select, [contenteditable="true"], .home-ai-dock, .modal, dialog, .meal-drag-ghost')) return true;
-    return false;
-  };
-  const show = d => {
-    const ready = d >= TRIGGER;
-    indicator.classList.add('is-visible');
-    indicator.classList.toggle('is-ready', ready);
-    indicator.style.transform = `translate(-50%, ${Math.min(d, 110) - 56}px)`;
-    indicator.querySelector('.pull-refresh-icon').style.transform = `rotate(${Math.min(180, d / TRIGGER * 180)}deg)`;
-    label.textContent = ready ? (ACTIVE_LOCALE === 'en' ? 'Release to refresh' : '놓으면 새로고침') : (ACTIVE_LOCALE === 'en' ? 'Pull to refresh' : '당겨서 새로고침');
-  };
-  let raf = 0, pendingD = 0;
-  const hide = () => {
-    if (raf) { cancelAnimationFrame(raf); raf = 0; }
-    // 스프링처럼 위로 돌아감
-    indicator.classList.add('is-settling');
-    indicator.classList.remove('is-visible', 'is-ready', 'is-loading');
-    indicator.style.transform = '';
-    clearTimeout(indicator._settle);
-    indicator._settle = setTimeout(() => indicator.classList.remove('is-settling'), 400);
-  };
-  const showSoon = d => { pendingD = d; if (!raf) raf = requestAnimationFrame(() => { raf = 0; show(pendingD); }); };
-  home.addEventListener('touchstart', event => {
-    y0 = null; mode = null; dist = 0;
-    if (event.touches.length !== 1 || pullRefreshBusy || home.scrollTop > 0 || blocked(event.target)) return;
-    y0 = event.touches[0].clientY; x0 = event.touches[0].clientX;
-  }, { passive: true });
-  home.addEventListener('touchmove', event => {
-    if (y0 == null) return;
-    const t = event.touches[0];
-    const dy = t.clientY - y0; const dx = t.clientX - x0;
-    if (!mode) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-      mode = dy > 0 && Math.abs(dy) > Math.abs(dx) * 1.2 && home.scrollTop <= 0 ? 'pull' : 'skip';
-      if (mode === 'skip') { y0 = null; return; }
-    }
-    // 고무줄 저항: 처음엔 손을 거의 따라오고 멀리 당길수록 덜 움직임
-    const MAX = 160;
-    const raw = Math.max(0, dy);
-    dist = MAX * (1 - 1 / (raw / MAX + 1)); // 124px 당기면 새로고침 지점
-    if (event.cancelable) event.preventDefault(); // 당기는 동안 웹뷰 자체 튕김을 막음
-    indicator.classList.remove('is-settling');
-    showSoon(dist);
-  }, { passive: false });
-  const end = () => {
-    if (y0 == null || mode !== 'pull') { y0 = null; return; }
-    y0 = null;
-    if (raf) { cancelAnimationFrame(raf); raf = 0; }
-    if (dist >= TRIGGER) {
-      indicator.classList.add('is-settling', 'is-loading');
-      label.textContent = ACTIVE_LOCALE === 'en' ? 'Refreshing…' : '새로고침 중…';
-      indicator.style.transform = `translate(-50%, ${TRIGGER - 56}px)`;
-      softRefreshHome().finally(() => setTimeout(hide, 250));
-    } else hide();
-  };
-  home.addEventListener('touchend', end, { passive: true });
-  home.addEventListener('touchcancel', () => { y0 = null; hide(); }, { passive: true });
 }
 
 /* ============================
@@ -14154,160 +14186,8 @@ slideDateStripTo = async function (date) {
   return slideDateStripBy(delta);
 };
 
-(function setupDateStripGestures() {
-  const strip = document.getElementById('date-strip');
-  if (!strip || strip._gestures) return;
-  strip._gestures = true;
-  let x0 = 0, y0 = 0, t0 = 0, mode = null, active = false, samples = [];
-  let startOffset = 0, startTarget = null, raf = 0, pending = 0, weekW = 0, handledTap = false;
-  const stop = event => { event.stopPropagation(); };
+/* 날짜 줄 제스처는 setupHomeGestures 에서 처리한다. */
 
-  const applySoon = px => {
-    pending = px;
-    if (raf) return;
-    raf = requestAnimationFrame(() => {
-      raf = 0;
-      setDateStripOffset(pending);
-    });
-  };
-
-  const chipAt = (x, y, fallback) => {
-    const el = document.elementFromPoint(x, y);
-    const hit = el?.closest?.('.date-chip') || fallback?.closest?.('.date-chip');
-    if (hit) return hit;
-    const p = dateStripParts();
-    if (!p) return null;
-    const r = p.strip.getBoundingClientRect();
-    const dow = Math.max(0, Math.min(6, Math.floor((x - r.left) / p.itemW)));
-    return p.track.querySelector(`.date-chip[data-week="0"][data-dow="${dow}"]`);
-  };
-
-  const selectChip = chip => {
-    if (!chip?.dataset.key) return false;
-    const d = parseDateKey(chip.dataset.key);
-    if (!d || Number.isNaN(d.getTime())) return false;
-    if (dateKey(d) === dateKey(currentDate)) { applyDateStripMagnify(); return true; }
-    dateStripHaptic();
-    commitDateStripTo(d);
-    return true;
-  };
-
-  strip.addEventListener('touchstart', event => {
-    stop(event);
-    active = false; mode = null; samples = []; handledTap = false;
-    if (event.touches.length !== 1 || activeView !== 'home') return;
-    const b = document.body.classList;
-    if (b.contains('ai-sheet-open') || b.contains('ai-sheet-expanding') || b.contains('timeline-editing')) return;
-    const t = event.touches[0];
-    x0 = t.clientX; y0 = t.clientY; t0 = performance.now();
-    startTarget = event.target;
-    startOffset = dateStripOffset;
-    const p = dateStripParts();
-    weekW = p ? p.W : (strip.clientWidth || innerWidth);
-    active = true;
-    cancelDateStripMotion({ resetFlags: false });
-    dateStripDragging = false;
-    window._homeCalPullApi?.prepCal?.();
-  }, { passive: true, capture: true });
-
-  strip.addEventListener('touchmove', event => {
-    if (!active) return;
-    stop(event);
-    const t = event.touches[0];
-    const dx = t.clientX - x0; const dy = t.clientY - y0;
-    if (!mode) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-      mode = Math.abs(dx) > Math.abs(dy) * 1.05 ? 'h' : 'v';
-      if (mode === 'h') {
-        dateStripDragging = true;
-        strip.classList.add('is-dragging');
-        const p = dateStripParts();
-        if (p) p.track.style.transition = 'none';
-      }
-    }
-    if (mode === 'h') {
-      if (event.cancelable) event.preventDefault();
-      const now = performance.now();
-      samples.push({ x: t.clientX, t: now });
-      while (samples.length > 2 && now - samples[0].t > 80) samples.shift();
-      applySoon(startOffset + dx);
-    } else if (mode === 'v') {
-      const api = window._homeCalPullApi;
-      if (!api) return;
-      if (!homeCalOpen && dy > 0) {
-        if (event.cancelable) event.preventDefault();
-        setHomeCalProgress(Math.min(1, api.rubber(dy) / (api.TRIGGER + 40)), false);
-      } else if (homeCalOpen && dy < 0) {
-        if (event.cancelable) event.preventDefault();
-        const travel = homeCalHeight || 360;
-        setHomeCalProgress(Math.max(0, 1 - api.rubber(-dy) / travel), false);
-      }
-    }
-  }, { passive: false, capture: true });
-
-  const finish = event => {
-    if (!active) return;
-    if (event) stop(event);
-    const pt = event?.changedTouches?.[0] || (Number.isFinite(event?.clientX) ? event : null);
-    const x = pt ? pt.clientX : x0;
-    const y = pt ? pt.clientY : y0;
-    const dist = Math.hypot(x - x0, y - y0);
-    const dt = performance.now() - t0;
-    const wasH = mode === 'h';
-    const wasV = mode === 'v';
-    active = false;
-    if (raf) { cancelAnimationFrame(raf); raf = 0; setDateStripOffset(pending); }
-    strip.classList.remove('is-dragging');
-    mode = null;
-    dateStripDragging = false;
-    if (wasV) {
-      const prog = homeCalProgress;
-      const trigger = window._homeCalPullApi?.TRIGGER || 72;
-      if (homeCalOpen) {
-        if (prog <= 0.55) closeHomeCal();
-        else openHomeCal({ animate: true });
-      } else if (prog * (trigger + 40) >= trigger || prog >= 0.55) openHomeCal();
-      else closeHomeCal();
-      return;
-    }
-    if (wasH) {
-      const p = dateStripParts();
-      if (!p) return;
-      const a = samples[0]; const z = samples[samples.length - 1];
-      const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
-      let weeks = 0;
-      if (Math.abs(vx) > 0.45 && Math.abs(dateStripOffset) > p.W * 0.08) weeks = vx < 0 ? 1 : -1;
-      else if (Math.abs(dateStripOffset) >= p.W * 0.25) weeks = dateStripOffset < 0 ? 1 : -1;
-      if (!weeks) { settleDateStripToOffset(0); return; }
-      const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + weeks * 7);
-      dateStripHaptic();
-      settleDateStripToOffset(-weeks * p.W).then(ok => { if (ok) commitDateStripTo(next); });
-      return;
-    }
-    // 탭: click에 기대지 않고 touchend/pointerup에서 바로 고름.
-    // 캡처 단계에서 touchend를 막으면 모바일 웹뷰는 합성 click을 안 보내기도 함.
-    if (dist <= 8) {
-      handledTap = true;
-      selectChip(chipAt(x, y, startTarget));
-    }
-  };
-
-  strip.addEventListener('touchend', finish, { passive: true, capture: true });
-  strip.addEventListener('touchcancel', finish, { passive: true, capture: true });
-  // 마우스(개발자 도구 등): 터치가 아닌 pointerup만 처리해 이중 선택을 피함
-  strip.addEventListener('pointerup', event => {
-    if (event.pointerType === 'touch') return;
-    if (!active) return;
-    finish(event);
-  }, { capture: true });
-
-  strip.addEventListener('click', event => {
-    stop(event);
-    if (handledTap) { handledTap = false; event.preventDefault(); return; }
-    const chip = event.target.closest?.('.date-chip') || chipAt(event.clientX, event.clientY, event.target);
-    selectChip(chip);
-  }, { capture: true });
-})();
 
 function updateTopHead() {
   const home = activeView === 'home' || activeView === 'search';
