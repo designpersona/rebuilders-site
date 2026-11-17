@@ -6592,10 +6592,10 @@ function setActiveView(view) {
   document.body.classList.remove('meal-page-open');
   activeView = view;
   try { syncDaylogBannerDate(); } catch {}
-  const aiDock = document.getElementById('home-ai-dock');
-  if (aiDock && !document.body.classList.contains('ai-sheet-open')) aiDock.hidden = true;
-  document.body.classList.toggle('has-ai-dock', document.body.classList.contains('ai-sheet-open'));
   document.body.classList.toggle('foodex-page', view === 'foodex'); // 식도감 아래 검색창
+  // 기록 탭을 떠나면 채팅 시트는 닫고, 기록 탭에서는 입력줄을 처음부터 보여 줌
+  if (view !== 'home' && document.body.classList.contains('ai-sheet-open')) setAiDockPanel(false);
+  syncHomeAiChrome(view);
   if (view !== 'home') {
     document.querySelectorAll('#view-home .meal-card.expanded, #view-home .snack-card.expanded').forEach(card => {
       card.classList.remove('expanded', 'auto-expanded');
@@ -10922,6 +10922,26 @@ function focusAiDock(text = '') {
   agentInputEl.focus();
 }
 
+function syncHomeAiChrome(view = activeView) {
+  const dock = document.getElementById('home-ai-dock');
+  const fab = document.getElementById('ai-fab');
+  const history = document.getElementById('ai-dock-history');
+  const sheetOpen = document.body.classList.contains('ai-sheet-open');
+  const onHome = view === 'home';
+  document.body.classList.toggle('home-page', onHome);
+  if (onHome) {
+    if (dock) dock.hidden = false;
+    document.body.classList.add('has-ai-dock');
+    if (fab && !sheetOpen) { fab.hidden = true; fab.setAttribute('aria-expanded', 'false'); }
+    if (history) history.hidden = false;
+  } else if (!sheetOpen) {
+    if (dock) dock.hidden = true;
+    document.body.classList.remove('has-ai-dock');
+    if (fab) { fab.hidden = false; fab.setAttribute('aria-expanded', 'false'); }
+    if (history) history.hidden = true;
+  }
+}
+
 function setAiDockPanel(open) {
   const dock = document.getElementById('home-ai-dock');
   const panel = document.getElementById('ai-dock-panel');
@@ -10961,10 +10981,16 @@ function setAiDockPanel(open) {
     panel.classList.remove('is-open');
     dock.classList.remove('is-open');
     backdrop.classList.remove('is-open');
-    document.body.classList.remove('ai-sheet-open', 'has-ai-dock');
-    if (fab) { fab.hidden = false; fab.setAttribute('aria-expanded', 'false'); }
+    document.body.classList.remove('ai-sheet-open');
     backdrop.style.opacity = '';
-    panel._closeTimer = setTimeout(() => { panel.hidden = true; dock.hidden = true; backdrop.hidden = true; refreshAiDockToggle(); }, reduceMotion() ? 0 : 340);
+    panel._closeTimer = setTimeout(() => {
+      panel.hidden = true;
+      backdrop.hidden = true;
+      if (activeView !== 'home') dock.hidden = true;
+      refreshAiDockToggle();
+      syncHomeAiChrome();
+    }, reduceMotion() ? 0 : 340);
+    syncHomeAiChrome();
   }
   toggle?.setAttribute('aria-expanded', String(open));
   history?.setAttribute('aria-expanded', String(open));
@@ -10978,9 +11004,9 @@ function refreshAiDockToggle() {
     toggle.textContent = ACTIVE_LOCALE === 'en' ? `Recent messages ${count}` : `최근 대화 ${count}`;
   }
   const history = document.getElementById('ai-dock-history');
-  if (history) { history.hidden = true; history.dataset.count = String(count); }
+  if (history) { history.hidden = activeView !== 'home'; history.dataset.count = String(count); }
   const fab = document.getElementById('ai-fab');
-  if (fab && !document.body.classList.contains('ai-sheet-open')) fab.hidden = false;
+  if (fab && !document.body.classList.contains('ai-sheet-open')) fab.hidden = activeView === 'home';
 }
 document.getElementById('ai-dock-toggle')?.addEventListener('click', () => setAiDockPanel(true));
 document.getElementById('ai-fab')?.addEventListener('click', () => setAiDockPanel(true));
@@ -10988,7 +11014,7 @@ document.getElementById('ai-fab')?.addEventListener('click', () => setAiDockPane
 document.addEventListener('pointerdown', event => {
   const panel = document.getElementById('ai-dock-panel');
   const dock = document.getElementById('home-ai-dock');
-  if (!dock || dock.hidden) return;
+  if (!dock || !document.body.classList.contains('ai-sheet-open')) return;
   if (dock.contains(event.target) || panel?.contains(event.target) || document.getElementById('agent-help-dialog')?.contains(event.target) || document.getElementById('ai-dock-toggle')?.contains(event.target) || document.getElementById('ai-dock-history')?.contains(event.target) || document.getElementById('ai-fab')?.contains(event.target)) return;
   setAiDockPanel(false);
 }, true);
@@ -12766,9 +12792,7 @@ function saveBridgeSettingsFromInputs() {
 }
 
 function setupBridge() {
-  const dock = document.getElementById('home-ai-dock');
-  if (dock && !document.body.classList.contains('ai-sheet-open')) dock.hidden = true;
-  document.body.classList.toggle('has-ai-dock', document.body.classList.contains('ai-sheet-open'));
+  syncHomeAiChrome();
   renderBridgeSettings();
   renderBridgePending();
   processBridgeQueue();

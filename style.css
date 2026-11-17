@@ -14812,3 +14812,58 @@ body.foodex-page #foodex-search-bar.foodex-search-dock::after {
 #view-search[data-hub-mode="foodex"] .foodex-library-scroll {
   padding-bottom: 88px;
 }
+
+/* =====================================================================
+   f32 기록 탭: 식도감처럼 아래 알약 입력줄을 처음부터 두고, 대화 시트는
+   최근 대화·포커스(focusAiDock)·FAB(다른 탭)에서만 연다. 닫으면 입력줄은 남김.
+   ===================================================================== */
+body.home-page:not(.ai-sheet-open) .ai-fab { display: none !important; }
+
+body.home-page:not(.ai-sheet-open) #home-ai-dock.home-ai-dock {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  z-index: 5;
+  flex: 0 0 auto !important;
+  display: flex !important;
+  flex-direction: column;
+  width: 100%;
+  height: auto !important;
+  max-height: none !important;
+  margin: 0;
+  padding: 8px 12px !important;
+  border: 0;
+  border-radius: 0 !important;
+  background: var(--bg, #F4F5F7) !important;
+  box-shadow: none !important;
+  transform: none !important;
+  transition: none;
+  will-change: auto;
+}
+body.home-page:not(.ai-sheet-open) #home-ai-dock.home-ai-dock[hidden] { display: none !important; }
+html.kb-up body.home-page:not(.ai-sheet-open) #home-ai-dock.home-ai-dock,
+body.home-page.keyboard-open:not(.ai-sheet-open) #home-ai-dock.home-ai-dock {
+  position: relative !important;
+  top: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  padding: 8px 12px !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+body.home-page:not(.ai-sheet-open) #view-home {
+  padding-bottom: 24px !important;
+}
+body.home-page.has-daylog-banner:not(.ai-sheet-open) #view-home {
+  padding-bottom: calc(var(--rb-banner-h, 72px) + 24px) !important;
+}
+body.home-page:not(.ai-sheet-open) .phone-frame > .daylog-banner {
+  right: max(16px, var(--safe-right, 0px));
+  bottom: calc(44px + var(--safe-bottom, 0px) + 14px + 66px);
+}
+body.home-page:not(.ai-sheet-open) .phone-frame > .bridge-pending {
+  bottom: calc(44px + var(--safe-bottom) + 14px + 66px);
+}
