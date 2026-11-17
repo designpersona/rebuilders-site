@@ -9107,18 +9107,41 @@ async function interpretOrFallback(text, { candidates, catalogs, meal, mixedMeal
   if (mixedMeals) ctx.meal = null;
   else if (meal) ctx.meal = meal;
   const payload = Intent.buildInterpretPayload(text, ctx);
+  const state = { cancelled: false, remoteId: '' };
+  const stopBtn = document.createElement('button');
+  stopBtn.type = 'button';
+  stopBtn.className = 'agent-confirm agent-cancel';
+  stopBtn.textContent = en ? 'Stop' : '중단';
+  stopBtn.addEventListener('click', () => {
+    state.cancelled = true;
+    if (state.remoteId) RebuildersBridge.cancelJob?.(state.remoteId);
+    else RebuildersBridge.wakeJobPolls?.();
+  });
+  appendToAgentMessage(liveAgentMessage(message) || message, stopBtn);
   try {
-    const raw = await RebuildersBridge.interpretAndWait(payload, { maxMs: maxMs || 25000, intervalMs: 1500 });
+    const raw = await RebuildersBridge.interpretAndWait(payload, {
+      maxMs: maxMs || 25000, intervalMs: 1500,
+      onRemoteId: id => { state.remoteId = id; },
+      isCancelled: () => state.cancelled,
+    });
+    if (state.cancelled) throw new RebuildersBridge.BridgeError('cancelled');
     lastInterpretMs = raw.elapsedMs || lastInterpretMs;
     const result = Intent.parseInterpretResult(raw);
     if (!result) throw new RebuildersBridge.BridgeError('bad_request');
     setAgentSearching(message, false);
+    stopBtn.remove();
     await applyInterpretResult(result, { message, text, catalogs: catalogs || localMatchCatalogs(), saveAll });
   } catch (error) {
     setAgentSearching(message, false);
+    stopBtn.remove();
+    if (state.cancelled || error?.kind === 'cancelled') {
+      setAgentMessageText(message, en ? 'Stopped. You can try again.' : '중단했어요 · 다시 시도해 주세요.');
+      return;
+    }
     await handleAgentCommandFallback(text, { message, reason: error, silent: false });
   } finally {
     if (message?.classList.contains('is-searching')) setAgentSearching(message, false);
+    stopBtn.remove();
   }
 }
 
@@ -9382,15 +9405,19 @@ function setDaylogBanner(state, { title = '', body = '', actions = [], date = ''
   el.querySelector('.daylog-banner-close').hidden = state === 'running';
   el.querySelector('.daylog-banner-close').setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? 'Close' : '닫기');
   const box = el.querySelector('.daylog-banner-actions');
-  box.replaceChildren();
-  actions.forEach(a => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = `daylog-banner-action ${a.cls || ''}`.trim();
-    b.textContent = a.label;
-    b.addEventListener('click', event => { event.stopPropagation(); a.onClick?.(b); });
-    box.appendChild(b);
-  });
+  const actionSig = actions.map(a => `${a.cls || ''}\t${a.label}`).join('|');
+  if (el._actionSig !== actionSig) {
+    el._actionSig = actionSig;
+    box.replaceChildren();
+    actions.forEach(a => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `daylog-banner-action ${a.cls || ''}`.trim();
+      b.textContent = a.label;
+      b.addEventListener('click', event => { event.stopPropagation(); a.onClick?.(b); });
+      box.appendChild(b);
+    });
+  }
   box.hidden = !actions.length;
 }
 
@@ -9418,21 +9445,55 @@ function daylogRunningTitle(entry) {
   if (waiting) parts.push(en ? `${waiting} more waiting` : `${waiting}개 더 대기`);
   return { title: base, body: parts.join(' · ') };
 }
+function daylogCancelAction(entry) {
+  const en = ACTIVE_LOCALE === 'en';
+  return { label: en ? 'Stop' : '중단', cls: 'is-cancel', onClick: () => cancelDaylogEntry(entry) };
+}
 function startDaylogTicker(entry) {
   clearInterval(daylogRun.tickTimer);
   const tick = () => {
+    if (entry.cancelled || entry.done) { stopDaylogTicker(); return; }
     if (daylogElapsedMs(entry) >= daylogWaitMaxMs()) {
       stopDaylogTicker();
       globalThis.RebuildersBridge?.wakeJobPolls?.();
     }
     const { title, body } = daylogRunningTitle(entry);
-    setDaylogBanner('running', { title, body });
+    setDaylogBanner('running', { title, body, actions: [daylogCancelAction(entry)] });
     const live = liveAgentMessage(entry.message);
     const target = live?.querySelector('.agent-bubble-text');
     if (target && entry.message.classList.contains('is-searching')) { target.textContent = title; live.classList.add('is-searching'); }
   };
   tick();
   daylogRun.tickTimer = setInterval(tick, 1000);
+}
+function cancelDaylogEntry(entry) {
+  if (!entry || entry.done || entry.cancelled) return;
+  entry.cancelled = true;
+  entry.done = true;
+  writeDaylogPending();
+  stopDaylogTicker();
+  setAgentSearching(entry.message, false);
+  const id = entry.remoteId;
+  if (id) RebuildersBridge.cancelJob?.(id);
+  else RebuildersBridge.wakeJobPolls?.();
+  showDaylogCancelled(entry);
+}
+function showDaylogCancelled(entry) {
+  if (entry._cancelShown) return;
+  entry._cancelShown = true;
+  const en = ACTIVE_LOCALE === 'en';
+  const title = en ? 'Stopped · Try again' : '중단했어요 · 다시 시도';
+  const body = en ? 'Nothing was saved from this search.' : '이번 검색 결과는 넣지 않았어요.';
+  if (entry.message) setAgentMessageText(entry.message, `${en ? 'Stopped.' : '중단했어요.'} ${body}`);
+  setDaylogBanner('error', {
+    date: entry.date,
+    title,
+    body,
+    actions: [{ label: en ? 'Try again' : '다시 시도', cls: 'is-retry', onClick: () => retryCancelledDaylog(entry) }],
+  });
+}
+function retryCancelledDaylog(entry) {
+  enqueueDaylog({ text: entry.text, date: entry.date, time: entry.time, startedAt: Date.now() });
 }
 function stopDaylogTicker() { clearInterval(daylogRun.tickTimer); daylogRun.tickTimer = 0; }
 
@@ -9648,10 +9709,12 @@ async function runDaylogEntry(entry) {
   try {
     const result = await RebuildersBridge.daylogAndWait(payload, {
       maxMs: cap, deadline: entry.startedAt + cap, intervalMs: 2000,
-      onRemoteId: id => { entry.remoteId = id; writeDaylogPending(); },
+      onRemoteId: id => { entry.remoteId = id; if (!entry.cancelled) writeDaylogPending(); },
       onProgress: p => { entry.progress = p; },
+      isCancelled: () => entry.cancelled,
     });
     stopDaylogTicker();
+    if (entry.cancelled) throw new RebuildersBridge.BridgeError('cancelled');
     // 결과를 넣기 전에 대기 목록에서 먼저 지움(앱이 도중에 꺼져도 두 번 넣지 않게)
     entry.done = true;
     writeDaylogPending();
@@ -9705,6 +9768,10 @@ async function runDaylogEntry(entry) {
     entry.done = true;
     writeDaylogPending();
     setAgentSearching(message, false);
+    if (entry.cancelled || error?.kind === 'cancelled') {
+      showDaylogCancelled(entry);
+      return;
+    }
     await goToDaylogDate(entry.date);
     if (error?.kind === 'not_found' && !entry.remoteId) {
       if (message?.parentNode) message.remove();
@@ -9754,6 +9821,8 @@ function daylogFailWhy(kind) {
     not_configured: en ? 'The Mac mini is not set up' : '맥 미니 연결이 설정되지 않았어요',
     all_failed: en ? 'Every AI model that is on failed' : '켜 둔 AI 모델이 모두 실패했어요',
     not_found: en ? 'The request expired. Please try again.' : '요청이 만료됐어요. 다시 시도해 주세요',
+    cancelled: en ? 'Stopped' : '중단했어요',
+    agent_failed: en ? 'The Mac mini could not finish this request' : '맥 미니가 이번 요청을 끝내지 못했어요',
   })[kind] || (en ? 'Grok could not sort this one out' : '그록이 이번 문장을 정리하지 못했어요');
 }
 function daylogFailHint(kind) {
@@ -9861,7 +9930,7 @@ function showDaylogFailBanner(entry, kind, { known = 0, waiting = 0, saved = 0, 
   const retryNote = en ? 'I will try again automatically when the Mac mini is back.' : '맥 미니가 다시 되면 자동으로 다시 맡겨서 채울게요.';
   if (entry.message) setAgentMessageText(entry.message, `${why}. ${saidWhat} ${retryNote}`);
   setDaylogBanner('error', {
-    date: entry.date, title: why,
+    date: entry.date, title: `${why}${en ? ' · Try again' : ' · 다시 시도'}`,
     body: [daylogFailHint(kind), daylogFailedModelsLine(entry), saidWhat, retryNote].filter(Boolean).join('\n'),
     actions: [{ label: en ? 'Try again' : '다시 시도', cls: 'is-retry', onClick: () => retryDaylogFallbacks({ manual: true, date: entry.date }) }],
   });
@@ -13325,6 +13394,8 @@ updateTopHead();
     document.body.classList.add('label-review-open');
   }
   function close() {
+    if (st.jobId) B.cancelJob?.(st.jobId);
+    st.cancelled = true;
     st.token += 1;
     overlay.classList.remove('open');
     document.body.classList.remove('label-review-open');
@@ -13349,21 +13420,41 @@ updateTopHead();
     overlay.classList.toggle('is-reading', on);
     $('label-review-save').disabled = on;
     $('label-review-retry').hidden = true;
+    const stop = $('label-review-stop');
+    if (stop) stop.hidden = !on;
+  }
+  function stopLabelRead() {
+    st.cancelled = true;
+    if (st.jobId) B.cancelJob?.(st.jobId);
+    else B.wakeJobPolls?.();
+    st.token += 1;
+    setReading(false);
+    $('label-review-status').textContent = en() ? 'Stopped · Try again' : '중단했어요 · 다시 시도';
+    $('label-review-retry').hidden = false;
   }
   async function read() {
     const my = ++st.token;
+    st.cancelled = false;
+    st.jobId = '';
     setReading(true);
     $('label-review-status').textContent = en() ? 'Reading the label…' : '영양정보표를 읽는 중…';
     try {
       const res = await B.labelAndWait(st.image, {
+        onRemoteId: id => { st.jobId = id; },
+        isCancelled: () => st.cancelled || my !== st.token,
         onProgress: p => {
           if (my !== st.token || !p?.trying_label) return;
           const fails = (p.failed || []).map(f => `${f.label} ${en() ? 'failed' : '실패'}`).join(' → ');
           $('label-review-status').textContent = `${fails ? `${fails} → ` : ''}${en() ? `Reading with ${p.trying_label}…` : `${withRo(p.trying_label)} 읽는 중…`}`;
         },
       });
-      if (my !== st.token) return;
+      if (my !== st.token || st.cancelled) return;
       setReading(false);
+      if (res.error === 'cancelled' || res.cancelled) {
+        $('label-review-status').textContent = en() ? 'Stopped · Try again' : '중단했어요 · 다시 시도';
+        $('label-review-retry').hidden = false;
+        return;
+      }
       if (res.error || res.is_label === false) {
         const why = res.is_label === false
           ? (en() ? 'This does not look like a nutrition label. You can still fill it in yourself.' : '영양정보표가 아닌 것 같아요. 직접 채워서 저장할 수 있어요.')
@@ -13407,10 +13498,13 @@ updateTopHead();
       if (my !== st.token) return;
       setReading(false);
       const kind = error?.kind || 'error';
-      $('label-review-status').textContent = kind === 'not_found'
+      $('label-review-status').textContent = kind === 'cancelled'
+        ? (en() ? 'Stopped · Try again' : '중단했어요 · 다시 시도')
+        : kind === 'not_found'
         ? (en() ? 'The Mac mini bridge is older and cannot read labels yet.' : '맥 미니 브리지가 예전 버전이라 아직 사진을 못 읽어요.')
         : kind === 'unreachable' ? (en() ? 'Could not reach the Mac mini (home Wi-Fi?).' : '맥 미니에 연결이 안 됐어요(집 와이파이인지 확인해 주세요).')
           : kind === 'timeout' ? (en() ? 'Reading took too long.' : '읽는 데 너무 오래 걸려서 멈췄어요.')
+            : kind === 'all_failed' ? (en() ? 'No model could read it.' : '사진을 읽지 못했어요.')
             : (en() ? 'Could not read the photo.' : '사진을 읽지 못했어요.');
       $('label-review-retry').hidden = false;
     }
@@ -13537,14 +13631,15 @@ updateTopHead();
   });
   FIELDS.forEach(([, id]) => $(id).addEventListener('input', () => $(id).closest('label').classList.remove('is-missing')));
   $('label-review-retry').addEventListener('click', () => { if (st.image) read(); else input.click(); });
+  $('label-review-stop')?.addEventListener('click', stopLabelRead);
   $('label-review-save').addEventListener('click', save);
   $('label-review-cancel').addEventListener('click', close);
   $('label-review-x').addEventListener('click', close);
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   function syncCopy() {
     const map = en()
-      ? { 'label-photo-entry-title': 'Photo', 'food-modal-search-label': 'Search', 'label-review-title': 'Check the label', 'lr-log-text': 'Also log it to this day', 'label-review-save': 'Save', 'label-review-cancel': 'Cancel', 'label-review-retry': 'Read again', 'lr-eat-label': 'Amount eaten' }
-      : { 'label-photo-entry-title': '음식 촬영', 'food-modal-search-label': '음식 검색', 'label-review-title': '포장지 영양정보 확인', 'lr-log-text': '이 날짜 기록에도 넣기', 'label-review-save': '저장', 'label-review-cancel': '취소', 'label-review-retry': '다시 읽기', 'lr-eat-label': '먹은 양' };
+      ? { 'label-photo-entry-title': 'Photo', 'food-modal-search-label': 'Search', 'label-review-title': 'Check the label', 'lr-log-text': 'Also log it to this day', 'label-review-save': 'Save', 'label-review-cancel': 'Cancel', 'label-review-retry': 'Read again', 'label-review-stop': 'Stop', 'lr-eat-label': 'Amount eaten' }
+      : { 'label-photo-entry-title': '음식 촬영', 'food-modal-search-label': '음식 검색', 'label-review-title': '포장지 영양정보 확인', 'lr-log-text': '이 날짜 기록에도 넣기', 'label-review-save': '저장', 'label-review-cancel': '취소', 'label-review-retry': '다시 읽기', 'label-review-stop': '중단', 'lr-eat-label': '먹은 양' };
     Object.entries(map).forEach(([id, t]) => { const el = $(id); if (el) el.textContent = t; });
   }
   document.addEventListener('click', e => { if (e.target.closest?.('[data-language]')) setTimeout(syncCopy, 0); });

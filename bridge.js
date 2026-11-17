@@ -380,6 +380,7 @@
 
   /* 앱이 다시 앞에 오면 waitInterval 을 깨워 바로 GET /jobs 하게 */
   const pollWaiters = [];
+  const discardedJobs = new Set();
   function wakeJobPolls() {
     const fns = pollWaiters.splice(0, pollWaiters.length);
     fns.forEach(fn => { try { fn(); } catch { /* 화면 복귀 깨우기 */ } });
@@ -392,17 +393,49 @@
       pollWaiters.push(finish);
     });
   }
+  function isDiscarded(id) { return JOB_ID_RE.test(String(id || '')) && discardedJobs.has(String(id)); }
+  function discardJob(id) { if (JOB_ID_RE.test(String(id || ''))) discardedJobs.add(String(id)); }
+  function jobStopKind(data, id) {
+    if (isDiscarded(id) || isDiscarded(data?.job_id)) return 'cancelled';
+    if (data?.cancelled || data?.error === 'cancelled') return 'cancelled';
+    if (data?.error === 'all_failed') return 'all_failed';
+    if (data && data.ok === false && data.error) return data.error;
+    return '';
+  }
+  /** 사용자가 중단: 로컬에서 바로 버리고, 되면 맥 미니에도 알려 다음 모델은 건너뛰게 */
+  async function cancelJob(id) {
+    const jobId = String(id || '');
+    if (!JOB_ID_RE.test(jobId)) { wakeJobPolls(); return false; }
+    discardJob(jobId);
+    wakeJobPolls();
+    try {
+      await request(`/jobs/${jobId}/cancel`, { method: 'POST', body: {}, timeoutMs: SUBMIT_TIMEOUT_MS });
+      return true;
+    } catch {
+      return false; // 예전 브리지여도 앱 쪽 폴링은 이미 멈춤
+    }
+  }
 
-  async function interpretAndWait(payload, { maxMs = 45000, intervalMs = 1500 } = {}) {
+  async function interpretAndWait(payload, { maxMs = 45000, intervalMs = 1500, onRemoteId, isCancelled } = {}) {
     const started = Date.now();
     const end = started + maxMs;
+    const stopped = id => isCancelled?.() || isDiscarded(id);
     let result = await interpret(payload);
+    if (result.remoteId) { try { onRemoteId?.(result.remoteId); } catch { /* 무시 */ } }
+    const stop = () => stopped(result.remoteId || payload?.remoteId);
+    if (stop()) throw new BridgeError('cancelled');
+    const term0 = jobStopKind(result.raw, result.remoteId);
+    if (term0 === 'cancelled' || (term0 && !result.done)) throw new BridgeError(term0);
     while (!result.done && result.remoteId && Date.now() < end) {
       await waitInterval(intervalMs);
-      if (Date.now() >= end) break;
+      if (stop() || Date.now() >= end) break;
       result = await interpret({ ...payload, remoteId: result.remoteId });
+      if (result.remoteId) { try { onRemoteId?.(result.remoteId); } catch { /* 무시 */ } }
+      const term = jobStopKind(result.raw, result.remoteId);
+      if (term === 'cancelled' || (term && !result.done)) throw new BridgeError(term);
     }
     result.elapsedMs = Date.now() - started;
+    if (stop()) throw new BridgeError('cancelled');
     if (!result.done && result.remoteId) throw new BridgeError('timeout');
     return result;
   }
@@ -473,7 +506,7 @@
 
   /** 포장지 영양정보표 사진: POST /label(사진 base64 JPEG) → GET /jobs/<id>. 사진은 맥 미니 메모리에서만 쓰고 저장하지 않음.
    *  모델 순서는 AI 모델 설정 순서(사진 못 읽는 모델은 맥 미니가 건너뜀) */
-  async function labelAndWait(image, { maxMs = 200000, intervalMs = 1500, onProgress } = {}) {
+  async function labelAndWait(image, { maxMs = 200000, intervalMs = 1500, onProgress, onRemoteId, isCancelled } = {}) {
     const body = { image: String(image || '') };
     const order = modelOrderForDaylog();
     if (order) body.models = order;
@@ -481,17 +514,26 @@
     body.image = '';
     const started = Date.now();
     const id = JOB_ID_RE.test(String(data?.job_id || '')) ? data.job_id : '';
+    if (id) { try { onRemoteId?.(id); } catch { /* 무시 */ } }
+    const stop = () => isCancelled?.() || isDiscarded(id);
+    if (stop()) throw new BridgeError('cancelled');
+    const term0 = jobStopKind(data, id);
+    if (term0 === 'cancelled') throw new BridgeError('cancelled');
     while (!data?.done && id && Date.now() - started < maxMs) {
       if (data?.progress) { try { onProgress?.(data.progress); } catch { /* 무시 */ } }
       await waitInterval(intervalMs);
-      if (Date.now() - started >= maxMs) break;
+      if (stop() || Date.now() - started >= maxMs) break;
       try {
         data = await request(`/jobs/${id}`, { timeoutMs: POLL_TIMEOUT_MS });
       } catch (error) {
         if (error?.kind === 'not_found') throw error;
         throw error;
       }
+      const term = jobStopKind(data, id);
+      if (term === 'cancelled') throw new BridgeError('cancelled');
+      if (term && term !== 'all_failed') throw new BridgeError(term);
     }
+    if (stop() || jobStopKind(data, id) === 'cancelled') throw new BridgeError('cancelled');
     if (!data?.done) throw new BridgeError('timeout');
     return data;
   }
@@ -530,9 +572,10 @@
   }
 
   /** onRemoteId(id): 맡긴 작업 번호를 받자마자 알려 줌(앱이 꺼졌다 켜져도 이 번호로 결과만 다시 받게) */
-  async function daylogAndWait(payload, { maxMs = 300000, deadline, intervalMs = 2000, onTick, onRemoteId, onProgress } = {}) {
+  async function daylogAndWait(payload, { maxMs = 300000, deadline, intervalMs = 2000, onTick, onRemoteId, onProgress, isCancelled } = {}) {
     const started = Date.now();
     const end = deadline || (started + maxMs);
+    const stopped = id => isCancelled?.() || isDiscarded(id);
     let result = await daylog(payload);
     let lastRemote = payload?.remoteId || '';
     const report = () => {
@@ -542,20 +585,28 @@
       }
     };
     report();
+    const stop = () => stopped(result.remoteId || payload?.remoteId);
+    if (stop()) throw new BridgeError('cancelled');
+    const term0 = jobStopKind(result.raw, result.remoteId);
+    if (term0 === 'cancelled' || (term0 && !result.done)) throw new BridgeError(term0);
     while (!result.done && result.remoteId && Date.now() < end) {
       try { onTick?.(Date.now() - started); } catch { /* 화면 갱신 실패는 무시 */ }
       await waitInterval(intervalMs);
-      if (Date.now() >= end) break;
+      if (stop() || Date.now() >= end) break;
       result = await daylog({ ...payload, remoteId: result.remoteId });
       report();
+      const term = jobStopKind(result.raw, result.remoteId);
+      if (term === 'cancelled' || (term && !result.done)) throw new BridgeError(term);
       if (!result.done && result.raw?.progress) { try { onProgress?.(result.raw.progress); } catch { /* 화면 갱신 실패는 무시 */ } }
     }
     result.elapsedMs = Date.now() - started;
+    if (stop()) throw new BridgeError('cancelled');
     if (!result.done) throw new BridgeError('timeout');
+    if (jobStopKind(result.raw, result.remoteId) === 'cancelled') throw new BridgeError('cancelled');
     return result;
   }
 
-  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, daylog, daylogAndWait, labelAndWait, models, testModel, getModelPrefs, setModelPrefs, getModelCache, modelOrderForDaylog, wakeJobPolls, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
+  const api = { normalizeUrl, normalizeToken, getConfig, setConfig, isConfigured, getQueue, enqueue, removeJob, setJobItems, setJobRemote, bumpAttempt, toFoodFields, checkHealth, checkConnection, lookup, lookupAndWait, lookupPhoto, forget, interpret, interpretAndWait, interpretBody, daylog, daylogAndWait, labelAndWait, models, testModel, getModelPrefs, setModelPrefs, getModelCache, modelOrderForDaylog, wakeJobPolls, cancelJob, discardJob, BridgeError, MAX_ATTEMPTS, isOffline, resetOffline, CONNECT_TIMEOUT_MS, OFFLINE_COOLDOWN_MS };
   global.RebuildersBridge = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

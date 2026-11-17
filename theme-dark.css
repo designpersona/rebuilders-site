@@ -570,6 +570,9 @@ html.theme-dark .daylog-banner[data-state="done"] .daylog-banner-main::before { 
 html.theme-dark .daylog-banner[data-state="error"] { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18), 0 0 0 1.5px rgba(0, 0, 0, 0.7); }
 html.theme-dark .daylog-banner[data-state="error"] .daylog-banner-main::before { color: #d9534f; }
 html.theme-dark .daylog-banner-action { background: #282828; color: #e6e6e6; }
+html.theme-dark .daylog-banner-action.is-cancel { background: #333; color: #eee; }
+html.theme-dark .daylog-banner-action.is-retry { background: #eee; color: #111; }
+
 html.theme-dark .daylog-banner-close { color: #818181; }
 html.theme-dark .pull-refresh { background: var(--rb-surface, #1c1c1c); color: #e6e6e6; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.216); }
 html.theme-dark .pull-refresh.is-loading .pull-refresh-icon { border: 2px solid rgba(255, 255, 255, 0.12); border-top-color: #e6e6e6; }

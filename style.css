@@ -14174,6 +14174,12 @@ input.food-amount-value:focus {
   background: #f1f1f1; color: #111;
 }
 .daylog-banner-action:disabled { opacity: 0.5; }
+.daylog-banner-action.is-cancel { background: #ececec; color: #222; }
+.daylog-banner-action.is-retry { background: #111; color: #fff; }
+.phone-frame > .daylog-banner[data-state="running"] .daylog-banner-actions {
+  flex: 0 0 auto; order: 2; margin: 0; align-self: center;
+}
+.label-review-stop { margin-top: 8px; }
 .daylog-banner-close {
   flex: 0 0 auto; width: 28px; height: 28px; margin: -4px -4px 0 0; border: 0; background: none;
   font-size: 20px; line-height: 1; color: #888;
