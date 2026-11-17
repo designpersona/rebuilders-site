@@ -2941,6 +2941,7 @@ function renderAll(skipAnimation = false) {
     updateMacroBars(t, true);
   }
   if (activeMealPageContext) renderMealPage();
+  if (typeof renderHomeDayReport === 'function') renderHomeDayReport();
 }
 
 document.getElementById('nutrition-missing-note')?.addEventListener('click', () => {
@@ -6595,6 +6596,7 @@ function setActiveView(view) {
   document.body.classList.toggle('foodex-page', view === 'foodex'); // 식도감 아래 검색창
   // 기록 탭을 떠나면 채팅 시트는 닫고, 기록 탭에서는 입력줄을 처음부터 보여 줌
   if (view !== 'home' && document.body.classList.contains('ai-sheet-open')) setAiDockPanel(false);
+  if (view !== 'home' && typeof closeHomeCal === 'function') closeHomeCal({ animate: false });
   syncHomeAiChrome(view);
   if (view !== 'home') {
     document.querySelectorAll('#view-home .meal-card.expanded, #view-home .snack-card.expanded').forEach(card => {
@@ -10291,11 +10293,456 @@ async function softRefreshHome() {
     pullRefreshBusy = false;
   }
 }
+/* ============================
+   기록 탭 월간 달력: 맨 위에서 아래로 당기면 펼침(새로고침 없음).
+   건강리포트 달력과 같은 칸 모양. 날짜를 누르면 그 날로 이동하고 접힘.
+   위로 당기거나 바깥을 누르면 접힘. 기기의 튕김과 겹치지 않게 당기는 동안 preventDefault.
+   ============================ */
+let homeCalMonth = new Date();
+let homeCalOpen = false;
+let homeCalReady = false;
+
+function homeCalParts() {
+  const sheet = document.getElementById('home-cal-sheet');
+  const panel = document.getElementById('home-cal-panel');
+  const backdrop = document.getElementById('home-cal-backdrop');
+  const grid = document.getElementById('home-cal-grid');
+  return sheet && panel && grid ? { sheet, panel, backdrop, grid } : null;
+}
+
+function setHomeCalProgress(p, settling = false) {
+  const parts = homeCalParts();
+  if (!parts) return;
+  const prog = Math.max(0, Math.min(1, p));
+  parts.sheet.hidden = false;
+  parts.sheet.classList.toggle('is-pulling', !settling && !homeCalOpen);
+  parts.sheet.classList.toggle('is-settling', settling);
+  parts.sheet.classList.toggle('is-open', homeCalOpen && prog >= 1);
+  if (parts.backdrop) parts.backdrop.style.opacity = String(prog);
+  const travel = parts.panel.offsetHeight || 360;
+  parts.panel.style.transform = prog >= 1 ? 'none' : `translate3d(0, ${((prog - 1) * travel).toFixed(1)}px, 0)`;
+}
+
+function closeHomeCal({ animate = true } = {}) {
+  const parts = homeCalParts();
+  if (!parts) return;
+  homeCalOpen = false;
+  document.body.classList.remove('home-cal-open');
+  const finish = () => {
+    parts.sheet.classList.remove('is-open', 'is-pulling', 'is-settling');
+    parts.sheet.hidden = true;
+    parts.panel.style.transform = '';
+    if (parts.backdrop) parts.backdrop.style.opacity = '';
+  };
+  if (!animate || reduceMotion()) { finish(); return; }
+  parts.sheet.classList.remove('is-open', 'is-pulling');
+  parts.sheet.classList.add('is-settling');
+  if (parts.backdrop) parts.backdrop.style.opacity = '0';
+  parts.panel.style.transform = 'translate3d(0, -110%, 0)';
+  clearTimeout(parts.sheet._closeTimer);
+  parts.sheet._closeTimer = setTimeout(finish, 300);
+}
+
+async function openHomeCal({ animate = true } = {}) {
+  const parts = homeCalParts();
+  if (!parts) return;
+  homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  await ensureHomeCalData();
+  renderHomeMonthCalendar();
+  parts.sheet.hidden = false;
+  homeCalOpen = true;
+  document.body.classList.add('home-cal-open');
+  if (!animate || reduceMotion()) {
+    setHomeCalProgress(1, false);
+    parts.sheet.classList.add('is-open');
+    parts.panel.style.transform = 'none';
+    return;
+  }
+  setHomeCalProgress(0, false);
+  void parts.panel.offsetHeight;
+  parts.sheet.classList.remove('is-pulling');
+  parts.sheet.classList.add('is-open', 'is-settling');
+  parts.panel.style.transform = 'none';
+  if (parts.backdrop) parts.backdrop.style.opacity = '1';
+  clearTimeout(parts.sheet._closeTimer);
+  parts.sheet._closeTimer = setTimeout(() => parts.sheet.classList.remove('is-settling'), 300);
+}
+
+async function ensureHomeCalData() {
+  try { statsCache = await loadStorage(); } catch { /* 달력 점은 없어도 날짜는 고를 수 있음 */ }
+}
+
+function renderHomeMonthCalendar() {
+  const parts = homeCalParts();
+  if (!parts) return;
+  const en = ACTIVE_LOCALE === 'en';
+  const year = homeCalMonth.getFullYear();
+  const month = homeCalMonth.getMonth();
+  const label = document.getElementById('home-cal-month-label');
+  if (label) label.textContent = en ? new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(homeCalMonth) : `${year}년 ${month + 1}월`;
+  const picker = document.getElementById('home-cal-picker');
+  if (picker) picker.value = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const weekdays = document.getElementById('home-cal-weekdays');
+  if (weekdays) {
+    const names = en
+      ? ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+      : (typeof DAYS !== 'undefined' ? DAYS : ['일', '월', '화', '수', '목', '금', '토']);
+    [...weekdays.children].forEach((el, i) => { el.textContent = names[i] || ''; });
+  }
+  const startPad = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const rows = Math.ceil((startPad + daysInMonth) / 7);
+  const todayKey = dateKey(new Date());
+  const selectedKey = dateKey(currentDate);
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < rows * 7; i++) {
+    const date = new Date(year, month, 1 - startPad + i);
+    const key = dateKey(date);
+    const outside = date.getMonth() !== month;
+    const dayData = statsCache?.[key];
+    const has = typeof hasDayLog === 'function' && hasDayLog(dayData);
+    const level = has ? dayCalLevel(dayData) : null;
+    const kcal = has ? Math.round(dayTotalsFromData(dayData).cal) : null;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `cal-day${outside ? ' is-outside' : ''}${key === todayKey ? ' is-today' : ''}${key === selectedKey ? ' is-selected' : ''}${has ? ` has-log level-${level}` : ''}`;
+    btn.dataset.key = key;
+    btn.setAttribute('aria-label', `${formatDate(date)}${has ? `, ${kcal}kcal` : ''}${key === todayKey ? (en ? ', today' : ', 오늘') : ''}`);
+    btn.innerHTML = `<span class="cal-day-mark"><span class="cal-day-num">${date.getDate()}</span><span class="cal-day-kcal">${has ? kcal : ''}</span></span>`;
+    frag.appendChild(btn);
+  }
+  parts.grid.replaceChildren(frag);
+  const viewport = document.getElementById('home-cal-viewport');
+  if (viewport) viewport.style.height = `${rows * 54 - 4}px`;
+}
+
+async function selectHomeCalDate(key) {
+  const d = parseDateKey(key);
+  if (!d || Number.isNaN(d.getTime())) return;
+  currentDate = d;
+  await loadCurrentDay();
+  updateDateDisplay();
+  renderAll(true);
+  closeHomeCal();
+}
+
+function setupHomeCalendarPull() {
+  if (homeCalReady) return;
+  const home = document.getElementById('view-home');
+  const parts0 = homeCalParts();
+  if (!home || !parts0) return;
+  homeCalReady = true;
+  const TRIGGER = 72;
+  const MAX = 200;
+  const blocked = target => {
+    const b = document.body.classList;
+    if (activeView !== 'home' || b.contains('ai-sheet-open') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing')) return true;
+    if (target?.closest?.('input, textarea, select, [contenteditable="true"], .home-ai-dock, .modal, dialog, .home-cal-panel')) return true;
+    return false;
+  };
+  let y0 = null, x0 = 0, mode = null, dist = 0, closing = false;
+  const rubber = raw => {
+    const v = Math.max(0, raw);
+    return MAX * (1 - 1 / (v / MAX + 1));
+  };
+  home.addEventListener('touchstart', event => {
+    y0 = null; mode = null; dist = 0; closing = false;
+    if (event.touches.length !== 1 || blocked(event.target)) return;
+    if (homeCalOpen) return;
+    if (home.scrollTop > 1) return;
+    y0 = event.touches[0].clientY; x0 = event.touches[0].clientX;
+    homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    if (!document.getElementById('home-cal-grid')?.childElementCount) renderHomeMonthCalendar();
+    ensureHomeCalData().then(() => { if (!homeCalOpen) renderHomeMonthCalendar(); });
+  }, { passive: true });
+  home.addEventListener('touchmove', event => {
+    if (y0 == null || homeCalOpen) return;
+    const t = event.touches[0];
+    const dy = t.clientY - y0; const dx = t.clientX - x0;
+    if (!mode) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      mode = dy > 0 && Math.abs(dy) > Math.abs(dx) * 1.2 && home.scrollTop <= 1 ? 'pull' : 'skip';
+      if (mode === 'skip') { y0 = null; return; }
+    }
+    dist = rubber(dy);
+    if (event.cancelable) event.preventDefault();
+    setHomeCalProgress(Math.min(1, dist / (TRIGGER + 40)), false);
+  }, { passive: false });
+  const endOpen = () => {
+    if (y0 == null || mode !== 'pull') { y0 = null; return; }
+    y0 = null;
+    if (dist >= TRIGGER) openHomeCal();
+    else closeHomeCal();
+  };
+  home.addEventListener('touchend', endOpen, { passive: true });
+  home.addEventListener('touchcancel', () => { if (!homeCalOpen) { y0 = null; closeHomeCal({ animate: true }); } }, { passive: true });
+
+  // 열린 달력: 손잡이·패널을 위로 당기면 접힘
+  const panel = parts0.panel;
+  let cy0 = null, cdist = 0, cmode = null;
+  const onCloseStart = event => {
+    cy0 = null; cmode = null; cdist = 0;
+    if (!homeCalOpen || event.touches.length !== 1) return;
+    if (event.target.closest?.('button.cal-day, .nav-btn, input, .cal-month-picker-wrap')) return;
+    cy0 = event.touches[0].clientY;
+  };
+  const onCloseMove = event => {
+    if (cy0 == null || !homeCalOpen) return;
+    const dy = event.touches[0].clientY - cy0;
+    if (!cmode) {
+      if (Math.abs(dy) < 8) return;
+      cmode = dy < 0 ? 'up' : 'down';
+    }
+    if (cmode !== 'up') return;
+    cdist = rubber(-dy);
+    if (event.cancelable) event.preventDefault();
+    const parts = homeCalParts();
+    if (!parts) return;
+    parts.sheet.classList.add('is-pulling');
+    parts.sheet.classList.remove('is-open');
+    const travel = parts.panel.offsetHeight || 360;
+    const prog = Math.max(0, 1 - cdist / travel);
+    if (parts.backdrop) parts.backdrop.style.opacity = String(prog);
+    parts.panel.style.transform = `translate3d(0, ${((prog - 1) * travel).toFixed(1)}px, 0)`;
+  };
+  const onCloseEnd = () => {
+    if (cy0 == null) return;
+    cy0 = null;
+    if (cmode === 'up' && cdist >= 56) closeHomeCal();
+    else if (homeCalOpen) openHomeCal({ animate: true });
+  };
+  panel.addEventListener('touchstart', onCloseStart, { passive: true });
+  panel.addEventListener('touchmove', onCloseMove, { passive: false });
+  panel.addEventListener('touchend', onCloseEnd, { passive: true });
+  panel.addEventListener('touchcancel', onCloseEnd, { passive: true });
+
+  document.getElementById('home-cal-backdrop')?.addEventListener('click', () => closeHomeCal());
+  document.getElementById('home-cal-grabber')?.addEventListener('click', () => closeHomeCal());
+  document.getElementById('home-cal-prev')?.addEventListener('click', () => {
+    homeCalMonth = new Date(homeCalMonth.getFullYear(), homeCalMonth.getMonth() - 1, 1);
+    renderHomeMonthCalendar();
+  });
+  document.getElementById('home-cal-next')?.addEventListener('click', () => {
+    homeCalMonth = new Date(homeCalMonth.getFullYear(), homeCalMonth.getMonth() + 1, 1);
+    renderHomeMonthCalendar();
+  });
+  document.getElementById('home-cal-picker')?.addEventListener('change', event => {
+    const v = event.target.value || '';
+    const [y, m] = v.split('-').map(Number);
+    if (!y || !m) return;
+    homeCalMonth = new Date(y, m - 1, 1);
+    renderHomeMonthCalendar();
+  });
+  document.getElementById('home-cal-grid')?.addEventListener('click', event => {
+    const cell = event.target.closest?.('.cal-day');
+    if (!cell?.dataset.key) return;
+    selectHomeCalDate(cell.dataset.key);
+  });
+}
+
+/* ============================
+   끼니 목록을 가로로 밀면 선택한 날의 하루 리포트. 다시 밀면 목록으로.
+   ============================ */
+let homeDayPage = 0;
+function setHomeDayPage(page, { animate = true } = {}) {
+  const pager = document.getElementById('home-day-pager');
+  const track = document.getElementById('home-day-pager-track');
+  if (!pager || !track) return;
+  homeDayPage = page ? 1 : 0;
+  pager.classList.toggle('is-animating', !!(animate && !reduceMotion()));
+  track.style.transform = `translate3d(${homeDayPage ? -100 : 0}%, 0, 0)`;
+  pager.querySelectorAll('.home-day-page').forEach(el => el.classList.toggle('is-active', el.dataset.page === (homeDayPage ? 'report' : 'meals')));
+  pager.querySelectorAll('.home-day-dot').forEach(dot => {
+    const on = Number(dot.dataset.page) === homeDayPage;
+    dot.classList.toggle('is-active', on);
+    if (on) dot.setAttribute('aria-current', 'true'); else dot.removeAttribute('aria-current');
+  });
+  if (homeDayPage) renderHomeDayReport();
+}
+function setupHomeDayPager() {
+  const pager = document.getElementById('home-day-pager');
+  const track = document.getElementById('home-day-pager-track');
+  if (!pager || !track || pager._ready) return;
+  pager._ready = true;
+  const blocked = target => {
+    const b = document.body.classList;
+    if (activeView !== 'home' || homeCalOpen || b.contains('ai-sheet-open') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing') || b.contains('keyboard-open')) return true;
+    if (target?.closest?.('input, textarea, select, [contenteditable="true"], button, a, .drag-handle, .food-drag-handle, .add-btn, .timeline-edit-btn, .timeline-snack-add, .clear-day-btn')) return true;
+    return false;
+  };
+  let sx = 0, sy = 0, mode = null, tracking = false, lastDx = 0, samples = [];
+  const W = () => pager.getBoundingClientRect().width || innerWidth;
+  const follow = x => {
+    const w = W();
+    const base = homeDayPage ? -w : 0;
+    const nx = Math.max(-w, Math.min(w, base + x));
+    pager.classList.remove('is-animating');
+    track.style.transform = `translate3d(${nx}px, 0, 0)`;
+  };
+  pager.addEventListener('touchstart', event => {
+    tracking = false; mode = null; samples = []; lastDx = 0;
+    if (event.touches.length !== 1 || blocked(event.target)) return;
+    tracking = true;
+    sx = event.touches[0].clientX; sy = event.touches[0].clientY;
+  }, { passive: true });
+  pager.addEventListener('touchmove', event => {
+    if (!tracking) return;
+    const t = event.touches[0];
+    let dx = t.clientX - sx; const dy = t.clientY - sy;
+    if (!mode) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+      if (mode === 'v') { tracking = false; return; }
+      sx = t.clientX; dx = 0;
+    }
+    if (event.cancelable) event.preventDefault();
+    lastDx = dx;
+    const now = performance.now();
+    samples.push({ x: t.clientX, t: now });
+    while (samples.length > 2 && now - samples[0].t > 100) samples.shift();
+    follow(dx);
+  }, { passive: false });
+  const finish = () => {
+    if (!tracking) return;
+    tracking = false;
+    if (mode !== 'h') { setHomeDayPage(homeDayPage, { animate: true }); return; }
+    const a = samples[0]; const z = samples[samples.length - 1];
+    const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
+    const flick = Math.abs(vx) > 0.5 && Math.abs(lastDx) >= 20;
+    const w = W();
+    let next = homeDayPage;
+    if (flick) next = Math.sign(vx) < 0 ? 1 : 0;
+    else if (Math.abs(lastDx) >= w * 0.25) next = lastDx < 0 ? 1 : 0;
+    setHomeDayPage(next, { animate: true });
+  };
+  pager.addEventListener('touchend', finish, { passive: true });
+  pager.addEventListener('touchcancel', finish, { passive: true });
+  document.getElementById('home-day-dots')?.addEventListener('click', event => {
+    const dot = event.target.closest?.('.home-day-dot');
+    if (!dot) return;
+    setHomeDayPage(Number(dot.dataset.page) ? 1 : 0);
+  });
+}
+
+function homeDayEvalAndTip(totals, targets) {
+  const en = ACTIVE_LOCALE === 'en';
+  const pT = Math.max(1, targets.protein || 0);
+  const cT = Math.max(1, targets.carbs || 0);
+  const fT = Math.max(1, targets.fat || 0);
+  const pR = (totals.protein || 0) / pT;
+  const cR = (totals.carbs || 0) / cT;
+  const fR = (totals.fat || 0) / fT;
+  const pNeed = (targets.protein || 0) - (totals.protein || 0);
+  const cNeed = (targets.carbs || 0) - (totals.carbs || 0);
+  const fNeed = (targets.fat || 0) - (totals.fat || 0);
+  const calNeed = (targets.cal || 0) - (totals.cal || 0);
+
+  let evalText;
+  const carbLead = cR >= pR && cR >= fR && cR >= 0.7;
+  const proteinLead = pR >= cR && pR >= fR && pR >= 0.7;
+  const fatLead = fR >= cR && fR >= pR && fR >= 0.7;
+  if (pR < 0.85) {
+    evalText = carbLead
+      ? (en ? 'A carb-heavy day, short on protein' : '탄수 위주에 단백질 아쉬운 하루')
+      : fatLead
+        ? (en ? 'A fat-heavy day, short on protein' : '지방 위주에 단백질 아쉬운 하루')
+        : (en ? 'A day short on protein' : '단백질이 아쉬운 하루');
+  } else if (cR < 0.85) {
+    evalText = proteinLead
+      ? (en ? 'Solid protein, a bit low on carbs' : '단백질은 든든한데 탄수가 아쉬운 하루')
+      : (en ? 'A day a bit low on carbs' : '탄수가 아쉬운 하루');
+  } else if (fR < 0.85) {
+    evalText = proteinLead
+      ? (en ? 'Solid protein, a bit low on fat' : '단백질은 든든한데 지방이 아쉬운 하루')
+      : (en ? 'A day a bit low on fat' : '지방이 아쉬운 하루');
+  } else if (calNeed <= -150) evalText = en ? 'A day a little over the calorie goal' : '목표 칼로리를 조금 넘긴 하루';
+  else evalText = en ? 'A fairly balanced day' : '균형이 괜찮은 하루';
+
+  let tip;
+  if (pNeed >= 10) tip = en ? 'Tomorrow, add chicken breast or eggs at lunch.' : '내일 점심에 닭가슴살이나 계란 추가';
+  else if (calNeed <= -150) tip = en ? 'Tomorrow, keep dinner a little lighter.' : '내일은 저녁만 조금 가볍게';
+  else if (calNeed >= 200) tip = en ? 'Tomorrow, a small snack between meals is fine.' : '내일은 끼니 사이에 간식을 조금 더해도 좋아요';
+  else if (cNeed >= 20) tip = en ? 'Tomorrow, a bit more rice or fruit would help.' : '내일 밥이나 과일을 조금 더해도 좋아요';
+  else if (fNeed >= 10) tip = en ? 'Tomorrow, try avocado or nuts on the side.' : '내일 아보카도나 견과류를 곁들여 보세요';
+  else tip = en ? 'Keep the same balance tomorrow.' : '내일도 오늘처럼 균형 있게';
+  return { evalText, tip };
+}
+
+function renderHomeDayReport() {
+  const emptyEl = document.getElementById('home-report-empty');
+  const bodyEl = document.getElementById('home-report-body');
+  if (!emptyEl || !bodyEl) return;
+  const en = ACTIVE_LOCALE === 'en';
+  const totals = getTotals();
+  const targets = TARGETS || calcTargets(PROFILE.targetCal);
+  const has = (meals
+    ? Object.values(meals).some(m => (m.foods || []).length)
+    : Math.round(totals.cal + totals.protein + totals.carbs + totals.fat) > 0);
+  emptyEl.hidden = has;
+  bodyEl.hidden = !has;
+  if (!has) return;
+
+  const eaten = Math.round(totals.cal);
+  const goal = Math.round(targets.cal || 0);
+  const delta = goal - eaten;
+  const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  setText('home-report-cal-eaten', eaten.toLocaleString());
+  setText('home-report-cal-goal', ` / ${goal.toLocaleString()}kcal`);
+  const deltaEl = document.getElementById('home-report-cal-delta');
+  if (deltaEl) {
+    deltaEl.classList.toggle('is-over', delta < 0);
+    deltaEl.textContent = delta >= 0
+      ? `${delta.toLocaleString()} ${en ? 'left' : '남음'}`
+      : `${Math.abs(delta).toLocaleString()} ${en ? 'over' : '초과'}`;
+  }
+  const protein = Math.round(totals.protein);
+  const pGoal = Math.round(targets.protein || 0);
+  setText('home-report-protein', String(protein));
+  setText('home-report-protein-goal', ` / ${pGoal}g`);
+  const bar = document.getElementById('home-report-protein-bar');
+  if (bar) {
+    const pct = pGoal > 0 ? Math.min(100, (protein / pGoal) * 100) : 0;
+    bar.style.width = `${pct}%`;
+    bar.parentElement?.classList.toggle('is-over', protein > pGoal && pGoal > 0);
+  }
+  const fmtG = n => `${Math.round(n * 10) / 10}g`;
+  setText('home-report-carbs', fmtG(totals.carbs));
+  setText('home-report-fat', fmtG(totals.fat));
+
+  const { evalText, tip } = homeDayEvalAndTip(totals, targets);
+  setText('home-report-eval', evalText);
+  setText('home-report-tip', tip);
+
+  const stepsEl = document.getElementById('home-report-steps');
+  const connected = globalThis.RebuildersHealth?.isConnected?.();
+  const stepsVal = document.getElementById('health-steps-value')?.dataset.value;
+  const stepsHidden = document.getElementById('glance-steps')?.hidden;
+  if (stepsEl) {
+    const show = !!(connected && !stepsHidden && stepsVal && stepsVal !== '--');
+    stepsEl.hidden = !show;
+    if (show) stepsEl.textContent = en ? `Steps ${Number(stepsVal).toLocaleString()}` : `걸음 ${Number(stepsVal).toLocaleString()}보`;
+  }
+}
+
+function setupHomeChatSheetOpen() {
+  const open = () => {
+    if (activeView !== 'home') return;
+    if (!document.body.classList.contains('ai-sheet-open')) setAiDockPanel(true);
+  };
+  agentInputEl?.addEventListener('focus', open);
+  document.getElementById('ai-dock-form')?.addEventListener('pointerdown', event => {
+    if (event.target.closest?.('#ai-dock-history, #ai-dock-panel-close, #agent-help, #agent-send')) return;
+    open();
+  });
+}
+
 function setupPullToRefresh() {
+  // 기록 탭 당겨서는 새로고침하지 않음(월간 달력을 연다). 함수는 남겨 두되 제스처는 붙이지 않음.
   if (pullRefreshReady) return;
+  pullRefreshReady = true;
+  return;
   const home = document.getElementById('view-home');
   if (!home) return;
-  pullRefreshReady = true;
   const TRIGGER = 70;
   const indicator = document.createElement('div');
   indicator.className = 'pull-refresh';
@@ -11284,172 +11731,9 @@ const PAGE_SWIPE_DISABLED = true;
   frame.addEventListener('touchend', finish, { passive: true });
   frame.addEventListener('touchcancel', () => { if (!active) return; active = false; settle(false, lastDx); }, { passive: true });
 })();
-/* 식단기록: 가로로 밀어 날짜 이동(오른쪽으로 밀면 전날, 왼쪽은 다음 날·미래도 가능).
-   지금 날 내용(사진처럼 복제)과 옆 날 내용(진짜로 그림)이 손가락을 1:1로 나란히 따라옴.
-   너비 25% 넘기거나 빠르게 튕기면 250ms 감속으로 넘어가고(넘침·되돌아옴 없음), 아니면 제자리.
-   < > 버튼·날짜 누름(오늘로)도 같은 이동. 끌기(간식 옮기기·편집)·시트·키보드 중에는 동작 안 함 */
+/* 식단기록: 날짜는 위 날짜 줄·오늘로·화살표를 눌러 고른다. 화면을 가로로 밀어 날을 바꾸지 않음. */
 let slideDayTo = null;
-(function setupDateSwipe() {
-  const home = document.getElementById('view-home');
-  if (!home) return;
-  const SETTLE_MS = 250;
-  const EASE = 'cubic-bezier(0.25, 1, 0.5, 1)';
-  const parts = () => [...home.querySelectorAll(':scope > .day-summary, :scope > .section-head, :scope > .nutrition-missing-note, :scope > .meals-section, :scope > .day-clear-row')].filter(el => !el.hidden && el.offsetHeight);
-  let st = null; // { base, parts, ghosts, W, dir, token, dx }
-  let busy = false;
-  let loadToken = 0;
-  const snapshot = () => {
-    const list = parts();
-    const ghosts = list.map(el => {
-      const g = el.cloneNode(true);
-      g.classList.add('day-ghost');
-      g.setAttribute('aria-hidden', 'true');
-      g.style.top = `${el.offsetTop}px`; g.style.left = `${el.offsetLeft}px`; g.style.width = `${el.offsetWidth}px`; g.style.height = `${el.offsetHeight}px`;
-      g.style.setProperty('margin', '0', 'important');
-      el.after(g); // 같은 id 는 원본이 앞에 있어 getElementById 는 원본을 찾음
-      return g;
-    });
-    home.classList.add('day-swiping');
-    return { parts: list, ghosts };
-  };
-  const place = (x, transition = 'none') => {
-    if (!st) return;
-    if (!st.button) dateStripFollow(x / st.W, transition); // 날짜 줄도 손가락만큼(한 칸 = 화면 너비)
-    st.ghosts.forEach(g => { g.style.transition = transition; g.style.transform = `translate3d(${x}px, 0, 0)`; });
-    const off = st.dir ? x + st.dir * st.W : st.W * 2;
-    st.parts.forEach(el => { el.style.transition = transition; el.style.transform = `translate3d(${off}px, 0, 0)`; });
-  };
-  const cleanup = () => {
-    if (!st) return;
-    st.ghosts.forEach(g => g.remove());
-    st.parts.forEach(el => { el.style.removeProperty('transform'); el.style.removeProperty('transition'); });
-    home.classList.remove('day-swiping');
-    st = null;
-  };
-  const renderDay = async date => {
-    const token = ++loadToken;
-    currentDate = new Date(date);
-    const data = await loadDayFoods(dateKey(currentDate));
-    if (token !== loadToken) return false;
-    applyCurrentDayData(data);
-    renderAll(true);
-    return true;
-  };
-  const showDir = dir => {
-    if (!st || st.dir === dir) return;
-    st.dir = dir;
-    const d = new Date(st.base); d.setDate(d.getDate() + dir);
-    renderDay(d);
-  };
-  const settle = commit => new Promise(resolve => {
-    const dur = reduceMotion() ? 0 : SETTLE_MS;
-    busy = true;
-    place(commit ? -st.dir * st.W : 0, dur ? `transform ${dur}ms ${EASE}` : 'none');
-    const done = async () => {
-      try {
-        if (commit) {
-          updateDateDisplay();
-          cleanup();
-          // 밀고 있는 동안은 손가락이 닿은 음식 줄을 지우지 않았으니, 끝난 뒤에 목록을 맞춘다
-          renderAll(true);
-          if (activeView === 'search') renderSearchHub();
-        } else {
-          const base = st?.base;
-          cleanup();
-          if (base) await renderDay(base);
-          updateDateDisplay();
-        }
-      } catch (error) {
-        console.warn('date swipe settle', error);
-        cleanup();
-      } finally {
-        if (st) cleanup();
-        busy = false;
-        resolve();
-      }
-    };
-    if (dur) setTimeout(done, dur + 20); else done();
-  });
-  const blocked = (target, x) => {
-    if (busy || activeView !== 'home') return true;
-    const b = document.body.classList;
-    if (b.contains('timeline-editing') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('keyboard-open')) return true;
-    const ae = document.activeElement;
-    if (ae && ae !== document.body && ae.matches?.('input, textarea, select, [contenteditable="true"]')) return true;
-    return pageSwipeBlocked(target, x);
-  };
-  let sx = 0; let sy = 0; let mode = null; let tracking = false; let samples = []; let lastDx = 0;
-  const abandon = () => {
-    if (!tracking) return;
-    tracking = false;
-    if (st) settle(false);
-  };
-  const recoverStuckSwipe = () => {
-    if (!st || busy) return;
-    const commit = !!st.dir && Math.abs(lastDx) >= st.W * 0.25;
-    tracking = false;
-    settle(commit);
-  };
-  home.addEventListener('touchstart', event => {
-    if (st && !busy) recoverStuckSwipe();
-    tracking = false; mode = null; samples = []; lastDx = 0;
-    if (event.touches.length !== 1 || st || busy) return;
-    const t = event.touches[0];
-    if (blocked(event.target, t.clientX)) return;
-    tracking = true; sx = t.clientX; sy = t.clientY;
-  }, { passive: true });
-  home.addEventListener('touchmove', event => {
-    if (!tracking) return;
-    const t = event.touches[0];
-    let dx = t.clientX - sx; const dy = t.clientY - sy;
-    if (!mode) {
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-      mode = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
-      if (mode === 'v') { tracking = false; return; }
-      sx = t.clientX; dx = 0; // 방향이 정해진 지점부터 1:1
-      st = { base: new Date(currentDate), W: home.getBoundingClientRect().width || innerWidth, dir: 0, ...snapshot() };
-    }
-    const b = document.body.classList;
-    if (b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing')) { tracking = false; if (st) settle(false); return; }
-    if (event.cancelable) event.preventDefault();
-    const x = Math.max(-st.W, Math.min(st.W, dx));
-    lastDx = x;
-    const now = performance.now();
-    samples.push({ x: t.clientX, t: now });
-    while (samples.length > 2 && now - samples[0].t > 100) samples.shift();
-    if (x !== 0) showDir(x < 0 ? 1 : -1); // 왼쪽으로 밀면 다음 날이 오른쪽에서
-    place(Math.round(x * 10) / 10);
-  }, { passive: false });
-  const finish = () => {
-    if (!tracking) return;
-    tracking = false;
-    if (!st) return;
-    const a = samples[0]; const z = samples[samples.length - 1];
-    const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
-    const flick = Math.abs(vx) > 0.5 && Math.abs(lastDx) >= 20;
-    const commit = !!st.dir && (flick ? Math.sign(vx) === Math.sign(lastDx) : Math.abs(lastDx) >= st.W * 0.25);
-    settle(commit);
-  };
-  home.addEventListener('touchend', finish, { passive: true });
-  home.addEventListener('touchcancel', abandon, { passive: true });
-  // 밀기 도중 닿은 노드가 사라져도(다음 날 다시 그리기 등) 제스처가 끝나게
-  document.addEventListener('touchend', finish, { capture: true, passive: true });
-  document.addEventListener('touchcancel', abandon, { capture: true, passive: true });
-  // 버튼·날짜 누름: 지금 날은 빠지고 새 날이 같은 쪽에서 들어옴
-  slideDayTo = async (date, dir) => {
-    if (busy || st || reduceMotion() || activeView !== 'home' || !dir) return false;
-    busy = true;
-    st = { base: new Date(currentDate), W: home.getBoundingClientRect().width || innerWidth, dir: 0, button: true, ...snapshot() };
-    st.dir = dir;
-    place(0);
-    await renderDay(date);
-    if (!st) { busy = false; return true; }
-    updateDateDisplay();
-    st.parts.forEach(el => void el.offsetWidth);
-    await settle(true);
-    return true;
-  };
-})();
+
 /* 건강리포트: 가로로 밀어 기간 이동(접힘 = 한 주, 펼침 = 한 달). 오른쪽으로 밀면 이전, 왼쪽은 다음(미래도 가능).
    식단기록 날짜 밀기(setupDateSwipe)와 같은 느낌: 지금 기간(복제)과 옆 기간(진짜로 그림)이 손가락을 1:1로 따라오고,
    너비 25% 넘기거나 빠르게(0.5px/ms) 튕기면 250ms 감속으로 넘어감, 아니면 제자리. 세로 스크롤·달력 손잡이 끌기와 겹치지 않음 */
@@ -12880,6 +13164,9 @@ async function initializeApp() {
   setupDeepLinks();
   setupBridge();
   setupPullToRefresh();
+  setupHomeCalendarPull();
+  setupHomeDayPager();
+  setupHomeChatSheetOpen();
   resumeDaylogPending();
   showDataFixCardOnce().catch(() => {});
   setTimeout(() => retryDaylogFallbacks(), 1500);

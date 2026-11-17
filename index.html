@@ -31,7 +31,7 @@
     body.no-character #view-home .level-bubble { display: none !important; }
   </style>
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="style.css?v=f64" />
+  <link rel="stylesheet" href="style.css?v=f65" />
   <link rel="stylesheet" href="theme-dark.css?v=8" />
 </head>
 
@@ -58,6 +58,35 @@
       </div>
       <h1 class="page-title" id="page-title" hidden></h1>
     </header>
+    <!-- 기록 탭: 맨 위에서 아래로 당기면 월간 달력(건강리포트와 같은 칸 모양). 새로고침은 하지 않음 -->
+    <div class="home-cal-sheet" id="home-cal-sheet" hidden>
+      <button type="button" class="home-cal-backdrop" id="home-cal-backdrop" aria-label="달력 닫기"></button>
+      <div class="home-cal-panel" id="home-cal-panel" role="dialog" aria-modal="true" aria-labelledby="home-cal-month-label">
+        <section class="cal-card">
+          <div class="cal-month-bar">
+            <button type="button" class="nav-btn" id="home-cal-prev" aria-label="이전 달">
+              <svg width="9" height="16" viewBox="0 0 9 16" fill="none"><path d="M8 1L1 8L8 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+            <label class="cal-month-picker-wrap" for="home-cal-picker">
+              <span class="cal-month-label" id="home-cal-month-label">2026년 11월</span>
+              <input id="home-cal-picker" type="month" aria-label="연월 선택" />
+            </label>
+            <button type="button" class="nav-btn" id="home-cal-next" aria-label="다음 달">
+              <svg width="9" height="16" viewBox="0 0 9 16" fill="none"><path d="M1 1L8 8L1 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+          </div>
+          <div class="cal-weekdays" id="home-cal-weekdays" aria-hidden="true">
+            <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+          </div>
+          <div class="cal-viewport" id="home-cal-viewport">
+            <div class="cal-grid" id="home-cal-grid" role="grid" aria-label="날짜 선택"></div>
+          </div>
+          <button type="button" class="cal-expand-toggle" id="home-cal-grabber" aria-label="달력 닫기">
+            <span class="cal-grabber" aria-hidden="true"></span>
+          </button>
+        </section>
+      </div>
+    </div>
     <div class="app-content view-panel" id="view-home">
 
       <header class="home-brand" aria-label="Rebuilders Food Tracker 홈. Design your body.">
@@ -170,6 +199,9 @@
 
       </section>
 
+      <div class="home-day-pager" id="home-day-pager">
+        <div class="home-day-pager-track" id="home-day-pager-track">
+          <div class="home-day-page is-active" id="home-day-page-meals" data-page="meals">
       <div class="section-head">
         <h2 class="section-title">오늘 식단</h2>
         <div class="timeline-actions">
@@ -396,6 +428,42 @@
 
       <div class="day-clear-row">
         <button type="button" class="clear-day-btn" id="clear-day-btn" disabled title="이 날 기록이 있을 때 사용할 수 있어요">전체삭제</button>
+      </div>
+          </div>
+          <section class="home-day-page" id="home-day-page-report" data-page="report" aria-label="하루 리포트">
+            <div class="home-day-report" id="home-day-report">
+              <div class="home-report-empty" id="home-report-empty" hidden>
+                <p class="home-report-empty-title">아직 이 날 기록이 없어요</p>
+                <p class="home-report-empty-hint">아래 입력줄에 먹은 음식을 적어 보세요</p>
+              </div>
+              <div class="home-report-body" id="home-report-body">
+                <div class="home-report-cal">
+                  <p class="home-report-label">칼로리</p>
+                  <p class="home-report-cal-nums"><strong id="home-report-cal-eaten">0</strong><span id="home-report-cal-goal"> / 0kcal</span></p>
+                  <p class="home-report-cal-delta" id="home-report-cal-delta"></p>
+                </div>
+                <div class="home-report-macros">
+                  <div class="home-report-protein">
+                    <p class="home-report-label">단백질</p>
+                    <p class="home-report-protein-nums"><strong id="home-report-protein">0</strong><span id="home-report-protein-goal"> / 0g</span></p>
+                    <span class="home-report-bar" aria-hidden="true"><i id="home-report-protein-bar"></i></span>
+                  </div>
+                  <div class="home-report-side">
+                    <p><span>탄수</span> <strong id="home-report-carbs">0g</strong></p>
+                    <p><span>지방</span> <strong id="home-report-fat">0g</strong></p>
+                  </div>
+                </div>
+                <p class="home-report-eval" id="home-report-eval"></p>
+                <p class="home-report-tip" id="home-report-tip"></p>
+                <p class="home-report-steps" id="home-report-steps" hidden></p>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="home-day-dots" id="home-day-dots" role="tablist" aria-label="식단과 하루 리포트">
+          <button type="button" class="home-day-dot is-active" data-page="0" aria-label="식단 목록" aria-current="true"></button>
+          <button type="button" class="home-day-dot" data-page="1" aria-label="하루 리포트"></button>
+        </div>
       </div>
 
 
@@ -978,7 +1046,7 @@
           <strong>식단 기록</strong>
           <span class="ai-dock-panel-actions">
             <button type="button" class="ai-dock-text-btn" id="agent-help" aria-label="AI 입력 도움말">도움말</button>
-            <button type="button" class="ai-dock-text-btn" id="ai-dock-panel-close" aria-label="최근 대화 닫기">닫기</button>
+            <button type="button" class="ai-dock-text-btn ai-dock-back" id="ai-dock-panel-close" aria-label="대화 닫기"><span class="ai-dock-back-ico" aria-hidden="true">‹</span>닫기</button>
           </span>
         </div>
         <div class="agent-log ai-dock-log" id="agent-log" aria-live="polite"></div>

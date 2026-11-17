@@ -14877,3 +14877,169 @@ body.home-page:not(.ai-sheet-open) .phone-frame > .daylog-banner {
 body.home-page:not(.ai-sheet-open) .phone-frame > .bridge-pending {
   bottom: calc(44px + var(--safe-bottom) + 14px + 66px);
 }
+
+
+/* =====================================================================
+   f33 기록 탭 개편: 날짜는 탭으로만, 위에서 당기면 월간 달력(새로고침 없음),
+   끼니 영역을 밀어 하루 리포트, 입력줄 포커스 시 대화는 전체 화면.
+   ===================================================================== */
+#view-home { overscroll-behavior-y: none; }
+
+/* 월간 달력 시트: 상단 날짜 줄 아래, 건강리포트 달력과 같은 칸 모양 */
+.home-cal-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 260;
+  pointer-events: none;
+}
+.home-cal-sheet:not([hidden]) { pointer-events: auto; }
+.home-cal-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: rgba(15, 15, 20, 0.28);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.home-cal-sheet.is-open .home-cal-backdrop,
+.home-cal-sheet.is-pulling .home-cal-backdrop { opacity: 1; }
+.home-cal-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 48px; /* .top-head 높이 */
+  padding: 0 16px 8px;
+  transform: translate3d(0, -110%, 0);
+  will-change: transform;
+}
+.home-cal-sheet.is-open .home-cal-panel { transform: none; transition: transform 280ms cubic-bezier(0.25, 1, 0.5, 1); }
+.home-cal-sheet.is-settling .home-cal-panel { transition: transform 280ms cubic-bezier(0.25, 1, 0.5, 1); }
+.home-cal-sheet.is-pulling .home-cal-panel { transition: none; }
+#home-cal-sheet .cal-card {
+  margin: 0 !important;
+  padding: 16px 16px 4px !important;
+  border: 1px solid var(--rb-hairline) !important;
+  border-radius: 20px !important;
+  background: #fff !important;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12) !important;
+}
+#home-cal-sheet .cal-month-bar { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; }
+#home-cal-sheet .cal-month-label { font: 600 17px/1.3 var(--font) !important; color: var(--rb-ink); }
+#home-cal-sheet .cal-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin: 0 0 4px; font: var(--rb-type-caption); color: var(--rb-label); text-align: center; }
+#home-cal-sheet .cal-viewport { position: relative; overflow: hidden; }
+#home-cal-sheet .cal-grid {
+  display: grid !important; grid-template-columns: repeat(7, 1fr) !important;
+  grid-auto-rows: 50px !important; row-gap: 4px !important; column-gap: 0 !important; margin: 0 !important;
+}
+#home-cal-sheet .cal-day {
+  position: relative; display: flex !important; flex-direction: column; align-items: center; justify-content: center;
+  height: 50px !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important;
+  border: 0 !important; border-radius: 12px !important; background: none !important; box-shadow: none !important;
+  color: var(--rb-ink); cursor: pointer;
+}
+#home-cal-sheet .cal-day .cal-day-mark {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  width: min(36px, 100%); height: 46px; border-radius: 14px;
+}
+#home-cal-sheet .cal-day .cal-day-num { width: auto !important; height: auto !important; border-radius: 0 !important; background: none !important; box-shadow: none !important; color: inherit !important; font: 500 15px/1.1 var(--font) !important; }
+#home-cal-sheet .cal-day .cal-day-kcal { display: block !important; min-height: 11px; margin: 0 !important; font: 500 10px/1.1 var(--font) !important; letter-spacing: -0.2px; color: var(--rb-label) !important; white-space: nowrap; }
+#home-cal-sheet .cal-day.level-under .cal-day-kcal { color: #3F8F6B !important; }
+#home-cal-sheet .cal-day.level-ok .cal-day-kcal { color: #A8862B !important; }
+#home-cal-sheet .cal-day.level-over .cal-day-kcal { color: #C25B5B !important; }
+#home-cal-sheet .cal-day.is-outside { color: #B4B8C0; }
+#home-cal-sheet .cal-day.is-outside .cal-day-kcal { opacity: 0.6; }
+#home-cal-sheet .cal-day .cal-day-dot { display: none !important; }
+#home-cal-sheet .cal-day.is-today .cal-day-mark { box-shadow: inset 0 0 0 1.5px var(--rb-ink); }
+#home-cal-sheet .cal-day.is-selected .cal-day-mark { background: var(--rb-pill-dark, #1C1D21); color: #fff; box-shadow: none; }
+#home-cal-sheet .cal-day.is-selected .cal-day-num { font-weight: 700 !important; color: #fff !important; }
+#home-cal-sheet .cal-day.is-selected .cal-day-kcal { color: rgba(255, 255, 255, 0.8) !important; }
+#home-cal-sheet .cal-expand-toggle {
+  display: flex !important; flex-direction: column; align-items: center;
+  width: 100%; height: 28px; margin: 4px 0 0 !important; padding: 4px 0 0 !important;
+  border: 0 !important; background: none !important;
+}
+#home-cal-sheet .cal-grabber { width: 36px; height: 4px; border-radius: 2px; background: var(--rb-hairline); }
+body.home-cal-open #view-home { overflow: hidden !important; touch-action: none; }
+
+/* 끼니 영역 ↔ 하루 리포트 */
+.home-day-pager { position: relative; margin: 0 -4px; overflow: hidden; }
+.home-day-pager-track { display: flex; align-items: flex-start; will-change: transform; }
+.home-day-pager.is-animating .home-day-pager-track { transition: transform 250ms cubic-bezier(0.25, 1, 0.5, 1); }
+.home-day-page { flex: 0 0 100%; width: 100%; min-width: 100%; box-sizing: border-box; padding: 0 4px; }
+.home-day-dots { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 14px 0 4px; }
+.home-day-dot {
+  width: 6px; height: 6px; padding: 0; border: 0; border-radius: 50%;
+  background: #D5D7DD; cursor: pointer;
+}
+.home-day-dot.is-active { background: var(--rb-ink); width: 8px; height: 8px; }
+.home-day-report {
+  margin-top: 18px;
+  padding: 20px 18px 18px;
+  border: 1px solid var(--rb-hairline);
+  border-radius: 20px;
+  background: #fff;
+}
+.home-report-label { margin: 0 0 4px; font: 600 13px/1.3 var(--font); color: var(--rb-label); }
+.home-report-cal-nums, .home-report-protein-nums { margin: 0; font: 400 15px/1.3 var(--font); color: var(--rb-label); }
+.home-report-cal-nums strong, .home-report-protein-nums strong { font: 700 28px/1.1 var(--font); color: var(--rb-ink); letter-spacing: -0.03em; }
+.home-report-cal-delta { margin: 6px 0 0; font: 700 22px/1.2 var(--font); color: var(--rb-ink); letter-spacing: -0.02em; }
+.home-report-cal-delta.is-over { color: #C25B5B; }
+.home-report-macros { display: flex; align-items: flex-end; gap: 16px; margin: 18px 0 0; }
+.home-report-protein { flex: 1 1 auto; min-width: 0; }
+.home-report-bar {
+  display: block; height: 8px; margin-top: 10px; border-radius: 4px;
+  background: var(--rb-btn-bg, #E8E9ED); overflow: hidden;
+}
+.home-report-bar > i { display: block; height: 100%; width: 0; border-radius: 4px; background: #4C8BF5; }
+.home-report-bar.is-over > i { background: #C25B5B; }
+.home-report-side { flex: 0 0 auto; display: grid; gap: 8px; text-align: right; }
+.home-report-side p { margin: 0; display: flex; align-items: baseline; justify-content: flex-end; gap: 8px; font: 400 15px/1.3 var(--font); color: var(--rb-ink); }
+.home-report-side span { font: 600 13px/1.3 var(--font); color: var(--rb-label); }
+.home-report-eval { margin: 18px 0 0; font: 600 16px/1.4 var(--font); color: var(--rb-ink); }
+.home-report-tip { margin: 6px 0 0; font: 400 14px/1.45 var(--font); color: var(--rb-label); }
+.home-report-steps { margin: 14px 0 0; font: 500 13px/1.3 var(--font); color: var(--rb-label); }
+.home-report-empty { padding: 12px 4px 8px; }
+.home-report-empty-title { margin: 0; font: 700 17px/1.35 var(--font); color: var(--rb-ink); }
+.home-report-empty-hint { margin: 6px 0 0; font: 400 14px/1.45 var(--font); color: var(--rb-label); }
+.home-report-empty[hidden], .home-report-body[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .home-cal-sheet .home-cal-panel, .home-cal-backdrop, .home-day-pager.is-animating .home-day-pager-track { transition: none !important; }
+}
+
+/* 기록 탭 대화: 입력줄에 포커스하면 전체 화면 시트. 닫으면 알약 입력줄로 */
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 400;
+  height: 100% !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  background: var(--bg, #F4F5F7) !important;
+  padding: calc(var(--safe-top, 0px) + 8px) 0 calc(8px + var(--safe-bottom, 0px)) !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel {
+  border-radius: 0 !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel::before { display: none !important; }
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 16px 12px;
+  font: 700 17px/1.3 var(--font);
+}
+#home-ai-dock .ai-dock-back { display: inline-flex; align-items: center; gap: 2px; }
+#home-ai-dock .ai-dock-back-ico { font-size: 22px; line-height: 1; font-weight: 500; }
+html.kb-up body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock,
+body.home-page.keyboard-open.ai-sheet-open #home-ai-dock.home-ai-dock {
+  top: 0 !important;
+  height: 100% !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+}
