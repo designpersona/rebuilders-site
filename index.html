@@ -24,15 +24,18 @@
   <link rel="icon" href="assets/icons/icon-192.png" type="image/png" sizes="192x192" />
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
   <!-- 외부 폰트 요청 없음: 시스템 폰트만 사용 (추적·네트워크 최소화) -->
-  <link rel="preload" as="image" href="assets/character/01%20jamie_hungry.jpg" />
-  <link rel="preload" as="image" href="assets/character/02%20jamie.jpg" />
-  <link rel="preload" as="image" href="assets/character/03%20jamie_full.jpg" />
+  <!-- 캐릭터는 현재 숨김(SHOW_CHARACTER=false). 미리 받으면 첫 화면에서 잠깐 보임. -->
+  <style>
+    /* style.css 전에 첫 페인트에서 캐릭터가 보이지 않게 */
+    body.no-character #view-home .player-card .main-avatar,
+    body.no-character #view-home .level-bubble { display: none !important; }
+  </style>
   <script src="theme.js?v=1"></script>
   <link rel="stylesheet" href="style.css?v=f62" />
   <link rel="stylesheet" href="theme-dark.css?v=7" />
 </head>
 
-<body>
+<body class="no-character">
   <main class="storage-unavailable" id="storage-unavailable" role="alert" hidden>
     <div class="storage-unavailable-card">
       <span class="storage-unavailable-icon" aria-hidden="true">!</span>
