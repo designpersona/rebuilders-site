@@ -12914,6 +12914,48 @@ document.addEventListener('DOMContentLoaded', async () => {
 function reduceMotion() {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
+
+/* iOS 상태 표시줄 탭(statusTap)과 위쪽 페이지 제목 탭으로, 지금 보이는 스크롤 칸을 맨 위로.
+   식도감은 문서가 아니라 .foodex-library-scroll 이 스크롤되어서 기본 동작이 안 먹음. */
+function scrollActiveViewToTop() {
+  const behavior = reduceMotion() ? 'auto' : 'smooth';
+  const nodes = [];
+  if (document.body.classList.contains('foodex-page')) {
+    const panel = document.querySelector('#foodex-library.is-page .foodex-library-scroll:not([hidden])');
+    if (panel) nodes.push(panel);
+  }
+  document.querySelectorAll('.app-content.view-panel:not([hidden])').forEach(el => nodes.push(el));
+  const root = document.scrollingElement || document.documentElement;
+  if (root) nodes.push(root);
+  const seen = new Set();
+  for (const el of nodes) {
+    if (!el || seen.has(el)) continue;
+    seen.add(el);
+    try {
+      if (typeof el.scrollTo === 'function') el.scrollTo({ top: 0, behavior });
+      else el.scrollTop = 0;
+    } catch {
+      try { el.scrollTop = 0; } catch { /* ignore */ }
+    }
+  }
+  try { window.scrollTo({ top: 0, behavior }); } catch { /* ignore */ }
+}
+function setupStatusTapScroll() {
+  window.addEventListener('statusTap', scrollActiveViewToTop);
+  // 플러그인이 늦게 붙어도 statusTap 을 받을 수 있게 한 번 등록만 해 둠.
+  try {
+    const cap = globalThis.Capacitor;
+    if (cap?.isNativePlatform?.()) cap.Plugins?.StatusBar || cap.registerPlugin?.('StatusBar');
+  } catch { /* 웹이거나 플러그인 없음 */ }
+  document.getElementById('top-head')?.addEventListener('click', event => {
+    const title = document.getElementById('page-title');
+    if (!title || title.hidden) return;
+    if (event.target.closest('.date-strip')) return;
+    scrollActiveViewToTop();
+  });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupStatusTapScroll);
+else setupStatusTapScroll();
 // 페이지가 보일 때 한 번만: 카드·끼니 줄이 살짝 아래에서 차례로 (다시 그릴 때는 안 함)
 function playPageEnter(panel) {
   if (!panel || reduceMotion()) return;

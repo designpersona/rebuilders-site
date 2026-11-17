@@ -14778,3 +14778,37 @@ body.food-sheet-open .ai-fab, body:has(.modal-overlay.open) .ai-fab { opacity: 0
   row-gap: 12px;
   padding-top: 0;
 }
+
+/* =====================================================================
+   f31 식도감: iOS 상태 표시줄·제목 탭으로 맨 위, 검색줄 위 회색 가림 제거.
+   검색줄은 목록 밖(아래 형제)이라 스크롤러는 떠 있는 대화 버튼만 피하면 됨.
+   ===================================================================== */
+.page-title {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+body.foodex-page #view-search {
+  padding-bottom: 0 !important;
+}
+body.foodex-page #foodex-search-bar.foodex-search-dock {
+  position: relative !important;
+  inset: auto !important;
+  z-index: 5;
+  flex: 0 0 auto !important;
+  height: auto !important;
+  max-height: none !important;
+  background: var(--bg, #F4F5F7) !important;
+  box-shadow: none !important;
+  border-top: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body.foodex-page #foodex-search-bar.foodex-search-dock::before,
+body.foodex-page #foodex-search-bar.foodex-search-dock::after {
+  content: none !important;
+  display: none !important;
+}
+#view-search[data-hub-mode="foodex"] .foodex-library-scroll {
+  padding-bottom: 88px;
+}

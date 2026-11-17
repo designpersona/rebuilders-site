@@ -22,6 +22,7 @@
     "@capacitor/keyboard": "^8.0.6",
     "@capacitor/local-notifications": "^8.3.1",
     "@capacitor/share": "^8.0.3",
+    "@capacitor/status-bar": "^8.0.4",
     "@capgo/capacitor-health": "^8.11.12",
     "@capgo/capacitor-speech-recognition": "^8.4.4"
   },
