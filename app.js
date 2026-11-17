@@ -11305,6 +11305,7 @@ let slideDayTo = null;
       g.classList.add('day-ghost');
       g.setAttribute('aria-hidden', 'true');
       g.style.top = `${el.offsetTop}px`; g.style.left = `${el.offsetLeft}px`; g.style.width = `${el.offsetWidth}px`; g.style.height = `${el.offsetHeight}px`;
+      g.style.setProperty('margin', '0', 'important');
       el.after(g); // 같은 id 는 원본이 앞에 있어 getElementById 는 원본을 찾음
       return g;
     });
