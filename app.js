@@ -6274,12 +6274,10 @@ function foodCategoryIcon(key) {
 
 function foodIndexIcon(name, categoryKey) {
   const imagePath = FOOD_IMAGE_BY_NAME[name];
-  // Foods added outside the built-in catalog do not have artwork yet.
-  // Keep the fallback neutral and consistent with the product's note action
-  // instead of implying that a camera/photo workflow is already available.
-  // 음식 그림은 잠시 쓰지 않음(FOOD_IMAGE_BY_NAME 은 그대로 둠): 같은 크기의 빈 자리만
+  // 음식 그림은 잠시 쓰지 않음(FOOD_IMAGE_BY_NAME 은 그대로 둠).
+  // 빈 회색 칸 대신 카테고리 아이콘을 카드 안에 넣음.
   void imagePath;
-  return '<span class="food-index-image food-index-placeholder" aria-hidden="true"></span>';
+  return `<span class="food-index-image food-index-placeholder" aria-hidden="true">${foodCategoryIcon(categoryKey)}</span>`;
 }
 
 function renderSearchHub() {
@@ -6343,7 +6341,7 @@ function renderSearchHub() {
       ? `<span class="search-index-icon">${foodIndexIcon(name, category.key)}</span>
          <span class="search-index-category">${escapeHtml(category.label)}</span>
          <strong>${escapeHtml(displayFoodName(food))}</strong>
-         <span class="search-index-meta">${Math.round(data.cal || 0)}kcal · ${escapeHtml(displayServing({ name, ...data }, data.serving || '100g'))}</span>`
+         <span class="search-index-meta"><span class="search-index-kcal">${Math.round(data.cal || 0)}kcal</span><span class="search-index-serving">${escapeHtml(displayServing({ name, ...data }, data.serving || '100g'))}</span></span>`
       : `<span class="search-result-copy">
            <strong>${escapeHtml(displayFoodName(food))}</strong>
            <small>${escapeHtml(displayServing({ name, ...data }, data.serving || (ACTIVE_LOCALE === 'en' ? 'Serving not set' : '기준량 미설정')))}</small>

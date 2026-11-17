@@ -14649,3 +14649,132 @@ body.food-sheet-open .ai-fab, body:has(.modal-overlay.open) .ai-fab { opacity: 0
 .profile-footer .profile-product-meta {
   margin: 0;
 }
+
+/* =====================================================================
+   f30 식도감 카드 보기: 썸네일이 카드 위로 튀어나오고, 이름·용량이
+   옆 카드까지 넘치던 문제를 고침. 흰 둥근 카드·머리카락 선은 그대로.
+   ===================================================================== */
+.food-index-placeholder {
+  display: grid !important;
+  place-items: center;
+}
+.food-index-placeholder svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  color: var(--rb-label, #5E6470);
+}
+
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card {
+  position: relative;
+  aspect-ratio: auto;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 10px;
+  overflow: hidden !important;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card .search-index-icon {
+  width: 36px !important;
+  height: 36px !important;
+  flex: 0 0 36px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  border-radius: 10px !important;
+  background: #ECEEF1 !important;
+  display: grid;
+  place-items: center;
+}
+
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card .food-index-image,
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card .food-index-placeholder {
+  width: 36px !important;
+  height: 36px !important;
+  margin: 0 !important;
+  border-radius: 10px !important;
+  aspect-ratio: auto;
+  transform: none !important;
+  mix-blend-mode: normal !important;
+  background: transparent !important;
+}
+
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card .search-index-category {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  left: 52px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0;
+  overflow: hidden;
+  color: var(--rb-label, var(--text-muted));
+  font: 600 10px/1.2 var(--font);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card > strong {
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--rb-ink, var(--text-primary));
+  font: 700 13px/1.25 var(--font);
+  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card .search-index-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--rb-label, var(--text-muted));
+  font: 500 10px/1.3 var(--font);
+  white-space: normal;
+}
+
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card .search-index-kcal,
+.search-index-grid:not(.is-list-layout) .search-index-product.is-product-card .search-index-serving {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 리스트 보기는 칼로리·기준량을 한 줄로 유지 */
+.search-index-grid.is-list-layout .search-index-kcal::after,
+.search-index-grid.is-product-list .search-index-kcal::after {
+  content: ' · ';
+}
+
+/* 옛 폴더 탭용 위 여백·줄 간격은 카드 보기에서 더 이상 필요 없음 */
+#view-search[data-hub-mode="foodex"] .search-index-grid:not(.is-list-layout):not(.is-product-list) {
+  row-gap: 12px;
+  padding-top: 0;
+}
