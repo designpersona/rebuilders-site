@@ -13865,8 +13865,8 @@ slideDateStripTo = async function (date) {
   const strip = document.getElementById('date-strip');
   if (!strip || strip._gestures) return;
   strip._gestures = true;
-  let x0 = 0, y0 = 0, mode = null, active = false, samples = [];
-  let startOffset = 0, moved = false, raf = 0, pending = 0, weekW = 0;
+  let x0 = 0, y0 = 0, t0 = 0, mode = null, active = false, samples = [];
+  let startOffset = 0, startTarget = null, raf = 0, pending = 0, weekW = 0, handledTap = false;
   const stop = event => { event.stopPropagation(); };
 
   const applySoon = px => {
@@ -13878,14 +13878,36 @@ slideDateStripTo = async function (date) {
     });
   };
 
+  const chipAt = (x, y, fallback) => {
+    const el = document.elementFromPoint(x, y);
+    const hit = el?.closest?.('.date-chip') || fallback?.closest?.('.date-chip');
+    if (hit) return hit;
+    const p = dateStripParts();
+    if (!p) return null;
+    const r = p.strip.getBoundingClientRect();
+    const dow = Math.max(0, Math.min(6, Math.floor((x - r.left) / p.itemW)));
+    return p.track.querySelector(`.date-chip[data-week="0"][data-dow="${dow}"]`);
+  };
+
+  const selectChip = chip => {
+    if (!chip?.dataset.key) return false;
+    const d = parseDateKey(chip.dataset.key);
+    if (!d || Number.isNaN(d.getTime())) return false;
+    if (dateKey(d) === dateKey(currentDate)) { applyDateStripMagnify(); return true; }
+    dateStripHaptic();
+    commitDateStripTo(d);
+    return true;
+  };
+
   strip.addEventListener('touchstart', event => {
     stop(event);
-    active = false; mode = null; moved = false; samples = [];
+    active = false; mode = null; samples = []; handledTap = false;
     if (event.touches.length !== 1 || activeView !== 'home') return;
     const b = document.body.classList;
     if (b.contains('ai-sheet-open') || b.contains('ai-sheet-expanding') || b.contains('timeline-editing')) return;
     const t = event.touches[0];
-    x0 = t.clientX; y0 = t.clientY;
+    x0 = t.clientX; y0 = t.clientY; t0 = performance.now();
+    startTarget = event.target;
     startOffset = dateStripOffset;
     const p = dateStripParts();
     weekW = p ? p.W : (strip.clientWidth || innerWidth);
@@ -13911,7 +13933,6 @@ slideDateStripTo = async function (date) {
     }
     if (mode === 'h') {
       if (event.cancelable) event.preventDefault();
-      moved = moved || Math.abs(dx) > 6;
       const now = performance.now();
       samples.push({ x: t.clientX, t: now });
       while (samples.length > 2 && now - samples[0].t > 80) samples.shift();
@@ -13921,11 +13942,9 @@ slideDateStripTo = async function (date) {
       if (!api) return;
       if (!homeCalOpen && dy > 0) {
         if (event.cancelable) event.preventDefault();
-        moved = true;
         setHomeCalProgress(Math.min(1, api.rubber(dy) / (api.TRIGGER + 40)), false);
       } else if (homeCalOpen && dy < 0) {
         if (event.cancelable) event.preventDefault();
-        moved = true;
         const travel = homeCalHeight || 360;
         setHomeCalProgress(Math.max(0, 1 - api.rubber(-dy) / travel), false);
       }
@@ -13935,11 +13954,16 @@ slideDateStripTo = async function (date) {
   const finish = event => {
     if (!active) return;
     if (event) stop(event);
+    const pt = event?.changedTouches?.[0] || (Number.isFinite(event?.clientX) ? event : null);
+    const x = pt ? pt.clientX : x0;
+    const y = pt ? pt.clientY : y0;
+    const dist = Math.hypot(x - x0, y - y0);
+    const dt = performance.now() - t0;
+    const wasH = mode === 'h';
+    const wasV = mode === 'v';
     active = false;
     if (raf) { cancelAnimationFrame(raf); raf = 0; setDateStripOffset(pending); }
     strip.classList.remove('is-dragging');
-    const wasH = mode === 'h';
-    const wasV = mode === 'v';
     mode = null;
     dateStripDragging = false;
     if (wasV) {
@@ -13952,35 +13976,42 @@ slideDateStripTo = async function (date) {
       else closeHomeCal();
       return;
     }
-    if (!wasH) return;
-    const p = dateStripParts();
-    if (!p) return;
-    const a = samples[0]; const z = samples[samples.length - 1];
-    const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
-    let weeks = 0;
-    if (Math.abs(vx) > 0.45 && Math.abs(dateStripOffset) > p.W * 0.08) weeks = vx < 0 ? 1 : -1;
-    else if (Math.abs(dateStripOffset) >= p.W * 0.25) weeks = dateStripOffset < 0 ? 1 : -1;
-    if (!weeks) {
-      settleDateStripToOffset(0);
+    if (wasH) {
+      const p = dateStripParts();
+      if (!p) return;
+      const a = samples[0]; const z = samples[samples.length - 1];
+      const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
+      let weeks = 0;
+      if (Math.abs(vx) > 0.45 && Math.abs(dateStripOffset) > p.W * 0.08) weeks = vx < 0 ? 1 : -1;
+      else if (Math.abs(dateStripOffset) >= p.W * 0.25) weeks = dateStripOffset < 0 ? 1 : -1;
+      if (!weeks) { settleDateStripToOffset(0); return; }
+      const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + weeks * 7);
+      dateStripHaptic();
+      settleDateStripToOffset(-weeks * p.W).then(() => commitDateStripTo(next));
       return;
     }
-    const next = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + weeks * 7);
-    dateStripHaptic();
-    settleDateStripToOffset(-weeks * p.W).then(() => commitDateStripTo(next));
+    // 탭: click에 기대지 않고 touchend/pointerup에서 바로 고름.
+    // 캡처 단계에서 touchend를 막으면 모바일 웹뷰는 합성 click을 안 보내기도 함.
+    if (dist <= 8) {
+      handledTap = true;
+      selectChip(chipAt(x, y, startTarget));
+    }
   };
 
   strip.addEventListener('touchend', finish, { passive: true, capture: true });
   strip.addEventListener('touchcancel', finish, { passive: true, capture: true });
+  // 마우스(개발자 도구 등): 터치가 아닌 pointerup만 처리해 이중 선택을 피함
+  strip.addEventListener('pointerup', event => {
+    if (event.pointerType === 'touch') return;
+    if (!active) return;
+    finish(event);
+  }, { capture: true });
 
   strip.addEventListener('click', event => {
     stop(event);
-    if (moved) { moved = false; return; }
-    const chip = event.target.closest?.('.date-chip');
-    if (!chip?.dataset.key) return;
-    const d = parseDateKey(chip.dataset.key);
-    if (!d || dateKey(d) === dateKey(currentDate)) return;
-    dateStripHaptic();
-    commitDateStripTo(d);
+    if (handledTap) { handledTap = false; event.preventDefault(); return; }
+    const chip = event.target.closest?.('.date-chip') || chipAt(event.clientX, event.clientY, event.target);
+    selectChip(chip);
   }, { capture: true });
 })();
 
