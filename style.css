@@ -14556,3 +14556,96 @@ body.food-sheet-open .ai-fab, body:has(.modal-overlay.open) .ai-fab { opacity: 0
 @media (prefers-reduced-motion: reduce) { .food-dex, .modal-sheet, .modal-overlay { transition: none !important; } }
 /* 펼친 카드 최소 높이(118px)를 없앰: 펼치는 순간 카드가 53px 먼저 튀고, 접을 때 마지막에 툭 떨어지던 원인(높이는 목록 칸 애니메이션이 정함) */
 #view-home .meal-card.expanded, #view-home .snack-card.expanded { min-height: 0 !important; }
+
+/* 설정: 표시 한 카드, 접힌 고급, 작은 바닥글 */
+.display-settings-row {
+  display: grid;
+  grid-template-columns: 4.8rem minmax(0, 1fr);
+  gap: 10px 14px;
+  align-items: center;
+}
+.display-settings-row + .display-settings-row { margin-top: 14px; }
+.display-settings-label {
+  font: 600 13px/1.3 var(--font);
+  color: var(--rb-label, var(--text-muted));
+}
+.display-settings-row .language-choice { margin: 0; }
+.display-settings-row .theme-choice { grid-template-columns: repeat(3, 1fr); }
+
+.local-data-badge.is-line {
+  display: block;
+  flex: none;
+  width: 100%;
+  margin: 0 0 14px;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.data-transfer-card > .stats-section-title { margin-bottom: 0; }
+.data-transfer-card > .data-transfer-sub { margin: 4px 0 0; }
+
+.profile-advanced {
+  margin-top: var(--rb-card-gap, 14px);
+}
+.profile-advanced > .profile-advanced-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  min-height: 52px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-sm);
+  font: 700 16px/1.3 var(--font, inherit);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.profile-advanced > .profile-advanced-summary::-webkit-details-marker { display: none; }
+.profile-advanced > .profile-advanced-summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(45deg);
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+.profile-advanced[open] > .profile-advanced-summary::after { transform: rotate(225deg); }
+.profile-advanced[open] > .profile-advanced-summary { margin-bottom: 14px; }
+.profile-advanced > .profile-form-card,
+.profile-advanced > .data-action-btn { margin-top: 14px; }
+.profile-advanced > .data-action-btn { width: 100%; }
+
+.profile-footer {
+  margin: 28px 0 8px;
+  text-align: center;
+}
+.profile-footer .data-transfer-note { margin-top: 8px; }
+.profile-footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 12px 0 0;
+}
+.profile-footer-meta #privacy-link {
+  color: inherit;
+  text-decoration: underline;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.profile-footer .profile-product-meta {
+  margin: 0;
+}

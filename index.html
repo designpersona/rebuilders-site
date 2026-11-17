@@ -31,8 +31,8 @@
     body.no-character #view-home .level-bubble { display: none !important; }
   </style>
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="style.css?v=f63" />
-  <link rel="stylesheet" href="theme-dark.css?v=7" />
+  <link rel="stylesheet" href="style.css?v=f64" />
+  <link rel="stylesheet" href="theme-dark.css?v=8" />
 </head>
 
 <body class="no-character">
@@ -775,29 +775,12 @@
     <div class="app-content view-panel" id="view-profile" hidden>
       <div class="stats-page-head profile-page-head">
         <h1 class="stats-page-title">내정보</h1>
-        <p class="stats-page-sub">신체 정보와 목표 칼로리를 관리해요</p>
+        <p class="stats-page-sub">설정</p>
         <button type="button" class="profile-close" id="profile-close" aria-label="설정 닫기">×</button>
       </div>
 
-      <section class="profile-summary-card" aria-label="현재 프로필">
-        <div class="profile-summary-grid">
-          <div class="profile-summary-item">
-            <span class="profile-summary-label">키</span>
-            <span class="profile-summary-value" id="profile-summary-height">—</span>
-          </div>
-          <div class="profile-summary-item">
-            <span class="profile-summary-label">몸무게</span>
-            <span class="profile-summary-value" id="profile-summary-weight">—</span>
-          </div>
-          <div class="profile-summary-item">
-            <span class="profile-summary-label">목표</span>
-            <span class="profile-summary-value" id="profile-summary-cal">—</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="profile-form-card" aria-label="신체 정보 수정">
-        <h3 class="stats-section-title">신체 · 목표 수정</h3>
+      <section class="profile-form-card" id="profile-info-card" aria-labelledby="profile-info-title">
+        <h3 class="stats-section-title" id="profile-info-title">내 정보</h3>
         <div class="settings-form profile-settings-form">
           <div class="form-group">
             <label for="input-height">키 (cm)</label>
@@ -805,11 +788,7 @@
               placeholder="예: 169" />
           </div>
           <div class="form-group">
-            <label for="input-weight-date">체중 기록일</label>
-            <input type="date" class="settings-input" id="input-weight-date" />
-          </div>
-          <div class="form-group">
-            <label for="input-weight">몸무게 (kg)</label>
+            <label for="input-weight">오늘 체중 (kg)</label>
             <input type="number" class="settings-input" id="input-weight" inputmode="decimal" min="1" step="0.1"
               placeholder="예: 50" />
             <p class="profile-save-hint weight-date-hint" id="weight-date-hint" hidden></p>
@@ -822,37 +801,6 @@
         </div>
         <button class="settings-save-btn" id="settings-save" type="button">저장하기</button>
         <p class="profile-save-hint" id="profile-save-hint" hidden>저장됐어요</p>
-      </section>
-
-      <section class="profile-form-card language-settings-card" aria-labelledby="language-settings-title">
-        <h3 class="stats-section-title" id="language-settings-title" data-i18n="language.title">언어</h3>
-        <p class="profile-save-hint language-settings-copy" data-i18n="language.description">처음에는 기기 언어에 맞춰 표시됩니다. 여기서 선택하면 이 기기에 저장됩니다.</p>
-        <div class="language-choice" role="group" data-i18n-aria-label="language.title">
-          <button type="button" class="language-option active" data-language="ko" aria-pressed="true">한국어</button>
-          <button type="button" class="language-option" data-language="en" aria-pressed="false">English</button>
-        </div>
-      </section>
-
-      <section class="profile-form-card theme-settings-card" aria-labelledby="theme-settings-title">
-        <h3 class="stats-section-title" id="theme-settings-title">화면 모드</h3>
-        <p class="profile-save-hint language-settings-copy" id="theme-settings-copy">시스템은 아이폰 설정(라이트/다크)을 바로 따라가요. 이 기기에만 저장돼요.</p>
-        <div class="language-choice theme-choice" role="group" aria-labelledby="theme-settings-title">
-          <button type="button" class="language-option theme-option" data-theme-mode="light" aria-pressed="false">라이트</button>
-          <button type="button" class="language-option theme-option" data-theme-mode="dark" aria-pressed="false">다크</button>
-          <button type="button" class="language-option theme-option" data-theme-mode="system" aria-pressed="true">시스템</button>
-        </div>
-      </section>
-
-      <section class="profile-form-card ai-models-card" id="ai-models-card" aria-labelledby="ai-models-title">
-        <h3 class="stats-section-title" id="ai-models-title">AI 모델</h3>
-        <p class="profile-save-hint language-settings-copy" id="ai-models-copy">위에서부터 써요. 하나가 막히면 다음 모델로 자동으로 넘어가요. 순서와 켜기·끄기는 이 기기에만 저장돼요.</p>
-        <div class="ai-model-list" id="ai-model-list" role="list" aria-labelledby="ai-models-title"></div>
-        <p class="ai-models-status" id="ai-models-status" aria-live="polite"></p>
-        <div class="ai-models-actions">
-          <button type="button" class="language-option ai-models-btn" id="ai-models-test-all">연결 테스트</button>
-          <button type="button" class="language-option ai-models-btn" id="ai-models-refresh">상태 새로고침</button>
-          <button type="button" class="language-option ai-models-btn" id="ai-models-reset">기본 순서로</button>
-        </div>
       </section>
 
       <section class="profile-form-card reminder-settings-card" id="reminder-card" aria-labelledby="reminder-title" hidden>
@@ -888,53 +836,10 @@
         <p class="profile-save-hint" id="health-hint" hidden></p>
       </section>
 
-      <section class="profile-form-card ai-lookup-card" id="ai-lookup-card" aria-labelledby="ai-lookup-title">
-        <h3 class="stats-section-title" id="ai-lookup-title">AI 영양 찾기</h3>
-        <p class="profile-save-hint language-settings-copy">집 와이파이에서 기록하면 맥 미니의 AI가 영양성분을 찾아 바로 채워요(AI 추정, 나중에 수정 가능). 음식 이름·양·끼니·날짜만 보내요. 집 밖에서 기록한 건 대기했다가 집에서 앱을 열면 채워요.</p>
-        <div class="settings-form profile-settings-form">
-          <div class="form-group">
-            <label for="bridge-url">맥 미니 주소</label>
-            <input type="url" class="settings-input" id="bridge-url" placeholder="예: http://Macui-Macmini.local:3400" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url" />
-          </div>
-          <div class="form-group">
-            <label for="bridge-token">연결 토큰</label>
-            <input type="password" class="settings-input" id="bridge-token" placeholder="맥 미니 token 파일 내용" autocomplete="off" autocapitalize="off" spellcheck="false" />
-          </div>
-        </div>
-        <div class="bridge-actions">
-          <button class="settings-save-btn" id="bridge-save" type="button">저장</button>
-          <button class="settings-save-btn bridge-check-btn" id="bridge-check" type="button">연결 확인</button>
-        </div>
-        <p class="profile-save-hint" id="bridge-hint" hidden></p>
-        <p class="profile-save-hint language-settings-copy ai-lookup-fallback">다른 방법: 'AI에게 물어보기'로 텔레그램 봇에게 물어보기</p>
-        <div class="settings-form profile-settings-form">
-          <div class="form-group">
-            <label for="telegram-bot-id">텔레그램 봇 아이디</label>
-            <input type="text" class="settings-input" id="telegram-bot-id" placeholder="예: my_food_bot" autocomplete="off" autocapitalize="off" spellcheck="false" />
-          </div>
-        </div>
-        <button class="settings-save-btn" id="telegram-bot-save" type="button">봇 아이디 저장</button>
-        <p class="profile-save-hint" id="telegram-bot-hint" hidden></p>
-      </section>
-
-      <section class="profile-form-card datafix-card" id="datafix-card" aria-labelledby="datafix-title">
-        <h3 class="stats-section-title" id="datafix-title">저장값 점검</h3>
-        <p class="profile-save-hint language-settings-copy">0kcal·탄단지 불일치·이상한 이름처럼 틀려 보이는 저장값과 기록을 모아 보여 줘요. 고치기 전에 백업해 두어서 언제든 수정 전으로 되돌릴 수 있어요.</p>
-        <div class="settings-inline-actions">
-          <button class="settings-save-btn" id="datafix-open" type="button">점검 결과 보기</button>
-          <button class="settings-save-btn bridge-check-btn" id="datafix-restore" type="button">수정 전으로 되돌리기</button>
-        </div>
-        <p class="profile-save-hint" id="datafix-hint" hidden></p>
-      </section>
-
       <section class="profile-form-card data-transfer-card" aria-labelledby="data-transfer-title">
-        <div class="data-transfer-head">
-          <div>
-            <h3 class="stats-section-title" id="data-transfer-title">내 데이터</h3>
-            <p class="data-transfer-sub">기록을 파일로 백업하고 복원해요</p>
-          </div>
-          <span class="local-data-badge">이 기기에 저장</span>
-        </div>
+        <h3 class="stats-section-title" id="data-transfer-title">백업</h3>
+        <p class="data-transfer-sub">기록을 파일로 백업하고 복원해요</p>
+        <p class="local-data-badge is-line" id="local-data-badge">이 기기에 저장돼요</p>
 
         <button class="data-action-btn data-export-btn" id="export-backup" type="button">
           <span class="data-action-icon" aria-hidden="true">↗</span>
@@ -967,23 +872,93 @@
             </div>
           </div>
         </div>
-
-        <button class="data-action-btn" id="load-sample" type="button" style="margin-top:12px">
-          <span class="data-action-icon" aria-hidden="true">＋</span>
-          <span><strong>샘플 식단 불러오기</strong><small>가상의 4일치 식단을 추가해 앱을 둘러봐요</small></span>
-        </button>
         <p class="data-transfer-note" id="data-transfer-note">백업 파일은 직접 보관해 주세요(예: 파일 앱, iCloud Drive, Google 드라이브). 앱을 삭제하거나 기기를 바꾸면 이 기기의 기록은 사라져요.</p>
       </section>
 
-      <footer class="profile-product-meta" aria-label="서비스 정보">
-        <span>REBUILDERS</span>
-        <small>v1.0.0</small>
-      </footer>
-      <section class="profile-legal-note" id="profile-legal-note" aria-label="정보 출처와 개인정보">
+      <section class="profile-form-card display-settings-card" aria-labelledby="display-settings-title">
+        <h3 class="stats-section-title" id="display-settings-title">표시</h3>
+        <div class="display-settings-row">
+          <span class="display-settings-label" id="language-settings-title">언어</span>
+          <div class="language-choice" role="group" aria-labelledby="language-settings-title">
+            <button type="button" class="language-option active" data-language="ko" aria-pressed="true">한국어</button>
+            <button type="button" class="language-option" data-language="en" aria-pressed="false">English</button>
+          </div>
+        </div>
+        <div class="display-settings-row">
+          <span class="display-settings-label" id="theme-settings-title">화면 모드</span>
+          <div class="language-choice theme-choice" role="group" aria-labelledby="theme-settings-title">
+            <button type="button" class="language-option theme-option" data-theme-mode="light" aria-pressed="false">라이트</button>
+            <button type="button" class="language-option theme-option" data-theme-mode="dark" aria-pressed="false">다크</button>
+            <button type="button" class="language-option theme-option" data-theme-mode="system" aria-pressed="true">시스템</button>
+          </div>
+        </div>
+      </section>
+
+      <details class="profile-advanced" id="profile-advanced">
+        <summary class="profile-advanced-summary" id="profile-advanced-summary">고급</summary>
+
+        <section class="profile-form-card ai-models-card" id="ai-models-card" aria-labelledby="ai-models-title">
+          <h3 class="stats-section-title" id="ai-models-title">AI 모델</h3>
+          <p class="profile-save-hint language-settings-copy" id="ai-models-copy">위에서부터 써요. 하나가 막히면 다음 모델로 자동으로 넘어가요. 순서와 켜기·끄기는 이 기기에만 저장돼요.</p>
+          <div class="ai-model-list" id="ai-model-list" role="list" aria-labelledby="ai-models-title"></div>
+          <p class="ai-models-status" id="ai-models-status" aria-live="polite"></p>
+          <div class="ai-models-actions">
+            <button type="button" class="language-option ai-models-btn" id="ai-models-test-all">연결 테스트</button>
+            <button type="button" class="language-option ai-models-btn" id="ai-models-refresh">상태 새로고침</button>
+            <button type="button" class="language-option ai-models-btn" id="ai-models-reset">기본 순서로</button>
+          </div>
+        </section>
+
+        <section class="profile-form-card ai-lookup-card" id="ai-lookup-card" aria-labelledby="ai-lookup-title">
+          <h3 class="stats-section-title" id="ai-lookup-title">AI 영양 찾기</h3>
+          <p class="profile-save-hint language-settings-copy" id="ai-lookup-copy">집 와이파이에서 기록하면 맥 미니의 AI가 영양성분을 찾아 바로 채워요(AI 추정, 나중에 수정 가능). 음식 이름·양·끼니·날짜만 보내요. 집 밖에서 기록한 건 대기했다가 집에서 앱을 열면 채워요.</p>
+          <div class="settings-form profile-settings-form">
+            <div class="form-group">
+              <label for="bridge-url">맥 미니 주소</label>
+              <input type="url" class="settings-input" id="bridge-url" placeholder="예: http://Macui-Macmini.local:3400" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url" />
+            </div>
+            <div class="form-group">
+              <label for="bridge-token">연결 토큰</label>
+              <input type="password" class="settings-input" id="bridge-token" placeholder="맥 미니 token 파일 내용" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            </div>
+          </div>
+          <div class="bridge-actions">
+            <button class="settings-save-btn" id="bridge-save" type="button">저장</button>
+            <button class="settings-save-btn bridge-check-btn" id="bridge-check" type="button">연결 확인</button>
+          </div>
+          <p class="profile-save-hint" id="bridge-hint" hidden></p>
+          <p class="profile-save-hint language-settings-copy ai-lookup-fallback" id="telegram-bot-copy">다른 방법: 'AI에게 물어보기'로 텔레그램 봇에게 물어보기</p>
+          <div class="settings-form profile-settings-form">
+            <div class="form-group">
+              <label for="telegram-bot-id">텔레그램 봇 아이디</label>
+              <input type="text" class="settings-input" id="telegram-bot-id" placeholder="예: my_food_bot" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            </div>
+          </div>
+          <button class="settings-save-btn" id="telegram-bot-save" type="button">봇 아이디 저장</button>
+          <p class="profile-save-hint" id="telegram-bot-hint" hidden></p>
+        </section>
+
+        <section class="profile-form-card datafix-card" id="datafix-card" aria-labelledby="datafix-title">
+          <h3 class="stats-section-title" id="datafix-title">저장값 점검</h3>
+          <p class="profile-save-hint language-settings-copy" id="datafix-copy">0kcal·탄단지 불일치·이상한 이름처럼 틀려 보이는 저장값과 기록을 모아 보여 줘요. 고치기 전에 백업해 두어서 언제든 수정 전으로 되돌릴 수 있어요.</p>
+          <div class="settings-inline-actions">
+            <button class="settings-save-btn" id="datafix-open" type="button">점검 결과 보기</button>
+            <button class="settings-save-btn bridge-check-btn" id="datafix-restore" type="button">수정 전으로 되돌리기</button>
+          </div>
+          <p class="profile-save-hint" id="datafix-hint" hidden></p>
+        </section>
+
+        <button class="data-action-btn" id="load-sample" type="button">
+          <span class="data-action-icon" aria-hidden="true">＋</span>
+          <span><strong>샘플 식단 불러오기</strong><small>가상의 4일치 식단을 추가해 앱을 둘러봐요</small></span>
+        </button>
+      </details>
+
+      <footer class="profile-footer" id="profile-legal-note" aria-label="정보 출처와 개인정보">
         <p id="data-source-note" class="data-transfer-note">내장 음식의 영양 정보는 USDA FoodData Central(fdc.nal.usda.gov)을 참고했고, 일부는 추정값이에요. 직접 등록한 음식은 입력한 값 그대로 사용돼요. 영양 정보는 참고용이며 의학적 조언이 아니에요.</p>
         <p id="mfds-source-note" class="data-transfer-note">영양 정보 출처: 식품의약품안전처 식품영양성분 DB (기준일 2026-09-29)</p>
-        <p class="data-transfer-note"><a id="privacy-link" href="privacy.html" style="color:inherit;text-decoration:underline">개인정보 처리방침</a></p>
-      </section>
+        <p class="profile-footer-meta"><a id="privacy-link" href="privacy.html">개인정보 처리방침</a><span class="profile-product-meta"><span>REBUILDERS</span><small>v1.0.0</small></span></p>
+      </footer>
 
       <div class="content-end-spacer"></div>
     </div>
@@ -1471,7 +1446,7 @@
   <script src="bridge.js?v=12"></script>
   <script src="chat-intent.js?v=13"></script>
   <script src="food-search-rank.js?v=1"></script>
-  <script src="app.js?v=f68"></script>
+  <script src="app.js?v=f69"></script>
 </body>
 
 </html>

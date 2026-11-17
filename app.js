@@ -122,10 +122,10 @@ const UI_COPY = {
     shopping: '장보기', stockTab: '창고', storeTab: '스토어',
     languageTitle: '언어',
     languageDescription: '처음에는 기기 언어에 맞춰 표시됩니다. 여기서 선택하면 이 기기에 저장됩니다.',
-    profileSub: '신체 정보와 목표 칼로리를 관리해요',
+    profileSub: '설정',
     height: '키', weight: '몸무게', target: '목표',
-    profileEdit: '신체 · 목표 수정',
-    heightField: '키 (cm)', weightField: '몸무게 (kg)', weightDateField: '체중 기록일', targetField: '목표 칼로리 (kcal)',
+    profileEdit: '내 정보',
+    heightField: '키 (cm)', weightField: '오늘 체중 (kg)', displayTitle: '표시', advancedTitle: '고급', backupTitle: '백업', targetField: '목표 칼로리 (kcal)',
     save: '저장하기',
     foodName: '음식 이름', serving: '기준량', calories: '칼로리', carbs: '탄수화물', protein: '단백질', fat: '지방',
     saveAndAdd: '저장하고 추가',
@@ -164,10 +164,10 @@ const UI_COPY = {
     shopping: 'Shopping', stockTab: 'Stock', storeTab: 'Store',
     languageTitle: 'Language',
     languageDescription: 'The first visit follows your device language. Your choice here is saved on this device.',
-    profileSub: 'Manage your body information and calorie target',
+    profileSub: 'Settings',
     height: 'Height', weight: 'Weight', target: 'Target',
-    profileEdit: 'Edit body & target',
-    heightField: 'Height (cm)', weightField: 'Weight (kg)', weightDateField: 'Weight date', targetField: 'Calorie target (kcal)',
+    profileEdit: 'My info',
+    heightField: 'Height (cm)', weightField: 'Today\'s weight (kg)', displayTitle: 'Display', advancedTitle: 'Advanced', backupTitle: 'Backup', targetField: 'Calorie target (kcal)',
     save: 'Save',
     foodName: 'Food name', serving: 'Serving size', calories: 'Calories', carbs: 'Carbs', protein: 'Protein', fat: 'Fat',
     saveAndAdd: 'Save and add',
@@ -264,7 +264,9 @@ function applyLanguage(render = true) {
     '#foodex-tab-recipe': t('recipeTab'),
     '#foodex-tab-badge': t('badgeTab'),
     '#language-settings-title': t('languageTitle'),
-    '.language-settings-copy': t('languageDescription'),
+    '#display-settings-title': t('displayTitle'),
+    '#profile-advanced-summary': t('advancedTitle'),
+    '#profile-info-title': t('profileEdit'),
     '#timeline-edit-btn': timelineEditing ? (ACTIVE_LOCALE === 'en' ? 'Done' : '편집완료') : t('edit'),
     '#view-profile .stats-page-title': t('profile'),
     '#view-profile .stats-page-sub': t('profileSub'),
@@ -331,10 +333,8 @@ function applyLanguage(render = true) {
   });
   const recordPosition = document.querySelector('#modal-record-selector .modal-snack-label');
   if (recordPosition) recordPosition.textContent = t('recordPosition');
-  const profileLabels = [t('height'), t('weight'), t('target')];
-  document.querySelectorAll('#view-profile .profile-summary-label').forEach((el, index) => { el.textContent = profileLabels[index] || ''; });
   const fieldCopy = {
-    'input-height': t('heightField'), 'input-weight': t('weightField'), 'input-weight-date': t('weightDateField'), 'input-target-cal': t('targetField'),
+    'input-height': t('heightField'), 'input-weight': t('weightField'), 'input-target-cal': t('targetField'),
     'custom-name': t('foodName'),
     'custom-serving-amount': ACTIVE_LOCALE === 'en' ? 'Serving (number · unit)' : '기준량 (숫자 · 단위)',
     'custom-cal': t('calories'),
@@ -358,17 +358,13 @@ function applyLanguage(render = true) {
     const formLabel = input ? document.querySelector(`label[for="${id}"]`) : null;
     if (formLabel) formLabel.textContent = label;
   });
-  const profileEditTitle = document.querySelector('#view-profile .profile-form-card .stats-section-title');
+  const profileEditTitle = document.getElementById('profile-info-title');
   if (profileEditTitle) profileEditTitle.textContent = t('profileEdit');
-  const profileAvatar = document.querySelector('#view-profile .profile-avatar');
-  if (profileAvatar) profileAvatar.textContent = ACTIVE_LOCALE === 'en' ? 'N' : '니';
-  
-document.getElementById('input-weight-date')?.addEventListener('change', event => {
-  const key = event.currentTarget.value || dateKey(new Date());
-  fillWeightInputs(key);
-});
-
-document.querySelectorAll('.language-option[data-language]').forEach(button => {
+  const displayTitle = document.getElementById('display-settings-title');
+  if (displayTitle) displayTitle.textContent = t('displayTitle');
+  const advancedTitle = document.getElementById('profile-advanced-summary');
+  if (advancedTitle) advancedTitle.textContent = t('advancedTitle');
+  document.querySelectorAll('.language-option[data-language]').forEach(button => {
     const active = button.dataset.language === ACTIVE_LOCALE;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
@@ -1635,9 +1631,9 @@ function applyExtendedStaticCopy() {
     if (el) el.setAttribute('placeholder', en ? english : ko);
   };
 
-  label('.profile-summary-card', '현재 프로필', 'Current profile');
-  label('#view-profile .profile-form-card', '신체 정보 수정', 'Edit body information');
-  label('.language-choice', '언어', 'Language');
+  label('#profile-info-card', '내 정보', 'My info');
+  label('#display-settings-title', '표시', 'Display');
+  label('#language-settings-title', '언어', 'Language');
   set('#profile-save-hint', '저장됐어요', 'Saved');
   placeholder('#input-height', '예: 169', 'e.g. 169');
   placeholder('#input-weight', '예: 50', 'e.g. 50');
@@ -1654,9 +1650,9 @@ function applyExtendedStaticCopy() {
   document.querySelectorAll('.vital-label[data-en]').forEach(el => { el.textContent = ACTIVE_LOCALE === 'en' ? el.dataset.en : el.dataset.ko; });
   label('.main-avatar', '사용자 픽셀 캐릭터', 'User pixel character');
   label('.meals-section', '식사 기록', 'Meal records');
-  set('#data-transfer-title', '내 데이터', 'My data');
+  set('#data-transfer-title', '백업', 'Backup');
   set('.data-transfer-sub', '기록을 파일로 백업하고 복원해요', 'Back up and restore your records with a file.');
-  set('.local-data-badge', '이 기기에 저장', 'Saved on this device');
+  set('#local-data-badge', '이 기기에 저장돼요', 'Saved on this device');
   set('#export-backup strong', '백업 파일로 내보내기', 'Export a backup file');
   set('#export-backup small', '식단·설정·내 음식을 JSON 파일 하나로 저장해요', 'Save meals, settings, and custom foods as one JSON file');
   set('.data-import-copy strong', '백업 파일에서 가져오기', 'Import from a backup file');
@@ -6055,11 +6051,9 @@ timeEditSaveBtn.addEventListener('click', async () => {
    ============================ */
 function fillProfileForm() {
   const h = document.getElementById('input-height');
-  const dateInput = document.getElementById('input-weight-date');
   const cal = document.getElementById('input-target-cal');
   if (h) h.value = PROFILE.height;
-  if (dateInput && !dateInput.value) dateInput.value = dateKey(new Date());
-  fillWeightInputs(dateInput?.value || dateKey(new Date()));
+  fillWeightInputs(dateKey(new Date()));
   if (cal) cal.value = PROFILE.targetCal;
   updateProfilePageSummary();
 }
@@ -6125,7 +6119,7 @@ document.getElementById('settings-save')?.addEventListener('click', async () => 
   btn.dataset.actionLocked = 'true';
   const h = Number(document.getElementById('input-height').value) || 169;
   const cal = Number(document.getElementById('input-target-cal').value) || 1300;
-  const weightDate = document.getElementById('input-weight-date')?.value || dateKey(new Date());
+  const weightDate = dateKey(new Date());
   const rawWeight = document.getElementById('input-weight').value;
   const w = rawWeight === '' ? NaN : Number(rawWeight);
 
@@ -6136,7 +6130,7 @@ document.getElementById('settings-save')?.addEventListener('click', async () => 
   btn.textContent = ACTIVE_LOCALE === 'en' ? 'Saving…' : '저장 중…';
   try {
     if (rawWeight !== '' && (!isWeightDateKey(weightDate) || !Number.isFinite(w) || w <= 0 || w > 500)) {
-      throw new Error(ACTIVE_LOCALE === 'en' ? 'Enter a valid weight for that date.' : '그 날짜의 체중을 올바르게 입력해 주세요.');
+      throw new Error(ACTIVE_LOCALE === 'en' ? "Enter today's weight correctly." : '오늘 체중을 올바르게 입력해 주세요.');
     }
     if (rawWeight !== '') await persistManualWeight(weightDate, w);
     else {
@@ -12236,9 +12230,18 @@ function openExternalUrl(url) {
   if (!opened) location.href = url;
 }
 
+
+function revealProfileCard(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const advanced = document.getElementById('profile-advanced');
+  if (advanced && advanced.contains(el)) advanced.open = true;
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
 function openAiLookupSettings() {
   document.getElementById('btn-open-profile')?.click();
-  setTimeout(() => document.getElementById('ai-lookup-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
+  setTimeout(() => revealProfileCard('ai-lookup-card'), 250);
 }
 
 async function askAiForFoods(mealId, items, options = {}) {
@@ -13240,8 +13243,8 @@ updateTopHead();
     const en = ACTIVE_LOCALE === 'en';
     const label = { light: en ? 'Light' : '라이트', dark: en ? 'Dark' : '다크', system: en ? 'System' : '시스템' };
     buttons.forEach(b => { b.textContent = label[b.dataset.themeMode]; });
+    const display = document.getElementById('display-settings-title'); if (display) display.textContent = en ? 'Display' : '표시';
     const title = document.getElementById('theme-settings-title'); if (title) title.textContent = en ? 'Appearance' : '화면 모드';
-    const copy = document.getElementById('theme-settings-copy'); if (copy) copy.textContent = en ? 'System follows your iPhone setting. Saved on this device only.' : '시스템은 아이폰 설정(라이트/다크)을 바로 따라가요. 이 기기에만 저장돼요.';
   };
   buttons.forEach(b => b.addEventListener('click', () => { T.setMode(b.dataset.themeMode); sync(); }));
   window.addEventListener('rebuilders-theme', sync);

@@ -689,3 +689,10 @@ html.theme-dark #modal-sheet .tray-add-btn.is-added { background: #f4f4f5 !impor
 html.theme-dark #modal-sheet .fm-grabber::after, html.theme-dark #modal-sheet .fpd-grabber::after { background: #3f3f46; }
 html.theme-dark #modal-sheet .fpd-backdrop { background: rgba(0, 0, 0, 0.5); }
 html.theme-dark #modal-sheet .fpd-fav.is-on { color: #fbbf24 !important; }
+
+html.theme-dark .profile-advanced > .profile-advanced-summary {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+html.theme-dark .profile-footer-meta #privacy-link { color: rgba(255, 255, 255, 0.45); }
