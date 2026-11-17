@@ -31,7 +31,7 @@
     body.no-character #view-home .level-bubble { display: none !important; }
   </style>
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="style.css?v=f62" />
+  <link rel="stylesheet" href="style.css?v=f63" />
   <link rel="stylesheet" href="theme-dark.css?v=7" />
 </head>
 
@@ -519,6 +519,13 @@
         </div>
         <div class="stats-day-meals" id="stats-day-meals" aria-label="선택한 날 끼니 상세"></div>
         <p class="stats-day-empty" id="stats-day-empty" hidden>이 날에는 기록이 없어요.</p>
+        <div class="stats-day-weight" id="stats-day-weight-row">
+          <label for="stats-day-weight">체중</label>
+          <input type="number" class="settings-input" id="stats-day-weight" inputmode="decimal" min="1" step="0.1" />
+          <span class="stats-day-weight-unit">kg</span>
+          <button type="button" class="stats-open-day-btn" id="stats-day-weight-save">저장</button>
+          <span class="stats-day-weight-source" id="stats-day-weight-source" hidden></span>
+        </div>
       </section>
 
       <!-- 기간 리포트(접힘 = 그 주, 펼침 = 그 달): 칼로리·탄단지·끼니별·몸 상태, 아래 칼로리 추이 -->
@@ -798,9 +805,14 @@
               placeholder="예: 169" />
           </div>
           <div class="form-group">
+            <label for="input-weight-date">체중 기록일</label>
+            <input type="date" class="settings-input" id="input-weight-date" />
+          </div>
+          <div class="form-group">
             <label for="input-weight">몸무게 (kg)</label>
             <input type="number" class="settings-input" id="input-weight" inputmode="decimal" min="1" step="0.1"
               placeholder="예: 50" />
+            <p class="profile-save-hint weight-date-hint" id="weight-date-hint" hidden></p>
           </div>
           <div class="form-group">
             <label for="input-target-cal">목표 칼로리 (kcal)</label>
@@ -870,7 +882,7 @@
 
       <section class="profile-form-card health-settings-card" id="health-card" aria-labelledby="health-title" hidden>
         <h3 class="stats-section-title" id="health-title">건강 앱 연결</h3>
-        <p class="profile-save-hint language-settings-copy" id="health-copy">아이폰 건강 앱의 심박수와 걸음 수를 읽어 홈에 보여줘요. 읽기만 하고, 이 기기 안에서만 보여줘요. 저장·백업·외부 전송은 하지 않아요.</p>
+        <p class="profile-save-hint language-settings-copy" id="health-copy">아이폰 건강 앱의 심박수, 걸음 수, 체중을 읽어 화면에 보여줘요. 읽기만 해요. 심박수와 걸음 수는 이 기기 안에서만 보여주고 저장·백업·외부 전송은 하지 않아요. 체중은 날짜별 기록으로 이 기기에 저장하며, 같은 날 직접 입력한 값이 있으면 그 값을 써요.</p>
         <button class="settings-save-btn" id="health-connect" type="button">건강 앱 연결하기</button>
         <button class="settings-save-btn health-steps-permission" id="health-steps-permission" type="button" hidden>걸음 수 권한 추가</button>
         <p class="profile-save-hint" id="health-hint" hidden></p>
@@ -1447,19 +1459,19 @@
   <script src="food-base.js?v=3"></script>
   <script src="units.js?v=3"></script>
   <script src="mfds.js?v=2"></script>
-  <script src="storage.js?v=8"></script>
+  <script src="storage.js?v=9"></script>
   <script src="data-fix.js?v=2"></script>
-  <script src="backup.js?v=3"></script>
+  <script src="backup.js?v=4"></script>
   <script src="notifications.js?v=1"></script>
   <script src="keyboard.js?v=5"></script>
   <script src="demo-seed.js?v=3"></script>
   <script src="quick-entry.js?v=6"></script>
-  <script src="health.js?v=2"></script>
+  <script src="health.js?v=3"></script>
   <script src="log-link.js?v=1"></script>
   <script src="bridge.js?v=12"></script>
   <script src="chat-intent.js?v=13"></script>
   <script src="food-search-rank.js?v=1"></script>
-  <script src="app.js?v=f67"></script>
+  <script src="app.js?v=f68"></script>
 </body>
 
 </html>

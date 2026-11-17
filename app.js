@@ -100,6 +100,7 @@ let PROFILE = {
   targetCal: 1300,
   locale: 'ko',
 };
+let WEIGHTS = {};
 
 const UI_COPY = {
   ko: {
@@ -124,7 +125,7 @@ const UI_COPY = {
     profileSub: '신체 정보와 목표 칼로리를 관리해요',
     height: '키', weight: '몸무게', target: '목표',
     profileEdit: '신체 · 목표 수정',
-    heightField: '키 (cm)', weightField: '몸무게 (kg)', targetField: '목표 칼로리 (kcal)',
+    heightField: '키 (cm)', weightField: '몸무게 (kg)', weightDateField: '체중 기록일', targetField: '목표 칼로리 (kcal)',
     save: '저장하기',
     foodName: '음식 이름', serving: '기준량', calories: '칼로리', carbs: '탄수화물', protein: '단백질', fat: '지방',
     saveAndAdd: '저장하고 추가',
@@ -166,7 +167,7 @@ const UI_COPY = {
     profileSub: 'Manage your body information and calorie target',
     height: 'Height', weight: 'Weight', target: 'Target',
     profileEdit: 'Edit body & target',
-    heightField: 'Height (cm)', weightField: 'Weight (kg)', targetField: 'Calorie target (kcal)',
+    heightField: 'Height (cm)', weightField: 'Weight (kg)', weightDateField: 'Weight date', targetField: 'Calorie target (kcal)',
     save: 'Save',
     foodName: 'Food name', serving: 'Serving size', calories: 'Calories', carbs: 'Carbs', protein: 'Protein', fat: 'Fat',
     saveAndAdd: 'Save and add',
@@ -333,7 +334,7 @@ function applyLanguage(render = true) {
   const profileLabels = [t('height'), t('weight'), t('target')];
   document.querySelectorAll('#view-profile .profile-summary-label').forEach((el, index) => { el.textContent = profileLabels[index] || ''; });
   const fieldCopy = {
-    'input-height': t('heightField'), 'input-weight': t('weightField'), 'input-target-cal': t('targetField'),
+    'input-height': t('heightField'), 'input-weight': t('weightField'), 'input-weight-date': t('weightDateField'), 'input-target-cal': t('targetField'),
     'custom-name': t('foodName'),
     'custom-serving-amount': ACTIVE_LOCALE === 'en' ? 'Serving (number · unit)' : '기준량 (숫자 · 단위)',
     'custom-cal': t('calories'),
@@ -361,7 +362,13 @@ function applyLanguage(render = true) {
   if (profileEditTitle) profileEditTitle.textContent = t('profileEdit');
   const profileAvatar = document.querySelector('#view-profile .profile-avatar');
   if (profileAvatar) profileAvatar.textContent = ACTIVE_LOCALE === 'en' ? 'N' : '니';
-  document.querySelectorAll('.language-option[data-language]').forEach(button => {
+  
+document.getElementById('input-weight-date')?.addEventListener('change', event => {
+  const key = event.currentTarget.value || dateKey(new Date());
+  fillWeightInputs(key);
+});
+
+document.querySelectorAll('.language-option[data-language]').forEach(button => {
     const active = button.dataset.language === ACTIVE_LOCALE;
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
@@ -1201,6 +1208,9 @@ async function loadSettings() {
   }
   else PROFILE = { ...PROFILE, locale: DEFAULT_LOCALE };
   ACTIVE_LOCALE = PROFILE.locale === 'en' ? 'en' : 'ko';
+  await loadWeightLog();
+  await migrateLegacyWeight();
+  applyEffectiveProfileWeight(dateKey(new Date()));
   TARGETS = calcTargets(PROFILE.targetCal);
   updateProfileUI();
 }
@@ -1261,6 +1271,123 @@ function dateKey(d) {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+
+function isWeightDateKey(key) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key || '')) return false;
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}
+
+/** 해당 날짜 당일 또는 그 이전의 가장 최근 체중. 없으면 null */
+function weightOnOrBefore(key, weights = WEIGHTS) {
+  if (!isWeightDateKey(key)) return null;
+  let best = null;
+  for (const [day, entry] of Object.entries(weights || {})) {
+    if (!isWeightDateKey(day) || day > key || !entry || !Number.isFinite(Number(entry.kg))) continue;
+    if (!best || day > best.date) best = { date: day, kg: Number(entry.kg), source: entry.source || 'manual', at: entry.at };
+  }
+  return best;
+}
+
+function effectiveWeightKg(key) {
+  const found = weightOnOrBefore(key);
+  return found ? found.kg : null;
+}
+
+function formatWeightKg(kg) {
+  if (!Number.isFinite(Number(kg))) return '—';
+  const rounded = Math.round(Number(kg) * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function weightSourceLabel(source) {
+  if (source === 'health') return ACTIVE_LOCALE === 'en' ? 'Health' : '건강 앱';
+  return ACTIVE_LOCALE === 'en' ? 'Manual' : '직접';
+}
+
+async function loadWeightLog() {
+  if (!storageRepository?.getWeights) { WEIGHTS = {}; return WEIGHTS; }
+  WEIGHTS = await storageRepository.getWeights();
+  return WEIGHTS;
+}
+
+/** 예전 단일 체중을 오늘(또는 저장된 날짜) 한 건으로 옮김. 식단 기록은 건드리지 않음. */
+async function migrateLegacyWeight() {
+  if (Object.keys(WEIGHTS || {}).length) return;
+  const kg = Number(PROFILE.weight);
+  if (!Number.isFinite(kg) || kg <= 0) return;
+  const settings = await storageRepository.getProfile();
+  if (!settings || settings.weight == null) return; // 저장되지 않은 기본값(50)은 만들지 않음
+  const saved = Number(settings.weight);
+  if (!Number.isFinite(saved) || saved <= 0) return;
+  const key = isWeightDateKey(settings.weightDate) ? settings.weightDate : dateKey(new Date());
+  WEIGHTS = await storageRepository.saveWeight(key, { kg: saved, source: 'manual', at: Date.now() });
+}
+
+function applyEffectiveProfileWeight(key = dateKey(new Date())) {
+  const kg = effectiveWeightKg(key);
+  if (kg != null) PROFILE = { ...PROFILE, weight: kg };
+  return kg;
+}
+
+async function persistManualWeight(date, kg) {
+  if (!isWeightDateKey(date) || !Number.isFinite(kg) || kg <= 0 || kg > 500) {
+    throw new Error(ACTIVE_LOCALE === 'en' ? 'Enter a valid weight.' : '체중을 올바르게 입력해 주세요.');
+  }
+  WEIGHTS = await storageRepository.saveWeight(date, { kg, source: 'manual', at: Date.now() });
+  applyEffectiveProfileWeight(dateKey(new Date()));
+  await saveSettings({ weight: PROFILE.weight });
+  return WEIGHTS;
+}
+
+async function syncHealthWeights({ force = false } = {}) {
+  const health = globalThis.RebuildersHealth;
+  if (!health?.isSupported?.() || !health.isConnected?.() || health.needsWeightPermission?.()) return;
+  if (!storageRepository?.importHealthWeights) return;
+  const days = await health.readWeights(new Date(), { force });
+  if (!days?.size) return;
+  const entries = {};
+  days.forEach((entry, key) => {
+    if (!isWeightDateKey(key) || !Number.isFinite(Number(entry.kg))) return;
+    entries[key] = { kg: Number(entry.kg), source: 'health', at: entry.at ? Date.parse(entry.at) || undefined : undefined };
+  });
+  if (!Object.keys(entries).length) return;
+  WEIGHTS = await storageRepository.importHealthWeights(entries);
+  applyEffectiveProfileWeight(dateKey(new Date()));
+}
+
+function fillWeightInputs(date = dateKey(new Date()), inputId = 'input-weight', hintId = 'weight-date-hint') {
+  const input = document.getElementById(inputId);
+  const hint = hintId ? document.getElementById(hintId) : null;
+  const exact = isWeightDateKey(date) ? WEIGHTS[date] : null;
+  const carried = weightOnOrBefore(date);
+  if (input) {
+    if (exact) input.value = formatWeightKg(exact.kg);
+    else input.value = '';
+    if (!exact && carried) input.placeholder = ACTIVE_LOCALE === 'en'
+      ? `Last: ${formatWeightKg(carried.kg)}kg (${carried.date.slice(5).replace('-', '.')})`
+      : `이전 ${carried.date.slice(5).replace('-', '.')} · ${formatWeightKg(carried.kg)}kg`;
+    else input.placeholder = ACTIVE_LOCALE === 'en' ? 'e.g. 50' : '예: 50';
+  }
+  if (hint) {
+    if (exact) {
+      hint.hidden = false;
+      hint.textContent = ACTIVE_LOCALE === 'en'
+        ? `${weightSourceLabel(exact.source)} entry for this date.`
+        : `이 날짜에 ${weightSourceLabel(exact.source)} 입력이 있어요.`;
+    } else if (carried) {
+      hint.hidden = false;
+      hint.textContent = ACTIVE_LOCALE === 'en'
+        ? `No entry this day. Last recorded ${formatWeightKg(carried.kg)}kg on ${carried.date.slice(5).replace('-', '.')}.`
+        : `이 날 기록은 없고, ${carried.date.slice(5).replace('-', '.')}의 ${formatWeightKg(carried.kg)}kg을 참고해요.`;
+    } else {
+      hint.hidden = true;
+      hint.textContent = '';
+    }
+  }
+}
+
 
 /* ============================
    날짜별 데이터 로드
@@ -1475,7 +1602,8 @@ function updateDateDisplay() {
   try { syncAgentLogDate(); } catch { /* 대화창이 아직 없으면 무시 */ }
   document.getElementById('date-display')?.setAttribute('aria-label', `${formatHomeDate(currentDate)}. ${ACTIVE_LOCALE === 'en' ? 'Tap to go to today' : '눌러서 오늘로'}`);
   if (goToday) goToday.hidden = today;
-  // 홈 건강 카드도 선택한 날짜로(연결 안 했으면 아무 일 없음)
+  // 홈 건강 카드·체중을 선택한 날짜로
+  updateProfileUI();
   if (typeof refreshHeartRate === 'function' && globalThis.RebuildersHealth?.isSupported()) refreshHeartRate();
 }
 
@@ -5927,10 +6055,11 @@ timeEditSaveBtn.addEventListener('click', async () => {
    ============================ */
 function fillProfileForm() {
   const h = document.getElementById('input-height');
-  const w = document.getElementById('input-weight');
+  const dateInput = document.getElementById('input-weight-date');
   const cal = document.getElementById('input-target-cal');
   if (h) h.value = PROFILE.height;
-  if (w) w.value = PROFILE.weight;
+  if (dateInput && !dateInput.value) dateInput.value = dateKey(new Date());
+  fillWeightInputs(dateInput?.value || dateKey(new Date()));
   if (cal) cal.value = PROFILE.targetCal;
   updateProfilePageSummary();
 }
@@ -5940,7 +6069,10 @@ function updateProfilePageSummary() {
   const sw = document.getElementById('profile-summary-weight');
   const sc = document.getElementById('profile-summary-cal');
   if (sh) sh.innerHTML = `${PROFILE.height}<small>cm</small>`;
-  if (sw) sw.innerHTML = `${PROFILE.weight}<small>kg</small>`;
+  if (sw) {
+    const kg = effectiveWeightKg(dateKey(new Date())) ?? PROFILE.weight;
+    sw.innerHTML = kg != null ? `${formatWeightKg(kg)}<small>kg</small>` : '—';
+  }
   if (sc) sc.innerHTML = `${PROFILE.targetCal.toLocaleString()}<small>kcal</small>`;
 }
 
@@ -5948,13 +6080,15 @@ function updateProfileUI() {
   const h = document.getElementById('stat-height');
   const w = document.getElementById('stat-weight');
   const t = document.getElementById('stat-target-cal');
-  if (w) w.innerHTML = `${PROFILE.weight}<small>kg</small>`;
+  const todayKg = effectiveWeightKg(dateKey(new Date())) ?? PROFILE.weight;
+  const dayKg = effectiveWeightKg(dateKey(currentDate)) ?? todayKg;
+  if (w) w.innerHTML = dayKg != null ? `${formatWeightKg(dayKg)}<small>kg</small>` : '—';
   if (t) t.textContent = `${PROFILE.targetCal.toLocaleString()}kcal`;
   if (h) h.innerHTML = `${PROFILE.height}<small>cm</small>`;
   const healthWeight = document.getElementById('health-weight');
   const healthHeight = document.getElementById('health-height');
   const kcalTarget = document.getElementById('kcal-target-value');
-  if (healthWeight) healthWeight.textContent = `${PROFILE.weight}kg`;
+  if (healthWeight) healthWeight.textContent = dayKg != null ? `${formatWeightKg(dayKg)}kg` : '—';
   if (healthHeight) healthHeight.textContent = `${PROFILE.height}cm`;
   if (kcalTarget) kcalTarget.textContent = PROFILE.targetCal.toLocaleString();
   const gaugeGoal = document.getElementById('kcal-gauge-goal');
@@ -5990,20 +6124,33 @@ document.getElementById('settings-save')?.addEventListener('click', async () => 
   if (!btn || btn.disabled || btn.dataset.actionLocked === 'true') return;
   btn.dataset.actionLocked = 'true';
   const h = Number(document.getElementById('input-height').value) || 169;
-  const w = Number(document.getElementById('input-weight').value) || 50;
   const cal = Number(document.getElementById('input-target-cal').value) || 1300;
+  const weightDate = document.getElementById('input-weight-date')?.value || dateKey(new Date());
+  const rawWeight = document.getElementById('input-weight').value;
+  const w = rawWeight === '' ? NaN : Number(rawWeight);
 
-  const nextProfile = { height: h, weight: w, targetCal: cal, locale: ACTIVE_LOCALE };
+  const nextProfile = { height: h, targetCal: cal, locale: ACTIVE_LOCALE };
   const hint = document.getElementById('profile-save-hint');
   const prev = btn.textContent;
   setButtonPending(btn, true);
   btn.textContent = ACTIVE_LOCALE === 'en' ? 'Saving…' : '저장 중…';
   try {
+    if (rawWeight !== '' && (!isWeightDateKey(weightDate) || !Number.isFinite(w) || w <= 0 || w > 500)) {
+      throw new Error(ACTIVE_LOCALE === 'en' ? 'Enter a valid weight for that date.' : '그 날짜의 체중을 올바르게 입력해 주세요.');
+    }
+    if (rawWeight !== '') await persistManualWeight(weightDate, w);
+    else {
+      applyEffectiveProfileWeight(dateKey(new Date()));
+      if (PROFILE.weight != null) nextProfile.weight = PROFILE.weight;
+    }
+    if (PROFILE.weight != null) nextProfile.weight = PROFILE.weight;
     await saveSettings(nextProfile);
     PROFILE = { ...PROFILE, ...nextProfile };
     TARGETS = calcTargets(cal);
+    fillProfileForm();
     updateProfileUI();
     renderAll(true);
+    if (activeView === 'stats') rerenderStats();
     if (hint) {
       hint.hidden = false;
       clearTimeout(hint._timer);
@@ -6740,7 +6887,65 @@ function renderStatsSelectedDay() {
       appendMealLink('snack', snacks.filter(food => (food.slot ?? 3) === slot), slot);
     });
   }
+  fillStatsDayWeight();
 }
+
+function fillStatsDayWeight() {
+  const input = document.getElementById('stats-day-weight');
+  const sourceEl = document.getElementById('stats-day-weight-source');
+  const label = document.querySelector('#stats-day-weight-row label');
+  if (label) label.textContent = ACTIVE_LOCALE === 'en' ? 'Weight' : '체중';
+  const save = document.getElementById('stats-day-weight-save');
+  if (save) save.textContent = ACTIVE_LOCALE === 'en' ? 'Save' : '저장';
+  const exact = WEIGHTS[statsSelectedKey];
+  const carried = weightOnOrBefore(statsSelectedKey);
+  if (input) {
+    input.value = exact ? formatWeightKg(exact.kg) : '';
+    input.placeholder = !exact && carried
+      ? formatWeightKg(carried.kg)
+      : (ACTIVE_LOCALE === 'en' ? 'kg' : 'kg');
+  }
+  if (sourceEl) {
+    if (exact) {
+      sourceEl.hidden = false;
+      sourceEl.textContent = weightSourceLabel(exact.source);
+    } else if (carried) {
+      sourceEl.hidden = false;
+      sourceEl.textContent = ACTIVE_LOCALE === 'en'
+        ? `from ${carried.date.slice(5).replace('-', '.')}`
+        : `${carried.date.slice(5).replace('-', '.')} 기록`;
+    } else {
+      sourceEl.hidden = true;
+      sourceEl.textContent = '';
+    }
+  }
+}
+
+document.getElementById('stats-day-weight-save')?.addEventListener('click', async event => {
+  const btn = event.currentTarget;
+  if (btn.dataset.actionLocked === 'true') return;
+  const raw = document.getElementById('stats-day-weight')?.value;
+  const kg = Number(raw);
+  btn.dataset.actionLocked = 'true';
+  const prev = btn.textContent;
+  try {
+    if (raw === '' || !Number.isFinite(kg) || kg <= 0 || kg > 500) {
+      throw new Error(ACTIVE_LOCALE === 'en' ? 'Enter a valid weight.' : '체중을 올바르게 입력해 주세요.');
+    }
+    await persistManualWeight(statsSelectedKey, kg);
+    updateProfileUI();
+    fillProfileForm();
+    rerenderStats();
+    btn.textContent = ACTIVE_LOCALE === 'en' ? 'Saved ✓' : '저장됨 ✓';
+    clearTimeout(btn._timer);
+    btn._timer = setTimeout(() => { btn.textContent = prev; }, 1600);
+  } catch (error) {
+    btn.textContent = prev;
+    showStorageFailure(error);
+  } finally {
+    setTimeout(() => { delete btn.dataset.actionLocked; }, 400);
+  }
+});
 
 /** 선택일 포함 최근 7일 선형·면적 그래프 */
 function renderStatsWeekChart() {
@@ -6869,6 +7074,24 @@ function renderStatsWeekChart() {
 }
 
 /* 기간 리포트 카드: 칼로리(평균·목표 1,300 대비·기록한 날·목표 이내), 탄·단·지 하루 평균, 끼니별 하루 평균, 몸 상태 */
+
+function renderWeightTrendSection(period, last, en) {
+  const periodEndKey = dateKey(last);
+  const startKey = dateKey(period.start);
+  const periodWeight = weightOnOrBefore(periodEndKey);
+  const trendEntries = Object.keys(WEIGHTS || {}).filter(key => isWeightDateKey(key) && key >= startKey && key <= periodEndKey).sort();
+  const weightList = trendEntries.slice(-14).map(key => {
+    const entry = WEIGHTS[key];
+    const md = key.slice(5).replace('-', '.');
+    return `<li><span>${md}</span><strong>${formatWeightKg(entry.kg)}kg</strong><small>${weightSourceLabel(entry.source)}</small></li>`;
+  }).join('');
+  if (!trendEntries.length && !periodWeight) return '';
+  const asOf = periodWeight && periodWeight.date !== periodEndKey
+    ? (en ? ` · as of ${periodWeight.date.slice(5).replace('-', '.')}` : ` · ${periodWeight.date.slice(5).replace('-', '.')} 기준`)
+    : '';
+  return `<section class="report-card report-weight" aria-label="${en ? 'Weight' : '체중'}"><h3 class="stats-section-title">${en ? 'Weight' : '체중'}</h3>${periodWeight ? `<p class="report-hero"><strong>${formatWeightKg(periodWeight.kg)}</strong><span>kg${asOf}</span></p>` : ''}${weightList ? `<ul class="report-weight-list">${weightList}</ul>` : ''}</section>`;
+}
+
 function renderStatsMonthSummary() {
   const host = document.getElementById('report-period');
   if (!host) return;
@@ -6892,8 +7115,9 @@ function renderStatsMonthSummary() {
   const pct = (v, t) => Math.max(0, Math.min(100, t ? (v / t) * 100 : 0)).toFixed(1);
   const g = v => `${Math.round(v)}g`;
   const head = `<header class="report-period-head"><h2 class="report-period-title">${escapeHtml(title)}</h2><p class="report-period-range">${range}</p></header>`;
+  const emptyWeight = renderWeightTrendSection(period, last, en);
   if (!n) {
-    host.innerHTML = `${head}<section class="report-card report-empty"><p>${en ? 'No meals logged in this period.' : '이 기간에는 기록이 없어요.'}</p></section>`;
+    host.innerHTML = `${head}<section class="report-card report-empty"><p>${en ? 'No meals logged in this period.' : '이 기간에는 기록이 없어요.'}</p></section>${emptyWeight}`;
     document.querySelector('#view-stats .stats-week-card')?.toggleAttribute('hidden', true);
     return;
   }
@@ -6905,11 +7129,13 @@ function renderStatsMonthSummary() {
   const mealRows = mealAvg.map(m => `<div class="report-row"><span class="report-label">${escapeHtml(mealLabel(m.id))}</span><span class="report-track"><i style="width:${pct(m.cal, mealTotal)}%"></i></span><span class="report-value">${Math.round(m.cal)}kcal <small>${Math.round((m.cal / mealTotal) * 100)}%</small></span></div>`).join('');
   const steps = document.getElementById('health-steps-value')?.dataset.value;
   const heart = document.getElementById('heart-rate-latest')?.dataset.value;
+  const periodWeight = weightOnOrBefore(dateKey(last));
   const body = [
-    PROFILE.weight ? [en ? 'Weight' : '체중', `${PROFILE.weight}kg`] : null,
+    periodWeight ? [en ? 'Weight' : '체중', `${formatWeightKg(periodWeight.kg)}kg`] : null,
     hasToday && steps && steps !== '--' ? [en ? 'Steps today' : '오늘 걸음', Number(steps).toLocaleString()] : null,
     hasToday && heart && heart !== '--' ? [en ? 'Heart rate' : '최근 심박', `${heart} bpm`] : null,
   ].filter(Boolean);
+  const weightSection = renderWeightTrendSection(period, last, en);
   host.innerHTML = `${head}
     <section class="report-card report-calories" aria-label="${en ? 'Calories' : '칼로리'}">
       <h3 class="stats-section-title">${en ? 'Calories' : '칼로리'}</h3>
@@ -6931,7 +7157,8 @@ function renderStatsMonthSummary() {
       <h3 class="stats-section-title">${en ? 'By meal' : '끼니별'} <small>${en ? 'daily avg' : '하루 평균'}</small></h3>
       ${mealRows}
     </section>
-    ${body.length ? `<section class="report-card report-body" aria-label="${en ? 'Body' : '몸 상태'}"><h3 class="stats-section-title">${en ? 'Body' : '몸 상태'}</h3><dl class="report-kpis">${body.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></section>` : ''}`;
+    ${body.length ? `<section class="report-card report-body" aria-label="${en ? 'Body' : '몸 상태'}"><h3 class="stats-section-title">${en ? 'Body' : '몸 상태'}</h3><dl class="report-kpis">${body.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl></section>` : ''}
+    ${weightSection}`;
 }
 
 async function openStatsDayOnHome() {
@@ -11828,7 +12055,8 @@ function showAppScreen() {
 }
 
 /* ============================
-   건강 앱(HealthKit) 심박수: 읽기 전용, 화면 표시만(저장·백업·전송 안 함)
+   건강 앱(HealthKit) 심박수·걸음: 읽기 전용, 화면 표시만(저장·백업·전송 안 함)
+   체중: 읽기 전용. 일별 최신 값만 가져와 직접 입력이 없는 날짜에 저장.
    ============================ */
 let heartRateTimer = null;
 
@@ -11837,10 +12065,12 @@ function healthCopy(key) {
   return {
     connect: en ? 'Connect Apple Health' : '건강 앱 연결하기',
     disconnect: en ? 'Disconnect' : '연결 끊기',
-    connected: en ? 'Connected. Heart rate and steps are read on this device only.' : '연결됨 · 심박수와 걸음 수는 이 기기에서만 읽어 보여줘요.',
+    connected: en ? 'Connected. Heart rate and steps stay on this device. Weight is saved by date; a manual entry for a day wins.' : '연결됨 · 심박수와 걸음 수는 이 기기에서만 보여줘요. 체중은 날짜별로 저장하고, 같은 날 직접 입력한 값을 우선해요.',
     disconnected: en ? 'Disconnected in the app. To fully revoke access: Settings > Health > Data Access & Devices > Rebuilders.' : '앱에서 연결을 끊었어요. 권한까지 끄려면 설정 > 건강 > 데이터 접근 및 기기 > 리빌더스에서 꺼주세요.',
     noData: en ? 'No heart rate for this day' : '이 날 심박수 기록 없음',
     addSteps: en ? 'Allow step count' : '걸음 수 권한 추가',
+    addWeight: en ? 'Allow weight access' : '체중 권한 추가',
+    addHealth: en ? 'Update Health permissions' : '건강 권한 추가',
   }[key];
 }
 
@@ -11855,8 +12085,13 @@ function renderHealthSettings(message = '') {
   button.textContent = connected ? healthCopy('disconnect') : healthCopy('connect');
   const stepsButton = document.getElementById('health-steps-permission');
   if (stepsButton) {
-    stepsButton.hidden = !RebuildersHealth.needsStepsPermission();
-    stepsButton.textContent = healthCopy('addSteps');
+    const needsUpdate = RebuildersHealth.needsAuthorizationUpdate
+      ? RebuildersHealth.needsAuthorizationUpdate()
+      : RebuildersHealth.needsStepsPermission();
+    stepsButton.hidden = !needsUpdate;
+    stepsButton.textContent = RebuildersHealth.needsStepsPermission()
+      ? healthCopy('addSteps')
+      : healthCopy('addWeight');
   }
   const hint = document.getElementById('health-hint');
   const text = message || (connected ? healthCopy('connected') : '');
@@ -11900,6 +12135,11 @@ async function refreshHeartRate(options = {}) {
       ? (en ? 'Only the last 7 days are shown.' : '최근 7일 기록만 보여줘요.')
       : (latestTime ? `${en ? 'Latest' : '최근'} ${latestTime}` : healthCopy('noData'));
     setGlanceRows({ heart: true, steps: !health.needsStepsPermission() });
+    await syncHealthWeights({ force: Boolean(options.force) });
+    if (seq === healthRefreshSeq) {
+      updateProfileUI();
+      if (activeView === 'stats') rerenderStats();
+    }
   } catch {
     if (seq === healthRefreshSeq) setGlanceRows(); // 읽기 실패(권한 없음 등)면 조용히 비움
   }
@@ -11929,6 +12169,7 @@ document.getElementById('health-steps-permission')?.addEventListener('click', as
 function setupHealthUi() {
   renderHealthSettings();
   refreshHeartRate();
+  syncHealthWeights().then(() => { updateProfileUI(); if (activeView === 'stats') rerenderStats(); }).catch(() => {});
   clearInterval(heartRateTimer);
   if (globalThis.RebuildersHealth?.isSupported()) {
     heartRateTimer = setInterval(() => { if (!document.hidden) refreshHeartRate({ force: true }); }, 5 * 60_000);

@@ -1,17 +1,20 @@
-/* 아이폰 건강 앱(HealthKit) 심박수·걸음 수 읽기. @capgo/capacitor-health 네이티브 플러그인('Health') 사용.
- * - 읽기 권한(heartRate, steps)만 요청하고, 쓰기는 요청하지 않습니다. 체중은 읽지 않습니다.
- * - 읽은 값은 화면 표시용으로 메모리(아래 cache)에만 두고, 기기 저장소·백업 JSON·외부로 보내지 않습니다.
- * - 어떤 권한을 요청했는지(연결 단계 '1'=심박만, '2'=심박+걸음)만 localStorage 에 둡니다(건강 데이터 아님, 백업에도 없음).
- * - 웹/PWA 에서는 isSupported() 가 false 이고 모든 함수가 아무 것도 하지 않습니다. */
+/* 아이폰 건강 앱(HealthKit) 심박수·걸음 수·체중 읽기. @capgo/capacitor-health 네이티브 플러그인('Health') 사용.
+ * - 읽기 권한(heartRate, steps, weight)만 요청하고, 쓰기는 요청하지 않습니다.
+ * - 심박수·걸음 수는 화면 표시용으로 메모리(아래 cache)에만 두고, 기기 저장소·백업 JSON·외부로 보내지 않습니다.
+ * - 체중은 일별 최신 샘플만 앱에 넘겨, 직접 입력이 없는 날짜에만 저장합니다(쓰기는 HealthKit에 하지 않음).
+ * - 어떤 권한을 요청했는지(연결 단계 '1'=심박만, '2'=심박+걸음, '3'=심박+걸음+체중)만 localStorage 에 둡니다.
+ * - 안드로이드·웹에서는 isSupported() 가 false 이고 모든 함수가 아무 것도 하지 않습니다. */
 (function initRebuildersHealth(global) {
   'use strict';
 
   const FLAG_KEY = 'rebuilders-health-connected';
-  const CURRENT_LEVEL = '2';
-  const READ_TYPES = ['heartRate', 'steps'];
+  const CURRENT_LEVEL = '3';
+  const READ_TYPES = ['heartRate', 'steps', 'weight'];
   const RECENT_DAYS = 7;
+  const WEIGHT_DAYS = 400;
   const CACHE_MS = 2 * 60_000;
   let cache = { at: 0, days: new Map(), level: null };
+  let weightCache = { at: 0, days: new Map(), level: null };
 
   function plugin() {
     const cap = global.Capacitor;
@@ -28,7 +31,10 @@
   function isConnected() { return isSupported() && Boolean(level()); }
 
   /** 예전에 심박수만 연결한 사용자: 걸음 수 권한을 새로 요청해야 함 */
-  function needsStepsPermission() { return isConnected() && level() !== CURRENT_LEVEL; }
+  function needsStepsPermission() { return isConnected() && level() === '1'; }
+  /** 체중 읽기 권한을 아직 요청하지 않은 사용자(연결 단계 1·2) */
+  function needsWeightPermission() { return isConnected() && level() !== CURRENT_LEVEL; }
+  function needsAuthorizationUpdate() { return needsStepsPermission() || needsWeightPermission(); }
 
   function setLevel(value) {
     try {
@@ -38,7 +44,10 @@
     clearCache();
   }
 
-  function clearCache() { cache = { at: 0, days: new Map(), level: null }; }
+  function clearCache() {
+    cache = { at: 0, days: new Map(), level: null };
+    weightCache = { at: 0, days: new Map(), level: null };
+  }
 
   async function isAvailable() {
     const health = plugin();
@@ -46,8 +55,8 @@
     try { return await health.isAvailable(); } catch (error) { return { available: false, reason: String(error?.message || error) }; }
   }
 
-  /** 사용자가 버튼을 눌렀을 때만 호출: iOS 권한 시트를 띄웁니다(읽기 전용, 심박수+걸음 수).
-   *  이미 심박수만 연결한 경우에도 같은 함수로 걸음 수 권한을 추가 요청합니다. */
+  /** 사용자가 버튼을 눌렀을 때만 호출: iOS 권한 시트를 띄웁니다(읽기 전용, 심박수+걸음 수+체중).
+   *  이미 일부만 연결한 경우에도 같은 함수로 빠진 읽기 권한을 추가 요청합니다. */
   async function connect() {
     const health = plugin();
     if (!health) throw new Error('건강 앱 연결은 아이폰 앱에서만 사용할 수 있어요.');
@@ -132,6 +141,41 @@
     return { outOfRange: false, ...days.get(key) };
   }
 
+
+  /** 최근 WEIGHT_DAYS일(오늘 포함) 일별 체중. 그날의 가장 마지막 샘플(kg). 쓰기는 하지 않음. */
+  async function readWeights(now = new Date(), { force = false } = {}) {
+    const health = plugin();
+    if (!health || !isConnected() || needsWeightPermission()) return new Map();
+    if (!force && weightCache.days.size && weightCache.level === level() && Date.now() - weightCache.at < CACHE_MS) {
+      return weightCache.days;
+    }
+    const first = startOfDay(now);
+    first.setDate(first.getDate() - (WEIGHT_DAYS - 1));
+    const days = new Map();
+    try {
+      const { samples = [] } = await health.readSamples({
+        dataType: 'weight',
+        startDate: first.toISOString(),
+        endDate: now.toISOString(),
+        limit: 5000,
+        ascending: false,
+      });
+      samples.forEach(sample => {
+        const value = Number(sample.value);
+        if (!Number.isFinite(value) || value <= 0 || value > 500) return;
+        const key = dayKey(sample.startDate || sample.endDate);
+        if (!key || days.has(key)) return; // 최신순이므로 그날 첫 샘플이 마지막 측정
+        days.set(key, {
+          kg: Math.round(value * 100) / 100,
+          at: sample.endDate || sample.startDate || null,
+          source: 'health',
+        });
+      });
+    } catch { /* 권한 없음 등은 빈 맵 */ }
+    weightCache = { at: Date.now(), days, level: level() };
+    return days;
+  }
+
   /** (이전 버전 호환) 오늘 심박수 */
   async function readTodayHeartRate(now = new Date()) {
     if (!isConnected()) return null;
@@ -140,7 +184,8 @@
   }
 
   global.RebuildersHealth = {
-    isSupported, isConnected, needsStepsPermission, isAvailable, connect, disconnect,
-    readRecentDays, readDay, readTodayHeartRate, clearCache, RECENT_DAYS,
+    isSupported, isConnected, needsStepsPermission, needsWeightPermission, needsAuthorizationUpdate,
+    isAvailable, connect, disconnect,
+    readRecentDays, readDay, readTodayHeartRate, readWeights, clearCache, RECENT_DAYS, WEIGHT_DAYS,
   };
 })(globalThis);

@@ -29,7 +29,7 @@
     return `rebuilders-backup-v${VERSION}-${localDate(now)}.json`;
   }
 
-  /** 저장소의 전체 상태(날짜별 식단, settings, customFoods, recentFoods, shopping)를 파일 구조로 감쌉니다. */
+  /** 저장소의 전체 상태(날짜별 식단, settings, customFoods, recentFoods, shopping, weights)를 파일 구조로 감쌉니다. */
   function buildBackup(state, now = new Date()) {
     return {
       format: FORMAT,
@@ -99,6 +99,24 @@
     return normalize ? normalize(value) : { items: deepCopy(value.items || []), stock: deepCopy(value.stock || []) };
   }
 
+
+  function sanitizeWeights(value, errors) {
+    if (!isObject(value)) { errors.push('weights 형식이 올바르지 않아요.'); return null; }
+    const normalize = global.NiliriStorage?.normalizeWeights;
+    if (normalize) return normalize(value);
+    const out = {};
+    for (const [key, entry] of Object.entries(value)) {
+      if (BLOCKED_KEYS.has(key) || !DATE_KEY.test(key) || !isRealDate(key)) continue;
+      if (!isObject(entry)) { errors.push(`${key}: 체중 기록 형식이 올바르지 않아요.`); continue; }
+      const kg = Number(entry.kg);
+      if (!Number.isFinite(kg) || kg <= 0 || kg > 500) { errors.push(`${key}: 체중 값이 올바르지 않아요.`); continue; }
+      const item = { kg: Math.round(kg * 100) / 100, source: entry.source === 'health' ? 'health' : 'manual' };
+      if (typeof entry.at === 'number' && Number.isFinite(entry.at)) item.at = entry.at;
+      out[key] = item;
+    }
+    return out;
+  }
+
   function summarize(state) {
     const dates = Object.keys(state).filter(key => DATE_KEY.test(key)).sort();
     let meals = 0;
@@ -109,6 +127,7 @@
       customFoods: Object.keys(state.customFoods || {}).length,
       recentFoods: (state.recentFoods || []).length,
       hasSettings: Boolean(state.settings),
+      weightDays: Object.keys(state.weights || {}).length,
       shoppingItems: (state.shopping?.items || []).length,
       stockItems: (state.shopping?.stock || []).length,
       firstDate: dates[0] || null,
@@ -160,6 +179,9 @@
         const list = [];
         for (const food of value) if (validateFood(food, '최근 음식', errors)) list.push(deepCopy(food));
         state.recentFoods = list.slice(0, 12);
+      } else if (key === 'weights') {
+        const weights = sanitizeWeights(value, errors);
+        if (weights) state.weights = weights;
       } else {
         ignored += 1;
       }
@@ -203,6 +225,8 @@
         const seen = new Set();
         next.recentFoods = [...value, ...(current?.recentFoods || [])]
           .filter(food => (seen.has(food.name) ? false : seen.add(food.name))).slice(0, 12);
+      } else if (key === 'weights') {
+        next.weights = { ...(current?.weights || {}), ...value };
       } else next[key] = value;
     }
     return next;

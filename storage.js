@@ -83,6 +83,31 @@
     return { items, stock };
   }
 
+
+  const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+  /** 날짜별 체중 { 'YYYY-MM-DD': { kg, source: 'manual'|'health', at? } }. 식단 기록 키와 섞지 않음. */
+  function normalizeWeightEntry(entry) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    const kg = Number(entry.kg);
+    if (!Number.isFinite(kg) || kg <= 0 || kg > 500) return null;
+    const source = entry.source === 'health' ? 'health' : 'manual';
+    const out = { kg: Math.round(kg * 100) / 100, source };
+    if (typeof entry.at === 'number' && Number.isFinite(entry.at)) out.at = entry.at;
+    return out;
+  }
+
+  function normalizeWeights(value) {
+    const src = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const out = {};
+    for (const [key, entry] of Object.entries(src)) {
+      if (!DATE_KEY_RE.test(key) || key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+      const next = normalizeWeightEntry(entry);
+      if (next) out[key] = next;
+    }
+    return out;
+  }
+
   class StorageRepository {
     async initialize() { throw new Error('StorageRepository.initialize() must be implemented'); }
     close() { throw new Error('StorageRepository.close() must be implemented'); }
@@ -101,6 +126,9 @@
     async saveDayAndRecent(_dateKey, _day, _food) { throw new Error('StorageRepository.saveDayAndRecent() must be implemented'); }
     async getShopping() { throw new Error('StorageRepository.getShopping() must be implemented'); }
     async saveShopping(_shopping) { throw new Error('StorageRepository.saveShopping() must be implemented'); }
+    async getWeights() { throw new Error('StorageRepository.getWeights() must be implemented'); }
+    async saveWeight(_dateKey, _entry, _options) { throw new Error('StorageRepository.saveWeight() must be implemented'); }
+    async importHealthWeights(_entries) { throw new Error('StorageRepository.importHealthWeights() must be implemented'); }
     async resolveFood(_food, _options) { throw new DOMException('자동 영양 분석은 로컬 모드에서만 사용할 수 있습니다.', 'NotSupportedError'); }
   }
 
@@ -352,6 +380,43 @@
       return normalizeShopping((await this.getAll()).shopping);
     }
 
+
+    async getWeights() {
+      return normalizeWeights((await this.getAll()).weights);
+    }
+
+    /** 한 날짜의 체중만 바꿈(식단 기록은 건드리지 않음). 건강 앱 값은 같은 날 직접 입력이 있으면 덮어쓰지 않음. */
+    async saveWeight(dateKey, entry, options = {}) {
+      let saved;
+      await this._update(all => {
+        const weights = normalizeWeights(all.weights);
+        const next = normalizeWeightEntry(entry);
+        if (!DATE_KEY_RE.test(dateKey) || !next) { saved = weights; return all; }
+        const existing = weights[dateKey];
+        if (next.source !== 'manual' && existing?.source === 'manual') { saved = weights; return all; }
+        if (options.onlyIfMissing && existing) { saved = weights; return all; }
+        weights[dateKey] = next;
+        saved = weights;
+        return { ...all, weights };
+      });
+      return clone(saved);
+    }
+
+    async importHealthWeights(entries) {
+      let saved;
+      await this._update(all => {
+        const weights = normalizeWeights(all.weights);
+        for (const [key, entry] of Object.entries(normalizeWeights(entries))) {
+          if (weights[key]?.source === 'manual') continue;
+          weights[key] = { ...entry, source: 'health' };
+        }
+        saved = weights;
+        return { ...all, weights };
+      });
+      return clone(saved);
+    }
+
+
     async saveShopping(shopping) {
       const saved = normalizeShopping(shopping);
       await this._update(all => ({ ...all, shopping: saved }));
@@ -470,6 +535,33 @@
       await this.replaceAll(all);
       return clone(all.shopping);
     }
+    async getWeights() { return normalizeWeights((await this.getAll()).weights); }
+    async saveWeight(dateKey, entry, options = {}) {
+      const all = await this.getAll();
+      const weights = normalizeWeights(all.weights);
+      const next = normalizeWeightEntry(entry);
+      if (DATE_KEY_RE.test(dateKey) && next) {
+        const existing = weights[dateKey];
+        if (!(next.source !== 'manual' && existing?.source === 'manual') && !(options.onlyIfMissing && existing)) {
+          weights[dateKey] = next;
+        }
+      }
+      all.weights = weights;
+      await this.replaceAll(all);
+      return clone(weights);
+    }
+    async importHealthWeights(entries) {
+      const all = await this.getAll();
+      const weights = normalizeWeights(all.weights);
+      for (const [key, entry] of Object.entries(normalizeWeights(entries))) {
+        if (weights[key]?.source === 'manual') continue;
+        weights[key] = { ...entry, source: 'health' };
+      }
+      all.weights = weights;
+      await this.replaceAll(all);
+      return clone(weights);
+    }
+
     async resolveFood(food, options = {}) {
       const result = await this._request('/api/resolve', {
         method: 'POST',
@@ -518,7 +610,7 @@
 
   global.NiliriStorage = {
     StorageRepository, IndexedDbStorage, LocalApiStorage, emptyDay, MIGRATIONS,
-    SHOPPING_GROUPS, normalizeShopping, shoppingId,
+    SHOPPING_GROUPS, normalizeShopping, shoppingId, normalizeWeights, normalizeWeightEntry,
     registerRepository, createRepository, requestPersistentStorage,
   };
 })(globalThis);
