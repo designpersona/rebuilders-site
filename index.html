@@ -54,10 +54,6 @@
     <header class="top-head" id="top-head">
       <div class="home-cal-chrome" id="home-cal-chrome">
         <div class="home-cal-topline" id="home-cal-topline">
-          <div class="home-date-line" id="home-date-line">
-            <p class="home-date-line-label" id="home-date-line-label"></p>
-            <button type="button" class="home-go-today" id="home-go-today" hidden>오늘로</button>
-          </div>
           <div class="home-cal-head cal-month-bar" id="home-cal-head">
             <button type="button" class="nav-btn" id="home-cal-prev" aria-label="이전 달">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5 8 12l7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -953,6 +949,8 @@
       </form>
     </div>
 
+    <!-- 오늘이 아니면 하단 탭·기록 버튼 바로 위, 가운데 유리 알약 -->
+    <button type="button" class="home-go-today" id="home-go-today" hidden>‹ 오늘</button>
     <!-- 페이지 이동: 왼쪽 유리 탭 알약 + 오른쪽 기록 버튼. 키보드가 열리면 숨김 -->
     <nav class="page-tabs bottom-tabs" id="page-tabs" aria-label="페이지">
       <button type="button" class="nav-item page-tab active" id="nav-home" data-view="home" aria-label="식단기록" aria-current="page"><svg class="page-tab-ico" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g class="ico-line"><path d="M4.5 11 12 4.2 19.5 11v8.2c0 .7-.6 1.3-1.3 1.3h-3.7v-6h-5v6H5.8c-.7 0-1.3-.6-1.3-1.3V11Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></g><g class="ico-fill"><path d="M4.5 11 12 4.2 19.5 11v8.2c0 .7-.6 1.3-1.3 1.3h-3.7v-6h-5v6H5.8c-.7 0-1.3-.6-1.3-1.3V11Z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></g></svg><span class="page-tab-label">식단기록</span></button>

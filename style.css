@@ -16956,7 +16956,7 @@ body.foodex-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expand
 
 
 /* =====================================================================
-   v81 기록 달력: 날짜 줄이 제자리에서 월간으로
+   v81–v82 기록 달력: 날짜 줄이 제자리에서 월간으로. 접으면 숫자만, 당길 때 요일·월 머리 등장.
    7칸 고정 폭, 고른 날은 숫자 뒤 어두운 원. 당기면 그 주가 달력의 한 줄이
    되고 다른 주는 위·아래로 페이드·슬라이드. 높이도 같은 progress.
    ===================================================================== */
@@ -16993,43 +16993,11 @@ body.home-page.home-cal-open #top-head {
 
 .home-cal-topline {
   position: relative;
-  height: 34px;
+  height: calc(34px * var(--home-cal-p, 0));
   margin: 0 max(16px, var(--safe-right)) 0 max(16px, var(--safe-left));
-}
-
-.home-date-line,
-.home-cal-chrome .home-cal-head {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  min-height: 34px;
-  margin: 0;
-  padding: 0;
-}
-
-.home-date-line {
-  justify-content: space-between;
-  gap: 10px;
-  z-index: 2;
-  opacity: calc(1 - var(--home-cal-p, 0));
-  pointer-events: auto;
-}
-.home-cal-chrome.is-open .home-date-line,
-.home-cal-chrome.is-pulling .home-date-line { pointer-events: none; }
-.home-cal-chrome.is-open .home-date-line { opacity: 0; }
-
-.home-date-line-label {
-  margin: 0;
-  min-width: 0;
-  flex: 1;
-  font: 600 14px/1.2 var(--font);
-  color: var(--rb-ink, #111216);
-  letter-spacing: -0.03em;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
+.home-cal-chrome.is-open .home-cal-topline { height: 34px; }
 
 .home-go-today {
   flex: 0 0 auto;
@@ -17046,14 +17014,28 @@ body.home-page.home-cal-open #top-head {
 .home-go-today[hidden] { display: none !important; }
 
 .home-cal-chrome .home-cal-head {
-  justify-content: space-between;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: 34px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
   z-index: 1;
   opacity: var(--home-cal-p, 0);
   pointer-events: none;
+  transform: translate3d(0, calc(8px * (1 - var(--home-cal-p, 0))), 0);
 }
 .home-cal-chrome.is-open .home-cal-head {
   opacity: 1;
   pointer-events: auto;
+  transform: none;
+}
+.home-cal-chrome .home-cal-head .cal-month-picker-wrap {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .home-cal-chrome .home-cal-head .cal-month-label {
   font: 600 15px/1.2 var(--font) !important;
@@ -17072,13 +17054,22 @@ body.home-page.home-cal-open #top-head {
   display: grid !important;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   align-items: center;
-  height: 18px;
-  margin: 0 max(16px, var(--safe-right)) 2px max(16px, var(--safe-left));
+  height: calc(18px * var(--home-cal-p, 0));
+  margin: 0 max(16px, var(--safe-right)) calc(2px * var(--home-cal-p, 0)) max(16px, var(--safe-left));
   padding: 0 !important;
+  overflow: hidden;
   font: 500 11px/1 var(--font) !important;
   color: var(--rb-label, #5E6470) !important;
   text-align: center;
   letter-spacing: -0.02em;
+  opacity: var(--home-cal-p, 0);
+  transform: translate3d(0, calc(6px * (1 - var(--home-cal-p, 0))), 0);
+}
+.home-cal-chrome.is-open .home-cal-weekdays {
+  height: 18px;
+  margin-bottom: 2px;
+  opacity: 1;
+  transform: none;
 }
 
 .home-cal-body {
@@ -17325,9 +17316,68 @@ body:not(.home-page) #home-cal-slot {
 body.home-cal-open.home-scrolled #home-cal-slot { position: absolute !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-date-line,
+  .home-cal-topline,
+  .home-cal-weekdays,
   .home-cal-chrome .home-cal-head,
   .home-cal-body,
   #date-strip,
   #home-cal-chrome .cal-day { transition: none !important; }
+}
+
+
+/* =====================================================================
+   v82 오늘 알약: 하단 탭·기록 버튼 바로 위, 가운데 유리 알약. 탭과 같은 높이.
+   ===================================================================== */
+#home-go-today.home-go-today {
+  position: absolute;
+  left: 50%;
+  bottom: var(--rb-tab-clear);
+  z-index: 13;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--rb-tab-h);
+  min-height: var(--rb-tab-h);
+  padding: 0 22px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #1C1D21;
+  font: 600 15px/1 var(--font);
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 10px 28px rgba(20, 22, 28, 0.12), 0 1px 3px rgba(20, 22, 28, 0.06);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate3d(-50%, 10px, 0);
+  transition: opacity 280ms cubic-bezier(0.16, 1, 0.3, 1), transform 280ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 280ms;
+}
+#home-go-today.home-go-today.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate3d(-50%, 0, 0);
+  transition: opacity 280ms cubic-bezier(0.16, 1, 0.3, 1), transform 280ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0s;
+}
+#home-go-today.home-go-today.is-visible:active {
+  transform: translate3d(-50%, 0, 0) scale(0.96);
+}
+#home-go-today.home-go-today[hidden] { display: none !important; }
+body:not(.home-page) #home-go-today,
+body.ai-sheet-open #home-go-today,
+body.ai-sheet-expanding #home-go-today,
+body.ai-sheet-closing #home-go-today,
+body.keyboard-open #home-go-today,
+html.kb-up #home-go-today,
+body.meal-page-open #home-go-today,
+body.food-dex-open #home-go-today {
+  display: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #home-go-today.home-go-today { transition: none !important; }
 }

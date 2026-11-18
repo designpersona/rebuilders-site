@@ -1571,13 +1571,6 @@ function formatHomeDate(d) {
   return `${month}.${day} (${DAYS[d.getDay()]})`;
 }
 
-function formatDateLine(d) {
-  if (ACTIVE_LOCALE === 'en') {
-    return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(d);
-  }
-  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${DAYS[d.getDay()]}요일`;
-}
-
 function isToday(d) {
   const t = new Date();
   return d.getFullYear() === t.getFullYear() &&
@@ -1587,8 +1580,6 @@ function isToday(d) {
 
 function updateDateDisplay() {
   document.getElementById('current-date').textContent = formatHomeDate(currentDate);
-  const lineLabel = document.getElementById('home-date-line-label');
-  if (lineLabel) lineLabel.textContent = formatDateLine(currentDate);
   if (typeof paintHomeCalWeekdays === 'function') paintHomeCalWeekdays();
   const badge = document.getElementById('date-badge') || document.querySelector('.date-badge');
   const goToday = document.getElementById('go-today');
@@ -1610,9 +1601,19 @@ function updateDateDisplay() {
   document.getElementById('date-display')?.setAttribute('aria-label', `${formatHomeDate(currentDate)}. ${ACTIVE_LOCALE === 'en' ? 'Tap to go to today' : '눌러서 오늘로'}`);
   if (goToday) goToday.hidden = today;
   if (goTodayPill) {
-    goTodayPill.hidden = today;
-    goTodayPill.textContent = ACTIVE_LOCALE === 'en' ? 'Today' : '오늘로';
+    const show = !today && (typeof activeView === 'undefined' || activeView === 'home');
+    goTodayPill.textContent = ACTIVE_LOCALE === 'en' ? '‹ Today' : '‹ 오늘';
     goTodayPill.setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? 'Go to today' : '오늘로');
+    goTodayPill.setAttribute('aria-hidden', show ? 'false' : 'true');
+    if (show) {
+      goTodayPill.hidden = false;
+      requestAnimationFrame(() => goTodayPill.classList.add('is-visible'));
+    } else {
+      goTodayPill.classList.remove('is-visible');
+      const hide = () => { if (!goTodayPill.classList.contains('is-visible')) goTodayPill.hidden = true; };
+      if (reduceMotion?.() || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) hide();
+      else setTimeout(hide, 300);
+    }
   }
   // 홈 건강 카드·체중을 선택한 날짜로
   updateProfileUI();
@@ -1737,7 +1738,7 @@ function applyExtendedStaticCopy() {
   set('#stats-month-avg + .stats-month-cap', t('statsAverage'), t('statsAverage'));
   set('#stats-month-hit + .stats-month-cap', t('statsUnderDays'), t('statsUnderDays'));
   set('#go-today', '오늘로', 'Today');
-  set('#home-go-today', '오늘로', 'Today');
+  set('#home-go-today', '‹ 오늘', '‹ Today');
   set('#meal-page-back span', '식단', 'Meals');
   set('.meal-page-summary div:nth-child(1) > span', '섭취 시간', 'Time');
   set('.meal-page-summary div:nth-child(2) > span', '총 칼로리', 'Total calories');
@@ -10583,14 +10584,7 @@ function applyHomeCalProgress(p, settling = false) {
     els.topHead.style.overflow = '';
     els.topHead.style.pointerEvents = '';
   }
-  if (els.dateLine) {
-    els.dateLine.style.opacity = String(Math.max(0, 1 - prog));
-    els.dateLine.style.transform = `translate3d(0, ${(-4 * prog).toFixed(2)}px, 0)`;
-    els.dateLine.style.pointerEvents = prog > 0.35 ? 'none' : '';
-  }
   if (els.head) {
-    els.head.style.opacity = String(prog);
-    els.head.style.transform = `translate3d(0, ${(6 * (1 - prog)).toFixed(2)}px, 0)`;
     els.head.style.pointerEvents = prog > 0.55 ? '' : 'none';
   }
   layoutHomeCalRows(els, prog);
@@ -11147,7 +11141,7 @@ function setupHomeGestures() {
     if (b.contains('ai-sheet-open') || b.contains('ai-sheet-expanding') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing') || b.contains('keyboard-open')) return true;
     if (target?.closest?.('input, textarea, select, [contenteditable="true"], .modal, dialog, .drag-handle, .food-drag-handle')) return true;
     // 달력이 열린 동안에는 입력줄·탭을 포함한 화면 어디서나 위로 밀면 접힌다.
-    if (!homeCalOpen && target?.closest?.('#home-ai-dock, #page-tabs')) return true;
+    if (!homeCalOpen && target?.closest?.('#home-ai-dock, #page-tabs, #home-go-today')) return true;
     return false;
   };
 
