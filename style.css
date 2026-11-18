@@ -13365,10 +13365,10 @@ body #view-home#view-home > .day-ghost {
   pointer-events: none;
   z-index: 0;
 }
-#view-home.day-swiping > :is(.day-summary, .section-head, .nutrition-missing-note, .meals-section, .day-clear-row) { will-change: transform; }
+#view-home.day-swiping > :not(.day-ghost) { will-change: transform; }
 body #view-home#view-home > .day-ghost,
 body #view-home#view-home > .day-ghost *,
-#view-home.day-swiping > :is(.day-summary, .section-head, .nutrition-missing-note, .meals-section, .day-clear-row) { animation: none !important; }
+#view-home.day-swiping > :not(.day-ghost) { animation: none !important; }
 
 /* 건강리포트 10.23: 일·주·월을 한 페이지로. 위 달력(접힘 = 한 주, 펼침 = 한 달) + 아래 기간 리포트 카드.
    제목 20/700 · 섹션 17/700 · 본문 15 · 라벨 13/600 · 캡션 12/500 · 좌우 28px · 카드 간격 12px · 안쪽 16px */
@@ -13501,7 +13501,13 @@ body #view-home#view-home > .day-ghost *,
 .date-chip-num { font: 600 14px/1.1 var(--font); letter-spacing: -0.03em; }
 .date-chip-dow { font: 500 10px/1 var(--font); opacity: 0.9; }
 .date-chip.is-focus, .date-chip.active { color: var(--rb-ink); }
-.date-chip.is-focus .date-chip-num, .date-chip.active .date-chip-num { font-weight: 700; }
+.date-chip.is-focus .date-chip-num, .date-chip.active .date-chip-num {
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+  letter-spacing: -0.04em;
+}
+.date-chip.is-focus .date-chip-dow, .date-chip.active .date-chip-dow { display: none; }
 .date-chip.is-today .date-chip-dow { font-weight: 600; }
 .date-strip.is-dragging .date-chip-inner { transition: none; }
 .date-strip:not(.is-dragging) .date-chip-inner { transition: transform 280ms cubic-bezier(.2, .8, .2, 1); }

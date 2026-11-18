@@ -10906,7 +10906,7 @@ function setupHomeCalPeekHint() {
 
 /* 기록 탭 제스처는 한 곳에서만 처리한다.
    약 10px 후 세로/가로를 잠근다. 맨 위에서 아래로 당기면 달력, 날짜 줄 가로는 주 이동,
-   끼니 영역 가로는 하루 리포트, 탭은 탭으로 남긴다. stopPropagation 은 쓰지 않는다. */
+   기록 내용 가로는 하루 이동(왼쪽=다음 날, 오른쪽=이전 날), 탭은 탭으로 남긴다. stopPropagation 은 쓰지 않는다. */
 const HOME_GESTURE_LOCK = 10;
 const HOME_CAL_TRIGGER = 72;
 
@@ -10936,12 +10936,123 @@ function homeStripSelectChip(chip) {
   return true;
 }
 
+let homeDaySwipe = null;
+
+function homeDaySwipeParts() {
+  const home = document.getElementById('view-home');
+  if (!home) return [];
+  return [...home.children].filter(el => !el.classList.contains('day-ghost') && !el.hidden);
+}
+
+function beginHomeDaySwipe() {
+  const home = document.getElementById('view-home');
+  if (!home || homeDaySwipe) return null;
+  const list = homeDaySwipeParts();
+  if (!list.length) return null;
+  const ghosts = list.map(el => {
+    const g = el.cloneNode(true);
+    g.classList.add('day-ghost');
+    g.setAttribute('aria-hidden', 'true');
+    g.style.top = `${el.offsetTop}px`;
+    g.style.left = `${el.offsetLeft}px`;
+    g.style.width = `${el.offsetWidth}px`;
+    g.style.height = `${el.offsetHeight}px`;
+    el.after(g);
+    return g;
+  });
+  home.classList.add('day-swiping');
+  homeDaySwipe = {
+    base: new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()),
+    W: home.getBoundingClientRect().width || innerWidth,
+    dir: 0,
+    x: 0,
+    parts: list,
+    ghosts,
+    gen: 0,
+    loading: null,
+    busy: false,
+  };
+  return homeDaySwipe;
+}
+
+function placeHomeDaySwipe(x, transition = 'none') {
+  const st = homeDaySwipe;
+  if (!st) return;
+  st.x = x;
+  st.ghosts.forEach(g => { g.style.transition = transition; g.style.transform = `translate3d(${x}px, 0, 0)`; });
+  const off = st.dir ? x + st.dir * st.W : st.W * 2;
+  st.parts.forEach(el => { el.style.transition = transition; el.style.transform = `translate3d(${off}px, 0, 0)`; });
+}
+
+function refreshHomeDaySwipeParts() {
+  if (!homeDaySwipe) return;
+  homeDaySwipe.parts = homeDaySwipeParts();
+}
+
+function showHomeDaySwipeDir(dir) {
+  const st = homeDaySwipe;
+  if (!st || st.dir === dir) return;
+  st.dir = dir;
+  const gen = ++st.gen;
+  currentDate = new Date(st.base.getFullYear(), st.base.getMonth(), st.base.getDate() + dir);
+  st.loading = (async () => {
+    await loadCurrentDay();
+    if (homeDaySwipe !== st || st.gen !== gen) return;
+    updateDateDisplay();
+    renderAll(true);
+    if (homeDaySwipe !== st || st.gen !== gen) return;
+    refreshHomeDaySwipeParts();
+    placeHomeDaySwipe(st.x);
+  })();
+}
+
+function cleanupHomeDaySwipe() {
+  const st = homeDaySwipe;
+  homeDaySwipe = null;
+  if (!st) return;
+  st.ghosts.forEach(g => g.remove());
+  const clear = el => { el.style.removeProperty('transform'); el.style.removeProperty('transition'); };
+  st.parts.forEach(clear);
+  homeDaySwipeParts().forEach(clear);
+  document.getElementById('view-home')?.classList.remove('day-swiping');
+}
+
+function settleHomeDaySwipe(commit) {
+  const st = homeDaySwipe;
+  if (!st || st.busy) return;
+  st.busy = true;
+  const gen = ++st.gen;
+  (async () => {
+    if (st.loading) { try { await st.loading; } catch { /* ignore */ } }
+    if (homeDaySwipe !== st) return;
+    void gen;
+    const shouldCommit = !!(commit && st.dir);
+    const dur = reduceMotion() ? 0 : 250;
+    const ease = 'cubic-bezier(0.25, 1, 0.5, 1)';
+    if (shouldCommit) dateStripHaptic();
+    refreshHomeDaySwipeParts();
+    placeHomeDaySwipe(st.x, 'none');
+    document.getElementById('view-home')?.getBoundingClientRect();
+    placeHomeDaySwipe(shouldCommit ? -st.dir * st.W : 0, dur ? `transform ${dur}ms ${ease}` : 'none');
+    const done = async () => {
+      if (homeDaySwipe !== st) return;
+      if (!shouldCommit) {
+        currentDate = new Date(st.base.getFullYear(), st.base.getMonth(), st.base.getDate());
+        try { await loadCurrentDay(); } catch { /* ignore */ }
+      }
+      cleanupHomeDaySwipe();
+      updateDateDisplay();
+      renderAll(true);
+    };
+    if (dur) setTimeout(() => { done(); }, dur + 20);
+    else await done();
+  })();
+}
+
 function setupHomeGestures() {
   if (setupHomeGestures.ready) return;
   const home = document.getElementById('view-home');
   const strip = document.getElementById('date-strip');
-  const pager = document.getElementById('home-day-pager');
-  const pagerTrack = document.getElementById('home-day-pager-track');
   const frame = document.querySelector('.phone-frame');
   if (!home || !frame) return;
   setupHomeGestures.ready = true;
@@ -10952,6 +11063,7 @@ function setupHomeGestures() {
   const ignoreStart = target => {
     const b = document.body.classList;
     if (activeView !== 'home') return true;
+    if (homeDaySwipe || isHomeDaySwiping()) return true;
     if (b.contains('ai-sheet-open') || b.contains('ai-sheet-expanding') || b.contains('meal-drag-active') || b.contains('card-drag-active') || b.contains('timeline-editing') || b.contains('keyboard-open')) return true;
     if (target?.closest?.('input, textarea, select, [contenteditable="true"], .modal, dialog, .drag-handle, .food-drag-handle')) return true;
     // 달력이 열린 동안에는 입력줄·탭을 포함한 화면 어디서나 위로 밀면 접힌다.
@@ -10980,7 +11092,6 @@ function setupHomeGestures() {
       scroll0: home.scrollTop || 0,
       samples: [],
       startOffset: typeof dateStripOffset === 'number' ? dateStripOffset : 0,
-      pagerW: pager?.getBoundingClientRect().width || innerWidth,
       lastDx: 0, lastX: t.clientX, lastY: t.clientY, lastT: performance.now(),
       vx: 0, vy: 0, pending: 0, raf: 0,
     };
@@ -11023,12 +11134,11 @@ function setupHomeGestures() {
         const p = dateStripParts();
         if (p) p.track.style.transition = 'none';
         cancelDateStripMotion({ resetFlags: false });
-      } else if (g.zone === 'pager' && !homeCalOpen) {
-        g.mode = 'h-pager';
+      } else if ((g.zone === 'page' || g.zone === 'pager') && !homeCalOpen) {
+        g.mode = 'h-day';
         g.x0 = t.clientX;
         g.lastDx = 0;
-        pager?.classList.add('is-dragging');
-        pager?.classList.remove('is-animating');
+        if (!beginHomeDaySwipe()) g.mode = 'h-ignore';
       } else {
         g.mode = 'h-ignore';
       }
@@ -11041,15 +11151,15 @@ function setupHomeGestures() {
       flushStrip(g.startOffset + dx);
       return;
     }
-    if (g.mode === 'h-pager') {
+    if (g.mode === 'h-day') {
       if (event.cancelable) event.preventDefault();
-      g.lastDx = t.clientX - g.x0;
+      if (!homeDaySwipe) return;
+      const x = Math.max(-homeDaySwipe.W, Math.min(homeDaySwipe.W, t.clientX - g.x0));
+      g.lastDx = x;
       g.samples.push({ x: t.clientX, t: now });
-      while (g.samples.length > 2 && now - g.samples[0].t > 80) g.samples.shift();
-      const w = g.pagerW;
-      const base = homeDayPage ? -w : 0;
-      const nx = Math.max(-w, Math.min(0, base + g.lastDx));
-      if (pagerTrack) pagerTrack.style.transform = `translate3d(${nx}px, 0, 0)`;
+      while (g.samples.length > 2 && now - g.samples[0].t > 100) g.samples.shift();
+      if (x !== 0) showHomeDaySwipeDir(x < 0 ? 1 : -1);
+      placeHomeDaySwipe(Math.round(x * 10) / 10);
       return;
     }
     if (g.mode !== 'v') return;
@@ -11106,16 +11216,14 @@ function setupHomeGestures() {
       settleDateStripToOffset(-weeks * p.W).then(ok => { if (ok) commitDateStripTo(next); });
       return;
     }
-    if (mode === 'h-pager') {
-      pager?.classList.remove('is-dragging');
+    if (mode === 'h-day') {
+      const st = homeDaySwipe;
+      if (!st) return;
       const a = gest.samples[0]; const z = gest.samples[gest.samples.length - 1];
       const vx = a && z && z.t > a.t ? (z.x - a.x) / (z.t - a.t) : 0;
-      const flick = Math.abs(vx) > 0.45 && Math.abs(gest.lastDx) >= 16;
-      const w = gest.pagerW;
-      let next = homeDayPage;
-      if (flick) next = vx < 0 ? 1 : 0;
-      else if (Math.abs(gest.lastDx) >= w * 0.22) next = gest.lastDx < 0 ? 1 : 0;
-      setHomeDayPage(next, { animate: true });
+      const flick = Math.abs(vx) > 0.5 && Math.abs(gest.lastDx) >= 20;
+      const commit = !!st.dir && (flick ? Math.sign(vx) === Math.sign(gest.lastDx) : Math.abs(gest.lastDx) >= st.W * 0.25);
+      settleHomeDaySwipe(commit);
       return;
     }
     const settleCalFromGesture = () => {
@@ -12431,7 +12539,7 @@ const PAGE_SWIPE_DISABLED = true;
   frame.addEventListener('touchend', finish, { passive: true });
   frame.addEventListener('touchcancel', () => { if (!active) return; active = false; settle(false, lastDx); }, { passive: true });
 })();
-/* 식단기록: 날짜는 위 날짜 줄·오늘로·화살표를 눌러 고른다. 화면을 가로로 밀어 날을 바꾸지 않음. */
+/* 식단기록: 내용을 가로로 밀면 하루씩 옮긴다(왼쪽=다음 날, 오른쪽=이전 날). 날짜 줄은 주 이동. */
 let slideDayTo = null;
 
 /* 건강리포트: 가로로 밀어 기간 이동(접힘 = 한 주, 펼침 = 한 달). 오른쪽으로 밀면 이전, 왼쪽은 다음(미래도 가능).
@@ -14267,6 +14375,8 @@ function applyDateStripMagnify() {
     chip.classList.toggle('is-focus', on);
     chip.classList.toggle('active', on);
     chip.setAttribute('aria-selected', String(on));
+    const d = parseDateKey(chip.dataset.key);
+    if (d && !Number.isNaN(d.getTime())) paintDateChipLabel(chip, d, on);
   }
   for (let i = 0; i < chips.length; i++) {
     const chip = chips[i];
@@ -14313,15 +14423,23 @@ function dateStripLabel(d) {
   return `${month}.${num} ${dow}`;
 }
 
+function paintDateChipLabel(chip, d, selected) {
+  const { num, dow } = dateStripLabelParts(d);
+  const numEl = chip.querySelector('.date-chip-num');
+  const dowEl = chip.querySelector('.date-chip-dow');
+  if (numEl) numEl.textContent = selected ? `${num}(${dow})` : num;
+  if (dowEl) dowEl.textContent = selected ? '' : dow;
+}
+
 function fillDateChip(b, d, week, dow, itemW, todayKey) {
   const key = dateKey(d);
-  const { num, dow: dowLabel } = dateStripLabelParts(d);
-  b.className = `date-chip${key === dateKey(currentDate) ? ' active is-focus' : ''}${key === todayKey ? ' is-today' : ''}`;
+  const selected = key === dateKey(currentDate);
+  b.className = `date-chip${selected ? ' active is-focus' : ''}${key === todayKey ? ' is-today' : ''}`;
   b.dataset.week = String(week);
   b.dataset.dow = String(dow);
   b.dataset.key = key;
   b.setAttribute('role', 'tab');
-  b.setAttribute('aria-selected', String(key === dateKey(currentDate)));
+  b.setAttribute('aria-selected', String(selected));
   b.setAttribute('aria-label', `${formatDate(d)}${key === todayKey ? (ACTIVE_LOCALE === 'en' ? ', today' : ', 오늘') : ''}`);
   b.style.left = `${week * itemW * DATE_STRIP_VISIBLE + dow * itemW}px`;
   b.style.width = `${itemW}px`;
@@ -14330,8 +14448,7 @@ function fillDateChip(b, d, week, dow, itemW, todayKey) {
     b.innerHTML = `<span class="date-chip-inner"><span class="date-chip-num"></span><span class="date-chip-dow"></span></span>`;
     inner = b.firstElementChild;
   }
-  inner.querySelector('.date-chip-num').textContent = num;
-  inner.querySelector('.date-chip-dow').textContent = dowLabel;
+  paintDateChipLabel(b, d, selected);
 }
 
 function renderDateStrip(force = false) {
@@ -14363,7 +14480,7 @@ function renderDateStrip(force = false) {
     }
     dateStripWeekKey = weekKeyNow;
   } else {
-    // 같은 주면 선택 표시만 갱신
+    // 같은 주면 선택 표시와 고른 날 라벨(18(수))만 갱신
     const chips = p.track.children;
     for (let i = 0; i < chips.length; i++) {
       const chip = chips[i];
@@ -14371,6 +14488,8 @@ function renderDateStrip(force = false) {
       chip.classList.toggle('is-focus', on);
       chip.classList.toggle('active', on);
       chip.setAttribute('aria-selected', String(on));
+      const d = parseDateKey(chip.dataset.key);
+      if (d && !Number.isNaN(d.getTime())) paintDateChipLabel(chip, d, on);
     }
   }
   dateStripKey = key;
