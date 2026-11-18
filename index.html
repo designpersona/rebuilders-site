@@ -50,38 +50,46 @@
     <!-- 기존 스크립트 호환용 요소: 실제 상태 표시줄은 기기가 제공하므로 화면에는 표시하지 않음 -->
     <div class="status-bar" aria-hidden="true"><span id="status-time"></span></div>
 
-    <!-- 맨 위: 식단기록은 일월화수목금토 한 주(고른 날이 제자리에서 크게), 다른 페이지는 제목 -->
+    <!-- 맨 위: 식단기록은 날짜 줄+한 주, 당기면 그 주가 월간 달력의 한 줄이 된다. 다른 페이지는 제목 -->
     <header class="top-head" id="top-head">
-      <div class="date-strip" id="date-strip" role="tablist" aria-label="날짜">
-        <div class="date-strip-track" id="date-strip-track"></div>
-        <span class="date-strip-indicator" id="date-strip-indicator" aria-hidden="true"></span>
+      <div class="home-cal-chrome" id="home-cal-chrome">
+        <div class="home-cal-topline" id="home-cal-topline">
+          <div class="home-date-line" id="home-date-line">
+            <p class="home-date-line-label" id="home-date-line-label"></p>
+            <button type="button" class="home-go-today" id="home-go-today" hidden>오늘로</button>
+          </div>
+          <div class="home-cal-head cal-month-bar" id="home-cal-head">
+            <button type="button" class="nav-btn" id="home-cal-prev" aria-label="이전 달">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5 8 12l7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <label class="cal-month-picker-wrap" for="home-cal-picker">
+              <span class="cal-month-label" id="home-cal-month-label">2026년 11월</span>
+              <input id="home-cal-picker" type="month" aria-label="연월 선택" />
+            </label>
+            <button type="button" class="nav-btn" id="home-cal-next" aria-label="다음 달">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="cal-weekdays home-cal-weekdays" id="home-cal-weekdays" aria-hidden="true">
+          <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+        </div>
+        <div class="home-cal-body" id="home-cal-body">
+          <div class="date-strip" id="date-strip" role="tablist" aria-label="날짜">
+            <div class="date-strip-track" id="date-strip-track"></div>
+          </div>
+          <div class="home-cal-slot" id="home-cal-slot" aria-hidden="true">
+            <div class="home-cal-panel" id="home-cal-panel" role="region" aria-labelledby="home-cal-month-label">
+              <div class="cal-viewport" id="home-cal-viewport">
+                <div class="cal-grid" id="home-cal-grid" role="grid" aria-label="날짜 선택"></div>
+              </div>
+              <p class="home-cal-summary" id="home-cal-summary" hidden></p>
+            </div>
+          </div>
+        </div>
       </div>
       <h1 class="page-title" id="page-title" hidden></h1>
     </header>
-    <!-- 기록 탭: 페이지 안에 접혀 있는 월간 달력. 아래로 당기면 펼쳐 아래 내용을 밀어 내림. 새로고침은 하지 않음 -->
-    <div class="home-cal-slot" id="home-cal-slot" aria-hidden="true">
-      <div class="home-cal-panel" id="home-cal-panel" role="region" aria-labelledby="home-cal-month-label">
-        <div class="home-cal-head cal-month-bar" id="home-cal-head">
-          <button type="button" class="nav-btn" id="home-cal-prev" aria-label="이전 달">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5 8 12l7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-          <label class="cal-month-picker-wrap" for="home-cal-picker">
-            <span class="cal-month-label" id="home-cal-month-label">2026년 11월</span>
-            <input id="home-cal-picker" type="month" aria-label="연월 선택" />
-          </label>
-          <button type="button" class="nav-btn" id="home-cal-next" aria-label="다음 달">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-        </div>
-        <div class="cal-weekdays" id="home-cal-weekdays" aria-hidden="true">
-          <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
-        </div>
-        <div class="cal-viewport" id="home-cal-viewport">
-          <div class="cal-grid" id="home-cal-grid" role="grid" aria-label="날짜 선택"></div>
-        </div>
-        <p class="home-cal-summary" id="home-cal-summary" hidden></p>
-      </div>
-    </div>
     <div class="app-content view-panel" id="view-home">
 
       <header class="home-brand" aria-label="Rebuilders Food Tracker 홈. Design your body.">

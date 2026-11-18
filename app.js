@@ -1571,6 +1571,13 @@ function formatHomeDate(d) {
   return `${month}.${day} (${DAYS[d.getDay()]})`;
 }
 
+function formatDateLine(d) {
+  if (ACTIVE_LOCALE === 'en') {
+    return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(d);
+  }
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${DAYS[d.getDay()]}요일`;
+}
+
 function isToday(d) {
   const t = new Date();
   return d.getFullYear() === t.getFullYear() &&
@@ -1580,8 +1587,12 @@ function isToday(d) {
 
 function updateDateDisplay() {
   document.getElementById('current-date').textContent = formatHomeDate(currentDate);
+  const lineLabel = document.getElementById('home-date-line-label');
+  if (lineLabel) lineLabel.textContent = formatDateLine(currentDate);
+  if (typeof paintHomeCalWeekdays === 'function') paintHomeCalWeekdays();
   const badge = document.getElementById('date-badge') || document.querySelector('.date-badge');
   const goToday = document.getElementById('go-today');
+  const goTodayPill = document.getElementById('home-go-today');
   const today = isToday(currentDate);
   // 오늘이 아니면 어제/내일만 작게, 그 밖의 날은 비움
   const dayDiff = Math.round((new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()) - new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())) / 86400000);
@@ -1598,6 +1609,11 @@ function updateDateDisplay() {
   try { syncAgentLogDate(); } catch { /* 대화창이 아직 없으면 무시 */ }
   document.getElementById('date-display')?.setAttribute('aria-label', `${formatHomeDate(currentDate)}. ${ACTIVE_LOCALE === 'en' ? 'Tap to go to today' : '눌러서 오늘로'}`);
   if (goToday) goToday.hidden = today;
+  if (goTodayPill) {
+    goTodayPill.hidden = today;
+    goTodayPill.textContent = ACTIVE_LOCALE === 'en' ? 'Today' : '오늘로';
+    goTodayPill.setAttribute('aria-label', ACTIVE_LOCALE === 'en' ? 'Go to today' : '오늘로');
+  }
   // 홈 건강 카드·체중을 선택한 날짜로
   updateProfileUI();
   if (typeof refreshHeartRate === 'function' && globalThis.RebuildersHealth?.isSupported()) refreshHeartRate();
@@ -1721,6 +1737,7 @@ function applyExtendedStaticCopy() {
   set('#stats-month-avg + .stats-month-cap', t('statsAverage'), t('statsAverage'));
   set('#stats-month-hit + .stats-month-cap', t('statsUnderDays'), t('statsUnderDays'));
   set('#go-today', '오늘로', 'Today');
+  set('#home-go-today', '오늘로', 'Today');
   set('#meal-page-back span', '식단', 'Meals');
   set('.meal-page-summary div:nth-child(1) > span', '섭취 시간', 'Time');
   set('.meal-page-summary div:nth-child(2) > span', '총 칼로리', 'Total calories');
@@ -1978,32 +1995,35 @@ document.getElementById('go-today')?.addEventListener('click', goToToday);
 // 날짜를 누르면 언제나 오늘로 (이미 오늘이면 그대로).
 // 날짜 줄과 같이, 캡처된 제스처가 합성 click을 삼켜도 touchend에서 동작하게 한다.
 (function setupGoTodayControl() {
-  const el = document.getElementById('date-display');
-  if (!el || el._goTodayBound) return;
-  el._goTodayBound = true;
-  let x0 = 0, y0 = 0, handled = false;
-  const run = async () => {
-    if (isToday(currentDate)) return;
-    await goToToday();
-    if (typeof playPageEnter === 'function' && activeView === 'home') playPageEnter(document.getElementById('view-home'));
+  const bind = el => {
+    if (!el || el._goTodayBound) return;
+    el._goTodayBound = true;
+    let x0 = 0, y0 = 0, handled = false;
+    const run = async () => {
+      if (isToday(currentDate)) return;
+      await goToToday();
+      if (typeof playPageEnter === 'function' && activeView === 'home') playPageEnter(document.getElementById('view-home'));
+    };
+    el.addEventListener('touchstart', event => {
+      if (event.touches.length !== 1) return;
+      const t = event.touches[0];
+      x0 = t.clientX; y0 = t.clientY; handled = false;
+    }, { passive: true });
+    el.addEventListener('touchend', event => {
+      const t = event.changedTouches?.[0];
+      if (!t) return;
+      if (Math.hypot(t.clientX - x0, t.clientY - y0) > 8) return;
+      handled = true;
+      if (event.cancelable) event.preventDefault();
+      run();
+    }, { passive: false });
+    el.addEventListener('click', event => {
+      if (handled) { handled = false; event.preventDefault(); return; }
+      run();
+    });
   };
-  el.addEventListener('touchstart', event => {
-    if (event.touches.length !== 1) return;
-    const t = event.touches[0];
-    x0 = t.clientX; y0 = t.clientY; handled = false;
-  }, { passive: true });
-  el.addEventListener('touchend', event => {
-    const t = event.changedTouches?.[0];
-    if (!t) return;
-    if (Math.hypot(t.clientX - x0, t.clientY - y0) > 8) return;
-    handled = true;
-    if (event.cancelable) event.preventDefault();
-    run();
-  }, { passive: false });
-  el.addEventListener('click', event => {
-    if (handled) { handled = false; event.preventDefault(); return; }
-    run();
-  });
+  bind(document.getElementById('date-display'));
+  bind(document.getElementById('home-go-today'));
 })();
 // 전체삭제: 편집할 때만, 식단 목록 아래 오른쪽에 회색 글자(빨강은 확인 창 안에서만)
 document.getElementById('clear-day-btn')?.addEventListener('click', clearCurrentDay);
@@ -10359,9 +10379,13 @@ let homeCalPending = null;
 let homeCalSettleGen = 0;
 let homeCalDragging = false;
 let homeCalMorph = 0;
-const HOME_CAL_STRIP_H = 48;
+const HOME_CAL_ROW_H = 52;
+const HOME_CAL_STRIP_H = HOME_CAL_ROW_H;
 const HOME_CAL_PEEK_PX = 52;
 const HOME_CAL_PEEK_KEY = 'rb.homeCalPeekHint';
+const HOME_CAL_SETTLE_MS = 360;
+const HOME_CAL_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+let homeCalAnimRaf = 0;
 
 function homeCalEls() {
   const slot = document.getElementById('home-cal-slot');
@@ -10370,6 +10394,11 @@ function homeCalEls() {
   if (!slot || !panel || !grid) return null;
   return {
     slot, panel, grid,
+    chrome: document.getElementById('home-cal-chrome'),
+    body: document.getElementById('home-cal-body'),
+    topline: document.getElementById('home-cal-topline'),
+    dateLine: document.getElementById('home-date-line'),
+    weekdays: document.getElementById('home-cal-weekdays'),
     head: document.getElementById('home-cal-head'),
     home: document.getElementById('view-home'),
     summary: document.getElementById('home-cal-summary'),
@@ -10381,24 +10410,29 @@ function homeCalEls() {
 
 function measureHomeCalHeight() {
   const els = homeCalEls();
-  if (!els) return 360;
-  const { slot, panel } = els;
-  slot.classList.add('is-measure');
-  const h = panel.offsetHeight || 360;
-  slot.classList.remove('is-measure');
+  if (!els) return HOME_CAL_ROW_H * 5;
+  const weekCount = Math.max(4, Math.min(6, Number(els.grid?.dataset.weekCount) || 5));
+  const h = weekCount * HOME_CAL_ROW_H;
   homeCalHeight = h;
-  slot.style.setProperty('--home-cal-h', `${h}px`);
+  const root = els.chrome || els.slot;
+  root?.style.setProperty('--home-cal-h', `${h}px`);
+  root?.style.setProperty('--home-cal-row-h', `${HOME_CAL_ROW_H}px`);
+  els.body?.style.setProperty('--home-cal-h', `${h}px`);
+  els.body?.style.setProperty('--home-cal-row-h', `${HOME_CAL_ROW_H}px`);
   return h;
 }
 
-function homeCalMorphMetrics(els, H) {
-  const stripH = HOME_CAL_STRIP_H;
-  const headH = els.head?.offsetHeight || 32;
-  const cell = els.grid?.querySelector('.cal-day');
-  const rowH = cell ? (cell.getBoundingClientRect().height || 42) : 42;
-  const selWeek = Number(els.grid?.dataset.selWeek || 0);
-  const extraTop = headH + selWeek * rowH;
-  return { stripH, headH, rowH, selWeek, extraTop, H: H || homeCalHeight || 360 };
+function homeCalWeekCount(els) {
+  return Math.max(4, Math.min(6, Number(els?.grid?.dataset.weekCount) || 5));
+}
+
+function homeCalSelWeek(els) {
+  const n = Number(els?.grid?.dataset.selWeek);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function easeOutCal(t) {
+  return 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 4.5);
 }
 
 function markHomeCalPeekSeen() {
@@ -10423,35 +10457,57 @@ function syncHomeCalChevron(els, prog) {
     : (en ? 'Expand calendar' : '달력 펼치기'));
 }
 
-function fadeHomeCalRows(els, reveal) {
-  if (!els?.panel) return;
-  const fadeOne = (el, top, height) => {
-    if (!el) return;
-    const bottom = top + height;
-    if (reveal >= bottom - 1) el.style.opacity = '1';
-    else if (reveal <= top + 1) el.style.opacity = '0';
-    else el.style.opacity = String(Math.max(0, Math.min(1, (reveal - top) / Math.max(1, height))));
-  };
-  const head = els.head;
-  const headH = head ? head.offsetHeight : 0;
-  if (head) fadeOne(head, 0, headH);
+function layoutHomeCalRows(els, prog) {
+  if (!els?.grid) return;
+  const rowH = HOME_CAL_ROW_H;
+  const selWeek = homeCalSelWeek(els);
   const weeks = new Map();
-  els.grid?.querySelectorAll('.cal-day').forEach(cell => {
-    const top = headH + cell.offsetTop;
-    const h = cell.offsetHeight || 42;
-    const key = Math.round(top);
-    if (!weeks.has(key)) weeks.set(key, { top, h, cells: [] });
-    weeks.get(key).cells.push(cell);
+  els.grid.querySelectorAll('.cal-day').forEach(cell => {
+    const w = Number(cell.dataset.week);
+    if (!weeks.has(w)) weeks.set(w, []);
+    weeks.get(w).push(cell);
   });
-  weeks.forEach(row => row.cells.forEach(cell => fadeOne(cell, row.top, row.h)));
-  if (els.summary) fadeOne(els.summary, els.summary.offsetTop, els.summary.offsetHeight || 20);
+  weeks.forEach((cells, week) => {
+    const ty = week * rowH * (prog - 1);
+    const dist = Math.abs(week - selWeek);
+    const opacity = week === selWeek
+      ? (prog > 0.001 ? 1 : 0)
+      : Math.max(0, Math.min(1, (prog - 0.06 * dist) / 0.55));
+    cells.forEach(cell => {
+      cell.style.transform = ty ? `translate3d(0, ${ty.toFixed(2)}px, 0)` : '';
+      cell.style.opacity = String(opacity);
+    });
+  });
+  if (els.strip) {
+    const sy = selWeek * rowH * prog;
+    els.strip.style.transform = sy ? `translate3d(0, ${sy.toFixed(2)}px, 0)` : '';
+    els.strip.style.opacity = prog > 0.001 ? '0' : '1';
+    els.strip.style.pointerEvents = prog > 0.15 ? 'none' : '';
+  }
 }
 
 function clearHomeCalRowFade(els) {
   if (!els) return;
   els.head && (els.head.style.opacity = '');
+  els.head && (els.head.style.transform = '');
+  els.head && (els.head.style.pointerEvents = '');
+  els.dateLine && (els.dateLine.style.opacity = '');
+  els.dateLine && (els.dateLine.style.transform = '');
+  els.dateLine && (els.dateLine.style.pointerEvents = '');
   els.summary && (els.summary.style.opacity = '');
-  els.grid?.querySelectorAll('.cal-day').forEach(cell => { cell.style.opacity = ''; });
+  els.grid?.querySelectorAll('.cal-day').forEach(cell => {
+    cell.style.opacity = '';
+    cell.style.transform = '';
+  });
+  if (els.strip) {
+    els.strip.style.transform = '';
+    els.strip.style.opacity = '';
+    els.strip.style.pointerEvents = '';
+  }
+  if (els.body) {
+    els.body.style.height = '';
+    els.body.style.overflow = '';
+  }
 }
 
 function applyHomeCalProgress(p, settling = false) {
@@ -10459,12 +10515,16 @@ function applyHomeCalProgress(p, settling = false) {
   if (!els) return;
   const prog = Math.max(0, Math.min(1, p));
   homeCalProgress = prog;
-  const H = homeCalHeight || measureHomeCalHeight();
-  const stripH = HOME_CAL_STRIP_H;
-  const reveal = Math.max(0, Math.min(H, prog * H));
   homeCalMorph = prog;
-  els.slot.style.setProperty('--home-cal-h', `${H}px`);
-  els.slot.style.setProperty('--home-cal-reveal', `${reveal.toFixed(1)}px`);
+  const rowH = HOME_CAL_ROW_H;
+  const weekCount = homeCalWeekCount(els);
+  const fullH = weekCount * rowH;
+  homeCalHeight = fullH;
+  const bodyH = rowH + prog * (fullH - rowH);
+  const root = els.chrome || els.slot;
+  root?.style.setProperty('--home-cal-h', `${fullH}px`);
+  root?.style.setProperty('--home-cal-row-h', `${rowH}px`);
+  root?.style.setProperty('--home-cal-p', prog.toFixed(4));
   els.slot.setAttribute('aria-hidden', prog <= 0.01 && !homeCalOpen ? 'true' : 'false');
 
   const commitOpen = homeCalOpen && prog >= 0.995 && !settling;
@@ -10474,6 +10534,8 @@ function applyHomeCalProgress(p, settling = false) {
   document.body.classList.toggle('home-cal-pulling', !commitOpen && !commitClosed && (prog > 0.02 || settling));
   document.body.classList.toggle('home-cal-open', !!(commitOpen || (homeCalOpen && prog >= 0.995 && !homeCalClosing)));
   document.body.classList.toggle('home-cal-dock-hide', homeCalOpen || homeCalClosing || prog > 0.45);
+  els.chrome?.classList.toggle('is-open', !!(commitOpen || (homeCalOpen && prog >= 0.995 && !homeCalClosing)));
+  els.chrome?.classList.toggle('is-pulling', !commitOpen && !commitClosed && (prog > 0.02 || settling));
 
   els.home?.classList.toggle('home-cal-dragging', !settling && !commitOpen && !commitClosed);
   els.home?.classList.toggle('home-cal-shifting', settling);
@@ -10481,6 +10543,8 @@ function applyHomeCalProgress(p, settling = false) {
   if (commitOpen) {
     els.slot.classList.add('is-open');
     els.slot.classList.remove('is-pulling', 'is-settling', 'is-morphing');
+    els.chrome?.classList.add('is-open');
+    els.chrome?.classList.remove('is-pulling', 'is-settling');
     clearHomeCalInlineStyles(els);
     els.home?.classList.remove('home-cal-dragging', 'home-cal-shifting');
     document.body.classList.add('home-cal-open');
@@ -10496,27 +10560,40 @@ function applyHomeCalProgress(p, settling = false) {
   els.slot.classList.remove('is-open', 'is-morphing');
   els.slot.classList.toggle('is-pulling', !settling);
   els.slot.classList.toggle('is-settling', settling);
+  els.chrome?.classList.remove('is-open');
+  els.chrome?.classList.toggle('is-pulling', !settling);
+  els.chrome?.classList.toggle('is-settling', settling);
 
-  // 날짜 줄 아래에서 높이가 자라며 칸이 나타난다. 칸을 줄 밑으로 밀어 올리지 않는다.
-  // 아래 내용(오늘로·게이지)은 같은 progress 의 슬롯 높이로 밀린다.
-  els.slot.style.height = `${reveal.toFixed(1)}px`;
+  // 고른 주(날짜 줄)는 같은 열에서 월간 달력의 그 주가 된다.
+  // 다른 주는 그 줄에서 위·아래로 밀려 나오며, 높이도 같은 progress 로 자란다.
+  if (els.body) {
+    els.body.style.height = `${bodyH.toFixed(1)}px`;
+    els.body.style.overflow = 'hidden';
+  }
+  els.slot.style.height = `${fullH}px`;
+  els.slot.style.overflow = 'visible';
   els.slot.style.marginBottom = '0';
-  els.slot.style.overflow = 'hidden';
   els.slot.style.clipPath = '';
   els.panel.style.transform = 'none';
   els.panel.style.clipPath = '';
   if (els.home) els.home.style.transform = '';
   if (els.topHead) {
-    els.topHead.style.height = `${(stripH * (1 - prog)).toFixed(1)}px`;
-    els.topHead.style.opacity = String(Math.max(0, 1 - prog));
-    els.topHead.style.overflow = 'hidden';
-    els.topHead.style.pointerEvents = prog > 0.25 ? 'none' : '';
+    els.topHead.style.height = '';
+    els.topHead.style.opacity = '';
+    els.topHead.style.overflow = '';
+    els.topHead.style.pointerEvents = '';
   }
-  if (els.strip) {
-    els.strip.style.opacity = String(Math.max(0, 1 - prog));
-    els.strip.style.pointerEvents = prog > 0.25 ? 'none' : '';
+  if (els.dateLine) {
+    els.dateLine.style.opacity = String(Math.max(0, 1 - prog));
+    els.dateLine.style.transform = `translate3d(0, ${(-4 * prog).toFixed(2)}px, 0)`;
+    els.dateLine.style.pointerEvents = prog > 0.35 ? 'none' : '';
   }
-  fadeHomeCalRows(els, reveal);
+  if (els.head) {
+    els.head.style.opacity = String(prog);
+    els.head.style.transform = `translate3d(0, ${(6 * (1 - prog)).toFixed(2)}px, 0)`;
+    els.head.style.pointerEvents = prog > 0.55 ? '' : 'none';
+  }
+  layoutHomeCalRows(els, prog);
   syncHomeCalChevron(els, prog);
 }
 
@@ -10536,9 +10613,13 @@ function freezeHomeCalTransitions(els) {
   if (els.panel) els.panel.style.transition = 'none';
   if (els.home) els.home.style.transition = 'none';
   if (els.slot) els.slot.style.transition = 'none';
+  if (els.body) els.body.style.transition = 'none';
   if (els.strip) els.strip.style.transition = 'none';
   if (els.chevron) els.chevron.style.transition = 'none';
   if (els.topHead) els.topHead.style.transition = 'none';
+  if (els.dateLine) els.dateLine.style.transition = 'none';
+  if (els.head) els.head.style.transition = 'none';
+  if (els.chrome) els.chrome.style.transition = 'none';
 }
 
 function clearHomeCalInlineStyles(els) {
@@ -10556,12 +10637,17 @@ function clearHomeCalInlineStyles(els) {
   };
   wipe(els.panel);
   wipe(els.slot);
+  wipe(els.body);
   wipe(els.home);
   wipe(els.chevron);
+  wipe(els.dateLine);
+  wipe(els.head);
+  wipe(els.chrome);
   if (els.strip) {
     els.strip.style.opacity = '';
     els.strip.style.pointerEvents = '';
     els.strip.style.transition = '';
+    els.strip.style.transform = '';
   }
   if (els.topHead) {
     els.topHead.style.height = '';
@@ -10599,10 +10685,12 @@ function resetHomeCalChrome(els) {
   homeCalProgress = 0;
   freezeHomeCalTransitions(els);
   els.slot.classList.remove('is-open', 'is-pulling', 'is-settling', 'is-morphing');
+  els.chrome?.classList.remove('is-open', 'is-pulling', 'is-settling');
   els.slot.setAttribute('aria-hidden', 'true');
   els.home?.classList.remove('home-cal-dragging', 'home-cal-shifting');
   document.body.classList.remove('home-cal-open', 'home-cal-pulling', 'home-cal-active', 'home-cal-dock-hide');
   clearHomeCalInlineStyles(els);
+  (els.chrome || els.slot)?.style.setProperty('--home-cal-p', '0');
   releaseHomeCalScrollLock();
   syncHomeCalChevron(els, 0);
 }
@@ -10617,11 +10705,15 @@ function commitHomeCalOpenLayout(els) {
   freezeHomeCalTransitions(els);
   els.slot.classList.add('is-open');
   els.slot.classList.remove('is-pulling', 'is-settling', 'is-morphing');
+  els.chrome?.classList.add('is-open');
+  els.chrome?.classList.remove('is-pulling', 'is-settling');
   els.slot.setAttribute('aria-hidden', 'false');
   els.home?.classList.remove('home-cal-dragging', 'home-cal-shifting');
   document.body.classList.add('home-cal-open', 'home-cal-active', 'home-cal-dock-hide');
   document.body.classList.remove('home-cal-pulling');
   clearHomeCalInlineStyles(els);
+  (els.chrome || els.slot)?.style.setProperty('--home-cal-p', '1');
+  (els.chrome || els.slot)?.style.setProperty('--home-cal-h', `${homeCalHeight || measureHomeCalHeight()}px`);
   releaseHomeCalScrollLock();
   syncHomeCalChevron(els, 1);
 }
@@ -10630,7 +10722,7 @@ function homeCalIsMixed(els) {
   els = els || homeCalEls();
   if (!els) return false;
   const midClass = els.slot.classList.contains('is-pulling') || els.slot.classList.contains('is-settling') || els.slot.classList.contains('is-morphing');
-  const midInline = !!(els.home?.style.transform || els.panel?.style.transform || els.slot?.style.clipPath || els.slot?.style.height || els.topHead?.style.height);
+  const midInline = !!(els.home?.style.transform || els.panel?.style.transform || els.slot?.style.clipPath || els.slot?.style.height || els.body?.style.height || els.topHead?.style.height);
   const midFlag = homeCalClosing || (homeCalProgress > 0.01 && homeCalProgress < 0.995);
   const openMismatch = homeCalOpen && !els.slot.classList.contains('is-open');
   const closedMismatch = !homeCalOpen && els.slot.classList.contains('is-open');
@@ -10666,6 +10758,7 @@ function cancelHomeCalTimer() {
     slot._headEl = null;
   }
   if (homeCalRaf) { cancelAnimationFrame(homeCalRaf); homeCalRaf = 0; }
+  if (homeCalAnimRaf) { cancelAnimationFrame(homeCalAnimRaf); homeCalAnimRaf = 0; }
   homeCalPending = null;
 }
 
@@ -10680,52 +10773,55 @@ function prepHomeCalendar() {
   }
 }
 
+function animateHomeCalTo(to, { animate = true } = {}) {
+  const els = homeCalEls();
+  if (!els) return;
+  const gen = homeCalSettleGen;
+  const finish = () => {
+    if (gen !== homeCalSettleGen) return;
+    if (to >= 0.995) commitHomeCalOpenLayout(els);
+    else resetHomeCalChrome(els);
+  };
+  if (!animate || reduceMotion()) { finish(); return; }
+  const from = homeCalProgress;
+  const t0 = performance.now();
+  const duration = HOME_CAL_SETTLE_MS;
+  const step = now => {
+    if (gen !== homeCalSettleGen) return;
+    const t = Math.min(1, (now - t0) / duration);
+    applyHomeCalProgress(from + (to - from) * easeOutCal(t), true);
+    if (t < 1) homeCalAnimRaf = requestAnimationFrame(step);
+    else {
+      homeCalAnimRaf = 0;
+      finish();
+    }
+  };
+  homeCalAnimRaf = requestAnimationFrame(step);
+}
+
 function closeHomeCal({ animate = true } = {}) {
   const els = homeCalEls();
   if (!els) return;
   cancelHomeCalPeek();
   cancelHomeCalTimer();
-  const gen = ++homeCalSettleGen;
-  const finish = () => {
-    if (gen !== homeCalSettleGen) return;
-    resetHomeCalChrome(els);
-  };
+  ++homeCalSettleGen;
   if (!homeCalOpen && homeCalProgress <= 0.02 && !homeCalClosing) {
-    finish();
+    resetHomeCalChrome(els);
     return;
   }
-  if (!animate || reduceMotion()) { finish(); return; }
-  const wasOpen = homeCalOpen;
   homeCalClosing = true;
   homeCalOpen = false;
-  if (wasOpen) {
-    freezeHomeCalTransitions(els);
-    els.slot.classList.remove('is-open');
-    els.slot.classList.add('is-settling');
-    document.body.classList.remove('home-cal-open');
-    homeCalProgress = 1;
-    applyHomeCalProgress(1, true);
-    const ease = 'height 280ms cubic-bezier(.2, .8, .2, 1), opacity 280ms cubic-bezier(.2, .8, .2, 1)';
-    els.slot.style.transition = 'height 280ms cubic-bezier(.2, .8, .2, 1)';
-    if (els.topHead) els.topHead.style.transition = ease;
-    if (els.strip) els.strip.style.transition = 'opacity 280ms cubic-bezier(.2, .8, .2, 1)';
+  els.slot.classList.remove('is-open');
+  els.slot.classList.add('is-settling');
+  els.chrome?.classList.remove('is-open');
+  els.chrome?.classList.add('is-settling');
+  document.body.classList.remove('home-cal-open');
+  if (!animate || reduceMotion()) {
+    resetHomeCalChrome(els);
+    return;
   }
-  requestAnimationFrame(() => {
-    if (gen !== homeCalSettleGen) return;
-    applyHomeCalProgress(0, true);
-  });
-  const onEnd = ev => {
-    if (ev && ev.target !== els.panel && ev.target !== els.slot && ev.target !== els.home && ev.target !== els.topHead) return;
-    finish();
-  };
-  els.slot._settleEnd = onEnd;
-  els.slot._panelSettleEnd = onEnd;
-  els.slot._panelEl = els.panel;
-  els.slot._headEl = els.topHead;
-  els.panel.addEventListener('transitionend', onEnd);
-  els.slot.addEventListener('transitionend', onEnd);
-  if (els.topHead) els.topHead.addEventListener('transitionend', onEnd);
-  els.slot._closeTimer = setTimeout(finish, HOME_MOTION_MS + 80);
+  applyHomeCalProgress(homeCalProgress, true);
+  animateHomeCalTo(0, { animate: true });
 }
 
 async function openHomeCal({ animate = true } = {}) {
@@ -10734,48 +10830,29 @@ async function openHomeCal({ animate = true } = {}) {
   cancelHomeCalPeek();
   cancelHomeCalTimer();
   const gen = ++homeCalSettleGen;
-  const finish = () => {
-    if (gen !== homeCalSettleGen) return;
-    commitHomeCalOpenLayout(els);
-  };
   homeCalMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   if (!els.grid.childElementCount) renderHomeMonthCalendar();
   measureHomeCalHeight();
   document.body.classList.add('home-cal-active');
   ensureHomeCalData().then(() => {
+    if (gen !== homeCalSettleGen) return;
     renderHomeMonthCalendar();
     measureHomeCalHeight();
-    if (gen === homeCalSettleGen && homeCalOpen && homeCalProgress >= 0.995) commitHomeCalOpenLayout(els);
+    if (homeCalOpen && homeCalProgress >= 0.995 && !homeCalClosing) commitHomeCalOpenLayout(els);
+    else if (homeCalOpen || homeCalProgress > 0.02) applyHomeCalProgress(homeCalProgress, true);
   });
-  if (homeCalOpen && homeCalProgress >= 0.995 && !homeCalClosing && els.slot.classList.contains('is-open') && !els.home?.style.transform) {
-    finish();
+  if (homeCalOpen && homeCalProgress >= 0.995 && !homeCalClosing && els.slot.classList.contains('is-open')) {
+    commitHomeCalOpenLayout(els);
     return;
   }
   homeCalClosing = false;
   homeCalOpen = true;
-  if (!animate || reduceMotion()) { finish(); return; }
-  const from = homeCalProgress > 0.02 ? homeCalProgress : 0;
-  applyHomeCalProgress(from, false);
-  const ease = 'height 280ms cubic-bezier(.2, .8, .2, 1), opacity 280ms cubic-bezier(.2, .8, .2, 1)';
-  els.slot.style.transition = 'height 280ms cubic-bezier(.2, .8, .2, 1)';
-  if (els.topHead) els.topHead.style.transition = ease;
-  if (els.strip) els.strip.style.transition = 'opacity 280ms cubic-bezier(.2, .8, .2, 1)';
-  requestAnimationFrame(() => {
-    if (gen !== homeCalSettleGen) return;
-    applyHomeCalProgress(1, true);
-  });
-  const onEnd = ev => {
-    if (ev && ev.target !== els.panel && ev.target !== els.slot && ev.target !== els.home && ev.target !== els.topHead) return;
-    finish();
-  };
-  els.slot._settleEnd = onEnd;
-  els.slot._panelSettleEnd = onEnd;
-  els.slot._panelEl = els.panel;
-  els.slot._headEl = els.topHead;
-  els.panel.addEventListener('transitionend', onEnd);
-  els.slot.addEventListener('transitionend', onEnd);
-  if (els.topHead) els.topHead.addEventListener('transitionend', onEnd);
-  els.slot._closeTimer = setTimeout(finish, HOME_MOTION_MS + 80);
+  if (!animate || reduceMotion()) {
+    commitHomeCalOpenLayout(els);
+    return;
+  }
+  applyHomeCalProgress(homeCalProgress > 0.02 ? homeCalProgress : 0, true);
+  animateHomeCalTo(1, { animate: true });
 }
 
 async function ensureHomeCalData() {
@@ -10798,6 +10875,15 @@ function homeCalMonthStats(year, month) {
   return { logged, avgCal: logged ? calSum / logged : 0, proteinMet };
 }
 
+function paintHomeCalWeekdays() {
+  const weekdays = document.getElementById('home-cal-weekdays');
+  if (!weekdays) return;
+  const names = ACTIVE_LOCALE === 'en'
+    ? ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+    : (typeof DAYS !== 'undefined' ? DAYS : ['일', '월', '화', '수', '목', '금', '토']);
+  [...weekdays.children].forEach((el, i) => { el.textContent = names[i] || ''; });
+}
+
 function renderHomeMonthCalendar() {
   const els = homeCalEls();
   if (!els) return;
@@ -10808,13 +10894,7 @@ function renderHomeMonthCalendar() {
   if (label) label.textContent = en ? new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(homeCalMonth) : `${year}년 ${month + 1}월`;
   const picker = document.getElementById('home-cal-picker');
   if (picker) picker.value = `${year}-${String(month + 1).padStart(2, '0')}`;
-  const weekdays = document.getElementById('home-cal-weekdays');
-  if (weekdays) {
-    const names = en
-      ? ['S', 'M', 'T', 'W', 'T', 'F', 'S']
-      : (typeof DAYS !== 'undefined' ? DAYS : ['일', '월', '화', '수', '목', '금', '토']);
-    [...weekdays.children].forEach((el, i) => { el.textContent = names[i] || ''; });
-  }
+  paintHomeCalWeekdays();
   const startPad = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const weekCount = Math.max(4, Math.min(6, Math.ceil((startPad + daysInMonth) / 7)));
@@ -14367,34 +14447,17 @@ function applyDateStripMagnify() {
   if (!p) return;
   const selKey = dateKey(currentDate);
   const chips = p.track.children;
-  let selDow = -1;
   for (let i = 0; i < chips.length; i++) {
     const chip = chips[i];
     const on = chip.dataset.key === selKey;
-    if (on) selDow = Number(chip.dataset.dow);
     chip.classList.toggle('is-focus', on);
     chip.classList.toggle('active', on);
     chip.setAttribute('aria-selected', String(on));
     const d = parseDateKey(chip.dataset.key);
     if (d && !Number.isNaN(d.getTime())) paintDateChipLabel(chip, d, on);
-  }
-  for (let i = 0; i < chips.length; i++) {
-    const chip = chips[i];
-    const dow = Number(chip.dataset.dow);
-    const week = Number(chip.dataset.week);
-    // 보이는 주(그리고 밀리는 옆 주)에서, 고른 요일과의 거리로만 확대. 위치는 고정.
-    const dist = Math.abs(dow - (selDow < 0 ? currentDate.getDay() : selDow)) + (week !== 0 && !dateStripDragging ? 8 : 0);
-    const s = 0.92 + 0.36 * Math.exp(-0.85 * dist * dist);
     const inner = chip.firstElementChild;
-    if (inner) inner.style.transform = `translate3d(0,0,0) scale(${s.toFixed(3)})`;
-    chip.style.opacity = dist === 0 ? '1' : '0.82';
-  }
-  const ind = document.getElementById('date-strip-indicator');
-  if (ind) {
-    const dow = selDow < 0 ? currentDate.getDay() : selDow;
-    const w = Math.min(22, p.itemW * 0.4);
-    ind.style.width = `${w}px`;
-    ind.style.left = `${dow * p.itemW + (p.itemW - w) / 2}px`;
+    if (inner) inner.style.transform = '';
+    chip.style.opacity = '';
   }
 }
 
@@ -14427,8 +14490,9 @@ function paintDateChipLabel(chip, d, selected) {
   const { num, dow } = dateStripLabelParts(d);
   const numEl = chip.querySelector('.date-chip-num');
   const dowEl = chip.querySelector('.date-chip-dow');
-  if (numEl) numEl.textContent = selected ? `${num}(${dow})` : num;
-  if (dowEl) dowEl.textContent = selected ? '' : dow;
+  if (numEl) numEl.textContent = num;
+  if (dowEl) dowEl.textContent = dow;
+  void selected;
 }
 
 function fillDateChip(b, d, week, dow, itemW, todayKey) {
@@ -14609,8 +14673,10 @@ slideDateStripTo = async function (date) {
 function updateTopHead() {
   const home = activeView === 'home' || activeView === 'search';
   const strip = document.getElementById('date-strip');
+  const chrome = document.getElementById('home-cal-chrome');
   const title = document.getElementById('page-title');
   if (strip) strip.hidden = !home;
+  if (chrome) chrome.hidden = !home;
   if (title) {
     const en = ACTIVE_LOCALE === 'en';
     const names = { stats: ['건강리포트', 'Health report'], foodex: ['음식도감', 'Foodpedia'], fridge: ['팬트리', 'Pantry'], shopping: ['팬트리', 'Pantry'], profile: ['설정', 'Settings'] };

@@ -16953,3 +16953,381 @@ body.foodex-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expand
   right: var(--rb-tab-inset-x) !important;
   bottom: var(--rb-tab-bottom) !important;
 }
+
+
+/* =====================================================================
+   v81 기록 달력: 날짜 줄이 제자리에서 월간으로
+   7칸 고정 폭, 고른 날은 숫자 뒤 어두운 원. 당기면 그 주가 달력의 한 줄이
+   되고 다른 주는 위·아래로 페이드·슬라이드. 높이도 같은 progress.
+   ===================================================================== */
+body.top-head-title #home-cal-chrome,
+#home-cal-chrome[hidden] { display: none !important; }
+body.top-head-title #top-head.top-head {
+  height: 48px !important;
+  min-height: 48px !important;
+  overflow: hidden !important;
+  opacity: 1 !important;
+}
+body:not(.top-head-title) #top-head.top-head,
+body.home-page #top-head.top-head,
+body.home-page.home-cal-open #top-head.top-head,
+body.home-page.home-cal-active #top-head.top-head,
+body.home-page.home-cal-pulling #top-head.top-head,
+body.home-page.home-cal-open #top-head {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  background: var(--bg, #F4F5F7);
+}
+
+.home-cal-chrome {
+  display: block;
+  position: relative;
+  z-index: 3;
+  background: var(--bg, #F4F5F7);
+  --home-cal-row-h: 52px;
+  --home-cal-p: 0;
+}
+
+.home-cal-topline {
+  position: relative;
+  height: 34px;
+  margin: 0 max(16px, var(--safe-right)) 0 max(16px, var(--safe-left));
+}
+
+.home-date-line,
+.home-cal-chrome .home-cal-head {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  margin: 0;
+  padding: 0;
+}
+
+.home-date-line {
+  justify-content: space-between;
+  gap: 10px;
+  z-index: 2;
+  opacity: calc(1 - var(--home-cal-p, 0));
+  pointer-events: auto;
+}
+.home-cal-chrome.is-open .home-date-line,
+.home-cal-chrome.is-pulling .home-date-line { pointer-events: none; }
+.home-cal-chrome.is-open .home-date-line { opacity: 0; }
+
+.home-date-line-label {
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+  font: 600 14px/1.2 var(--font);
+  color: var(--rb-ink, #111216);
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-go-today {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--rb-btn-bg, #F1F2F5);
+  color: var(--rb-ink, #111216);
+  font: 600 12px/1.2 var(--font);
+  letter-spacing: -0.02em;
+  -webkit-tap-highlight-color: transparent;
+}
+.home-go-today[hidden] { display: none !important; }
+
+.home-cal-chrome .home-cal-head {
+  justify-content: space-between;
+  z-index: 1;
+  opacity: var(--home-cal-p, 0);
+  pointer-events: none;
+}
+.home-cal-chrome.is-open .home-cal-head {
+  opacity: 1;
+  pointer-events: auto;
+}
+.home-cal-chrome .home-cal-head .cal-month-label {
+  font: 600 15px/1.2 var(--font) !important;
+  color: var(--rb-ink, #111216);
+}
+.home-cal-chrome .home-cal-head .nav-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--rb-ink, #111216);
+}
+
+.home-cal-weekdays {
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: center;
+  height: 18px;
+  margin: 0 max(16px, var(--safe-right)) 2px max(16px, var(--safe-left));
+  padding: 0 !important;
+  font: 500 11px/1 var(--font) !important;
+  color: var(--rb-label, #5E6470) !important;
+  text-align: center;
+  letter-spacing: -0.02em;
+}
+
+.home-cal-body {
+  position: relative;
+  height: var(--home-cal-row-h, 52px);
+  margin: 0 max(16px, var(--safe-right)) 4px max(16px, var(--safe-left));
+  overflow: hidden;
+}
+.home-cal-chrome.is-open .home-cal-body {
+  height: var(--home-cal-h, 260px);
+}
+
+#date-strip.date-strip {
+  position: absolute !important;
+  inset: auto 0 auto 0 !important;
+  top: 0 !important;
+  height: var(--home-cal-row-h, 52px) !important;
+  overflow: hidden;
+  touch-action: none;
+  z-index: 2;
+  opacity: 1;
+  background: transparent;
+}
+.home-cal-chrome.is-open #date-strip.date-strip {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.date-strip-track { overflow: visible; }
+.date-strip-indicator { display: none !important; }
+
+.date-chip {
+  opacity: 1 !important;
+  overflow: hidden;
+}
+.date-chip-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  transform: none !important;
+  will-change: auto;
+}
+.date-chip-dow { display: none !important; }
+.date-chip-num,
+.date-chip.is-focus .date-chip-num,
+.date-chip.active .date-chip-num,
+.date-chip.is-today .date-chip-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  border-radius: 50%;
+  background: transparent;
+  font: 600 15px/1 var(--font) !important;
+  letter-spacing: -0.03em;
+  color: var(--rb-ink, #111216);
+  white-space: nowrap;
+  font-weight: 600 !important;
+}
+.date-chip.is-today:not(.is-focus):not(.active) .date-chip-num {
+  color: #FF3B30 !important;
+  font-weight: 700 !important;
+  background: transparent !important;
+}
+.date-chip.is-focus .date-chip-num,
+.date-chip.active .date-chip-num,
+.date-chip.is-today.is-focus .date-chip-num,
+.date-chip.is-today.active .date-chip-num {
+  background: var(--rb-pill-dark, #1C1D21) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+
+/* 게이지 위 오늘로/오늘 알약 줄은 날짜 줄로 옮겼으니 숨김 */
+body #view-home#view-home .date-header.home-date-row,
+body.home-page.home-cal-open #view-home .date-header.home-date-row {
+  display: none !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+body #view-home#view-home .date-header.home-date-row + .day-summary,
+body.home-page.home-cal-open #view-home .date-header.home-date-row + .day-summary {
+  margin-top: 8px !important;
+}
+
+/* 달력 칸: 날짜 줄과 같은 7열, 같은 원형 선택 */
+body.home-page #home-cal-slot,
+body:not(.home-page) #home-cal-slot {
+  display: block;
+}
+#home-cal-chrome #home-cal-slot,
+#home-cal-chrome #home-cal-slot.is-pulling,
+#home-cal-chrome #home-cal-slot.is-settling,
+#home-cal-chrome #home-cal-slot.is-open,
+#home-cal-chrome #home-cal-slot.is-morphing {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  height: var(--home-cal-h, 260px) !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  pointer-events: none;
+  background: transparent !important;
+  z-index: 1;
+  clip-path: none !important;
+  opacity: 0;
+}
+#home-cal-chrome.is-open #home-cal-slot,
+#home-cal-chrome.is-pulling #home-cal-slot,
+#home-cal-chrome.is-settling #home-cal-slot {
+  pointer-events: auto;
+  opacity: 1;
+}
+#home-cal-chrome #home-cal-panel,
+#home-cal-chrome #home-cal-slot .home-cal-panel {
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  transform: none !important;
+}
+#home-cal-chrome .cal-viewport {
+  overflow: visible !important;
+  position: relative;
+}
+#home-cal-chrome .cal-grid,
+#home-cal-chrome #home-cal-slot .cal-grid {
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  grid-auto-rows: var(--home-cal-row-h, 52px) !important;
+  gap: 0 !important;
+  margin: 0 !important;
+}
+
+#home-cal-chrome #home-cal-slot .cal-day {
+  height: var(--home-cal-row-h, 52px) !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+#home-cal-chrome #home-cal-slot .cal-day .cal-day-mark {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1px;
+  width: 100%;
+  height: 100%;
+  padding-top: 2px;
+  box-sizing: border-box;
+  background: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+#home-cal-chrome #home-cal-slot .cal-day.is-today .cal-day-mark,
+#home-cal-chrome #home-cal-slot .cal-day.is-selected .cal-day-mark {
+  background: none !important;
+  box-shadow: none !important;
+}
+#home-cal-chrome #home-cal-slot .cal-day .cal-day-num {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 30px !important;
+  height: 30px !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font: 600 15px/1 var(--font) !important;
+  color: var(--rb-ink, #111216) !important;
+}
+#home-cal-chrome #home-cal-slot .cal-day.is-today:not(.is-selected) .cal-day-num {
+  color: #FF3B30 !important;
+  font-weight: 700 !important;
+  background: transparent !important;
+}
+#home-cal-chrome #home-cal-slot .cal-day.is-selected .cal-day-num,
+#home-cal-chrome #home-cal-slot .cal-day.is-today.is-selected .cal-day-num {
+  background: var(--rb-pill-dark, #1C1D21) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+#home-cal-chrome #home-cal-slot .cal-day.is-outside .cal-day-num { color: #B4B8C0 !important; }
+#home-cal-chrome #home-cal-slot .cal-day.is-outside.is-today:not(.is-selected) .cal-day-num { color: #FF8A84 !important; }
+
+#home-cal-chrome #home-cal-slot .cal-day .cal-day-kcal {
+  display: block !important;
+  min-height: 10px;
+  margin: 0 !important;
+  font: 500 9px/1 var(--font) !important;
+  letter-spacing: -0.2px;
+  color: var(--rb-label, #5E6470) !important;
+  opacity: var(--home-cal-p, 0);
+}
+#home-cal-chrome.is-open #home-cal-slot .cal-day .cal-day-kcal { opacity: 1; }
+#home-cal-chrome #home-cal-slot .cal-day.level-under .cal-day-kcal { color: #3F8F6B !important; }
+#home-cal-chrome #home-cal-slot .cal-day.level-ok .cal-day-kcal { color: #A8862B !important; }
+#home-cal-chrome #home-cal-slot .cal-day.level-over .cal-day-kcal { color: #C25B5B !important; }
+#home-cal-chrome #home-cal-slot .cal-day.is-selected .cal-day-kcal { color: var(--rb-label, #5E6470) !important; }
+#home-cal-chrome #home-cal-slot .cal-day.is-outside .cal-day-kcal { opacity: calc(0.6 * var(--home-cal-p, 0)); }
+
+#home-cal-chrome #home-cal-slot .cal-day .cal-day-dot { display: none !important; }
+#home-cal-chrome #home-cal-slot .cal-day-flags {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 5px;
+  margin-top: -1px;
+  opacity: var(--home-cal-p, 0);
+}
+#home-cal-chrome.is-open #home-cal-slot .cal-day-flags { opacity: 1; }
+#home-cal-chrome #home-cal-slot .cal-day-status,
+#home-cal-chrome #home-cal-slot .cal-day-protein {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: transparent;
+}
+#home-cal-chrome #home-cal-slot .cal-day.level-under .cal-day-status { background: #3F8F6B; }
+#home-cal-chrome #home-cal-slot .cal-day.level-ok .cal-day-status { background: #C9A227; }
+#home-cal-chrome #home-cal-slot .cal-day.level-over .cal-day-status { background: #C25B5B; }
+#home-cal-chrome #home-cal-slot .cal-day.protein-met .cal-day-protein { background: var(--rb-ink); }
+#home-cal-chrome #home-cal-slot .cal-day.is-selected.level-under .cal-day-status { background: #3F8F6B; }
+#home-cal-chrome #home-cal-slot .cal-day.is-selected.level-ok .cal-day-status { background: #C9A227; }
+#home-cal-chrome #home-cal-slot .cal-day.is-selected.level-over .cal-day-status { background: #C25B5B; }
+
+#home-cal-chrome #home-cal-slot .cal-day.is-today::before { content: none !important; display: none !important; }
+
+/* 접힌 자리의 예전 슬롯 규칙은 이제 머리 안에 있으므로 끊는다 */
+body.home-cal-open.home-scrolled #home-cal-slot { position: absolute !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .home-date-line,
+  .home-cal-chrome .home-cal-head,
+  .home-cal-body,
+  #date-strip,
+  #home-cal-chrome .cal-day { transition: none !important; }
+}
