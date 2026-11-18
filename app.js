@@ -11239,7 +11239,8 @@ function setupHomeCalendarPull() {
 }
 
 /* ============================
-   끼니 목록을 가로로 밀면 선택한 날의 하루 리포트. 다시 밀면 목록으로.
+   게이지 카드를 가로로 밀면 한마디(평가+팁)가 같은 높이로 나온다.
+   끼니 목록은 항상 아래에 보인다.
    ============================ */
 let homeDayPage = 0;
 let homeDayPagerWidth = 0;
@@ -11255,13 +11256,13 @@ function setHomeDayPage(page, { animate = true } = {}) {
   track.style.transform = `translate3d(${homeDayPage ? -w : 0}px, 0, 0)`;
   const done = () => {
     pager.classList.remove('is-animating');
-    pager.querySelectorAll('.home-day-page').forEach(el => el.classList.toggle('is-active', el.dataset.page === (homeDayPage ? 'report' : 'meals')));
-    pager.querySelectorAll('.home-day-dot').forEach(dot => {
+    pager.querySelectorAll('.home-day-page').forEach(el => el.classList.toggle('is-active', Number(el.dataset.page) === homeDayPage));
+    document.querySelectorAll('#home-day-dots .home-day-dot').forEach(dot => {
       const on = Number(dot.dataset.page) === homeDayPage;
       dot.classList.toggle('is-active', on);
       if (on) dot.setAttribute('aria-current', 'true'); else dot.removeAttribute('aria-current');
     });
-    if (homeDayPage) renderHomeDayReport();
+    renderHomeDayReport();
     track.removeEventListener('transitionend', done);
   };
   if (go) {
@@ -12091,9 +12092,13 @@ function setAiDockPanel(open) {
     const log = document.getElementById('agent-log');
     if (log) log.scrollTop = log.scrollHeight;
   } else {
+    try { agentInputEl?.blur(); } catch {}
     try { dismissAiDockKeyboard(); } catch {}
+    try { globalThis.Capacitor?.isNativePlatform?.() && globalThis.Capacitor.Plugins?.Keyboard?.hide?.()?.catch?.(() => {}); } catch {}
+    const closeMs = 320;
     const finishClose = () => {
       clearDockMotion();
+      dock.style.opacity = '';
       panel.classList.remove('is-open');
       dock.classList.remove('is-open');
       backdrop.classList.remove('is-open');
@@ -12106,47 +12111,25 @@ function setAiDockPanel(open) {
     };
     if (homeMotion && (document.body.classList.contains('ai-sheet-open') || document.body.classList.contains('ai-sheet-expanding') || document.body.classList.contains('ai-sheet-in'))) {
       const fromY = dockOffsetY();
-      document.body.classList.add('ai-sheet-closing');
+      // 내용(머리·말풍선·입력줄)은 바로 숨기고, 시트만 아래로 밀며 투명해지게 한다. 키보드가 내려가는 동안 잔상이 남지 않게.
+      document.body.classList.add('ai-sheet-closing', 'ai-sheet-drag-close');
       document.body.classList.remove('ai-sheet-open', 'ai-sheet-expanding', 'ai-sheet-in');
+      clearComposerMorph();
+      const h = dock.getBoundingClientRect().height || window.innerHeight || 1;
+      dock.style.transition = 'none';
+      dock.style.transform = `translate3d(0, ${fromY}px, 0)`;
+      dock.style.opacity = '1';
       backdrop.style.transition = 'none';
       backdrop.style.opacity = backdrop.style.opacity || '1';
-      if (fromY > 8) {
-        // 끌어 닫던 중이리면 그 자리에서 아래로 이어서 보낸다.
-        document.body.classList.add('ai-sheet-drag-close');
-        const h = dock.getBoundingClientRect().height || window.innerHeight || 1;
-        dock.style.transition = 'none';
-        dock.style.transform = `translate3d(0, ${fromY}px, 0)`;
-        void dock.offsetWidth;
-        requestAnimationFrame(() => {
-          dock.style.transition = `transform ${motion}ms ${ease}`;
-          dock.style.transform = `translate3d(0, ${Math.ceil(h)}px, 0)`;
-          backdrop.style.transition = 'opacity 0.3s ease';
-          backdrop.style.opacity = '0';
-        });
-      } else {
-        const composer = composerEl();
-        const last = composer?.getBoundingClientRect();
-        const fabRect = dock._fabRect;
-        dock.style.transition = 'none';
-        dock.style.transform = '';
-        void dock.offsetWidth;
-        requestAnimationFrame(() => {
-          backdrop.style.transition = 'opacity 0.3s ease';
-          backdrop.style.opacity = '0';
-          if (composer && last && fabRect && last.width) {
-            const sx = fabRect.width / last.width;
-            const sy = fabRect.height / last.height;
-            const dx = (fabRect.left + fabRect.width / 2) - (last.left + last.width / 2);
-            const dy = (fabRect.top + fabRect.height / 2) - (last.top + last.height / 2);
-            composer.style.transition = `transform ${motion}ms ${ease}, border-radius ${motion}ms ${ease}`;
-            composer.style.transformOrigin = 'center center';
-            composer.style.overflow = 'hidden';
-            composer.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`;
-            composer.style.borderRadius = '50%';
-          }
-        });
-      }
-      panel._closeTimer = setTimeout(finishClose, motion + 20);
+      void dock.offsetWidth;
+      requestAnimationFrame(() => {
+        dock.style.transition = `transform ${closeMs}ms ${ease}, opacity 0.25s ease`;
+        dock.style.transform = `translate3d(0, ${Math.ceil(h)}px, 0)`;
+        dock.style.opacity = '0';
+        backdrop.style.transition = 'opacity 0.22s ease';
+        backdrop.style.opacity = '0';
+      });
+      panel._closeTimer = setTimeout(finishClose, closeMs + 20);
       syncHomeAiChrome();
     } else {
       finishClose();
