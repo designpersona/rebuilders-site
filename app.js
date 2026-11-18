@@ -10428,6 +10428,37 @@ function syncHomeCalChevron(els, prog) {
     : (en ? 'Expand calendar' : '달력 펼치기'));
 }
 
+function fadeHomeCalRows(els, reveal) {
+  if (!els?.panel) return;
+  const fadeOne = (el, top, height) => {
+    if (!el) return;
+    const bottom = top + height;
+    if (reveal >= bottom - 1) el.style.opacity = '1';
+    else if (reveal <= top + 1) el.style.opacity = '0';
+    else el.style.opacity = String(Math.max(0, Math.min(1, (reveal - top) / Math.max(1, height))));
+  };
+  const head = els.head;
+  const headH = head ? head.offsetHeight : 0;
+  if (head) fadeOne(head, 0, headH);
+  const weeks = new Map();
+  els.grid?.querySelectorAll('.cal-day').forEach(cell => {
+    const top = headH + cell.offsetTop;
+    const h = cell.offsetHeight || 42;
+    const key = Math.round(top);
+    if (!weeks.has(key)) weeks.set(key, { top, h, cells: [] });
+    weeks.get(key).cells.push(cell);
+  });
+  weeks.forEach(row => row.cells.forEach(cell => fadeOne(cell, row.top, row.h)));
+  if (els.summary) fadeOne(els.summary, els.summary.offsetTop, els.summary.offsetHeight || 20);
+}
+
+function clearHomeCalRowFade(els) {
+  if (!els) return;
+  els.head && (els.head.style.opacity = '');
+  els.summary && (els.summary.style.opacity = '');
+  els.grid?.querySelectorAll('.cal-day').forEach(cell => { cell.style.opacity = ''; });
+}
+
 function applyHomeCalProgress(p, settling = false) {
   const els = homeCalEls();
   if (!els) return;
@@ -10435,42 +10466,31 @@ function applyHomeCalProgress(p, settling = false) {
   homeCalProgress = prog;
   const H = homeCalHeight || measureHomeCalHeight();
   const stripH = HOME_CAL_STRIP_H;
+  const reveal = Math.max(0, Math.min(H, prog * H));
+  homeCalMorph = prog;
   els.slot.style.setProperty('--home-cal-h', `${H}px`);
+  els.slot.style.setProperty('--home-cal-reveal', `${reveal.toFixed(1)}px`);
   els.slot.setAttribute('aria-hidden', prog <= 0.01 && !homeCalOpen ? 'true' : 'false');
 
   const commitOpen = homeCalOpen && prog >= 0.995 && !settling;
   const commitClosed = !homeCalOpen && !homeCalClosing && prog <= 0.01 && !settling;
-  // 닫힌 채 당길 때는 다음 주만 엿보고(morph 0), 이미 열린 달력을 접을 때는 prog 를 따라 형태가 줄어든다.
-  const morph = (homeCalOpen || homeCalClosing) ? prog : 0;
-  homeCalMorph = morph;
 
   document.body.classList.toggle('home-cal-active', homeCalOpen || homeCalClosing || prog > 0.04);
   document.body.classList.toggle('home-cal-pulling', !commitOpen && !commitClosed && (prog > 0.02 || settling));
   document.body.classList.toggle('home-cal-open', !!(commitOpen || (homeCalOpen && prog >= 0.995 && !homeCalClosing)));
-  // 살짝 엿보는 힌트에서는 입력줄을 그대로 두고, 본격적으로 펼칠 때만 숨긴다
   document.body.classList.toggle('home-cal-dock-hide', homeCalOpen || homeCalClosing || prog > 0.45);
 
   els.home?.classList.toggle('home-cal-dragging', !settling && !commitOpen && !commitClosed);
   els.home?.classList.toggle('home-cal-shifting', settling);
-  els.slot.classList.toggle('is-morphing', morph > 0.02 && !commitOpen);
-
-  if (els.strip) {
-    els.strip.style.opacity = String(Math.max(0, 1 - morph));
-    els.strip.style.pointerEvents = morph > 0.25 ? 'none' : '';
-  }
-  syncHomeCalChevron(els, prog);
 
   if (commitOpen) {
     els.slot.classList.add('is-open');
     els.slot.classList.remove('is-pulling', 'is-settling', 'is-morphing');
-    els.panel.style.transform = '';
-    els.panel.style.clipPath = '';
-    els.slot.style.clipPath = '';
-    if (els.home) els.home.style.transform = '';
-    if (els.chevron) els.chevron.style.transform = '';
+    clearHomeCalInlineStyles(els);
     els.home?.classList.remove('home-cal-dragging', 'home-cal-shifting');
     document.body.classList.add('home-cal-open');
     document.body.classList.remove('home-cal-pulling');
+    syncHomeCalChevron(els, 1);
     return;
   }
   if (commitClosed) {
@@ -10478,25 +10498,31 @@ function applyHomeCalProgress(p, settling = false) {
     return;
   }
 
-  els.slot.classList.remove('is-open');
+  els.slot.classList.remove('is-open', 'is-morphing');
   els.slot.classList.toggle('is-pulling', !settling);
   els.slot.classList.toggle('is-settling', settling);
 
-  const { extraTop, rowH } = homeCalMorphMetrics(els, H);
-  // 접힌 채 엿볼 때는 고른 주 바로 다음 줄이 날짜 줄 아래에 나타난다.
-  const anchor = extraTop + rowH;
-  const tBelow = -anchor;
-  const tMorph = extraTop * (prog - 1) - stripH;
-  const t = tBelow * (1 - morph) + tMorph * morph;
-  els.panel.style.transform = `translate3d(0, ${t.toFixed(2)}px, 0)`;
-  const yBelow = prog * H;
-  const yMorph = (H - stripH) * prog;
-  const yHome = yBelow * (1 - morph) + yMorph * morph;
-  if (els.home) els.home.style.transform = `translate3d(0, ${yHome.toFixed(2)}px, 0)`;
-  const reveal = Math.max(0, Math.min(H, prog * H));
-  const clipBottom = (1 - morph) * Math.max(0, H - reveal);
-  if (clipBottom > 0.5) els.slot.style.clipPath = `inset(0 0 ${clipBottom.toFixed(1)}px 0)`;
-  else els.slot.style.clipPath = '';
+  // 날짜 줄 아래에서 높이가 자라며 칸이 나타난다. 칸을 줄 밑으로 밀어 올리지 않는다.
+  // 아래 내용(오늘로·게이지)은 같은 progress 의 슬롯 높이로 밀린다.
+  els.slot.style.height = `${reveal.toFixed(1)}px`;
+  els.slot.style.marginBottom = '0';
+  els.slot.style.overflow = 'hidden';
+  els.slot.style.clipPath = '';
+  els.panel.style.transform = 'none';
+  els.panel.style.clipPath = '';
+  if (els.home) els.home.style.transform = '';
+  if (els.topHead) {
+    els.topHead.style.height = `${(stripH * (1 - prog)).toFixed(1)}px`;
+    els.topHead.style.opacity = String(Math.max(0, 1 - prog));
+    els.topHead.style.overflow = 'hidden';
+    els.topHead.style.pointerEvents = prog > 0.25 ? 'none' : '';
+  }
+  if (els.strip) {
+    els.strip.style.opacity = String(Math.max(0, 1 - prog));
+    els.strip.style.pointerEvents = prog > 0.25 ? 'none' : '';
+  }
+  fadeHomeCalRows(els, reveal);
+  syncHomeCalChevron(els, prog);
 }
 
 function setHomeCalProgress(p, settling = false) {
@@ -10517,6 +10543,7 @@ function freezeHomeCalTransitions(els) {
   if (els.slot) els.slot.style.transition = 'none';
   if (els.strip) els.strip.style.transition = 'none';
   if (els.chevron) els.chevron.style.transition = 'none';
+  if (els.topHead) els.topHead.style.transition = 'none';
 }
 
 function clearHomeCalInlineStyles(els) {
@@ -10529,6 +10556,7 @@ function clearHomeCalInlineStyles(els) {
     el.style.pointerEvents = '';
     el.style.height = '';
     el.style.marginBottom = '';
+    el.style.overflow = '';
     el.style.transition = '';
   };
   wipe(els.panel);
@@ -10540,6 +10568,14 @@ function clearHomeCalInlineStyles(els) {
     els.strip.style.pointerEvents = '';
     els.strip.style.transition = '';
   }
+  if (els.topHead) {
+    els.topHead.style.height = '';
+    els.topHead.style.opacity = '';
+    els.topHead.style.overflow = '';
+    els.topHead.style.pointerEvents = '';
+    els.topHead.style.transition = '';
+  }
+  clearHomeCalRowFade(els);
 }
 
 function releaseHomeCalScrollLock() {
@@ -10599,7 +10635,7 @@ function homeCalIsMixed(els) {
   els = els || homeCalEls();
   if (!els) return false;
   const midClass = els.slot.classList.contains('is-pulling') || els.slot.classList.contains('is-settling') || els.slot.classList.contains('is-morphing');
-  const midInline = !!(els.home?.style.transform || els.panel?.style.transform || els.slot?.style.clipPath);
+  const midInline = !!(els.home?.style.transform || els.panel?.style.transform || els.slot?.style.clipPath || els.slot?.style.height || els.topHead?.style.height);
   const midFlag = homeCalClosing || (homeCalProgress > 0.01 && homeCalProgress < 0.995);
   const openMismatch = homeCalOpen && !els.slot.classList.contains('is-open');
   const closedMismatch = !homeCalOpen && els.slot.classList.contains('is-open');
@@ -10628,9 +10664,11 @@ function cancelHomeCalTimer() {
   if (slot?._settleEnd) {
     slot.removeEventListener('transitionend', slot._settleEnd);
     slot._panelSettleEnd && slot._panelEl?.removeEventListener('transitionend', slot._panelSettleEnd);
+    slot._headEl?.removeEventListener('transitionend', slot._settleEnd);
     slot._settleEnd = null;
     slot._panelSettleEnd = null;
     slot._panelEl = null;
+    slot._headEl = null;
   }
   if (homeCalRaf) { cancelAnimationFrame(homeCalRaf); homeCalRaf = 0; }
   homeCalPending = null;
@@ -10672,21 +10710,26 @@ function closeHomeCal({ animate = true } = {}) {
     document.body.classList.remove('home-cal-open');
     homeCalProgress = 1;
     applyHomeCalProgress(1, true);
-    els.panel.style.transition = '';
-    if (els.home) els.home.style.transition = '';
+    const ease = 'height 280ms cubic-bezier(.2, .8, .2, 1), opacity 280ms cubic-bezier(.2, .8, .2, 1)';
+    els.slot.style.transition = 'height 280ms cubic-bezier(.2, .8, .2, 1)';
+    if (els.topHead) els.topHead.style.transition = ease;
+    if (els.strip) els.strip.style.transition = 'opacity 280ms cubic-bezier(.2, .8, .2, 1)';
   }
   requestAnimationFrame(() => {
     if (gen !== homeCalSettleGen) return;
     applyHomeCalProgress(0, true);
   });
   const onEnd = ev => {
-    if (ev && ev.target !== els.panel && ev.target !== els.slot && ev.target !== els.home) return;
+    if (ev && ev.target !== els.panel && ev.target !== els.slot && ev.target !== els.home && ev.target !== els.topHead) return;
     finish();
   };
   els.slot._settleEnd = onEnd;
   els.slot._panelSettleEnd = onEnd;
   els.slot._panelEl = els.panel;
+  els.slot._headEl = els.topHead;
   els.panel.addEventListener('transitionend', onEnd);
+  els.slot.addEventListener('transitionend', onEnd);
+  if (els.topHead) els.topHead.addEventListener('transitionend', onEnd);
   els.slot._closeTimer = setTimeout(finish, HOME_MOTION_MS + 80);
 }
 
@@ -10718,18 +10761,25 @@ async function openHomeCal({ animate = true } = {}) {
   if (!animate || reduceMotion()) { finish(); return; }
   const from = homeCalProgress > 0.02 ? homeCalProgress : 0;
   applyHomeCalProgress(from, false);
+  const ease = 'height 280ms cubic-bezier(.2, .8, .2, 1), opacity 280ms cubic-bezier(.2, .8, .2, 1)';
+  els.slot.style.transition = 'height 280ms cubic-bezier(.2, .8, .2, 1)';
+  if (els.topHead) els.topHead.style.transition = ease;
+  if (els.strip) els.strip.style.transition = 'opacity 280ms cubic-bezier(.2, .8, .2, 1)';
   requestAnimationFrame(() => {
     if (gen !== homeCalSettleGen) return;
     applyHomeCalProgress(1, true);
   });
   const onEnd = ev => {
-    if (ev && ev.target !== els.panel && ev.target !== els.slot && ev.target !== els.home) return;
+    if (ev && ev.target !== els.panel && ev.target !== els.slot && ev.target !== els.home && ev.target !== els.topHead) return;
     finish();
   };
   els.slot._settleEnd = onEnd;
   els.slot._panelSettleEnd = onEnd;
   els.slot._panelEl = els.panel;
+  els.slot._headEl = els.topHead;
   els.panel.addEventListener('transitionend', onEnd);
+  els.slot.addEventListener('transitionend', onEnd);
+  if (els.topHead) els.topHead.addEventListener('transitionend', onEnd);
   els.slot._closeTimer = setTimeout(finish, HOME_MOTION_MS + 80);
 }
 
@@ -10840,6 +10890,10 @@ function setupHomeCalPeekHint() {
     const H = measureHomeCalHeight() || 360;
     const peek = Math.min(0.95, HOME_CAL_PEEK_PX / H);
     applyHomeCalProgress(0, false);
+    const ease = 'height 280ms cubic-bezier(.2, .8, .2, 1), opacity 280ms cubic-bezier(.2, .8, .2, 1)';
+    els.slot.style.transition = 'height 280ms cubic-bezier(.2, .8, .2, 1)';
+    if (els.topHead) els.topHead.style.transition = ease;
+    if (els.strip) els.strip.style.transition = 'opacity 280ms cubic-bezier(.2, .8, .2, 1)';
     requestAnimationFrame(() => {
       applyHomeCalProgress(peek, true);
       clearTimeout(els.slot._peekTimer);
@@ -11177,6 +11231,17 @@ function setupHomeCalendarPull() {
     if (!cell?.dataset.key) return;
     selectHomeCalDate(cell.dataset.key);
   });
+
+  if (!home._scrollShadowBound) {
+    home._scrollShadowBound = true;
+    const syncShadow = () => {
+      const on = (home.scrollTop || 0) > 1;
+      document.body.classList.toggle('home-scrolled', on);
+      document.getElementById('top-head')?.classList.toggle('is-scrolled', on);
+    };
+    home.addEventListener('scroll', syncShadow, { passive: true });
+    syncShadow();
+  }
 }
 
 /* ============================
