@@ -16288,3 +16288,299 @@ html.kb-up body.foodex-page #foodex-search-bar.foodex-search-dock,
 body.keyboard-open.foodex-page #foodex-search-bar.foodex-search-dock {
   bottom: 8px !important;
 }
+
+
+/* =====================================================================
+   v75 홈 채팅은 둥근 버튼 + 왼쪽 탭 알약(사진 앱처럼).
+   버튼을 누르면 입력 알약으로 자라고, 오른쪽엔 둥근 X.
+   도움말은 글자 대신 i 아이콘. 진행 배너는 입력/탭 바로 위 작은 유리 알약.
+   카메라·기록·보내기 버튼 크기를 맞추고, 시트에 남던 흰 원 잔상은 없앤다.
+   ===================================================================== */
+:root {
+  --rb-tab-h: 50px;
+}
+
+/* 기록 탭: 탭 알약은 왼쪽, 같은 높이의 둥근 채팅 버튼은 오른쪽 */
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #page-tabs.page-tabs.bottom-tabs {
+  left: var(--rb-tab-inset-x) !important;
+  right: calc(var(--rb-tab-inset-x) + var(--rb-tab-h) + 8px) !important;
+  height: var(--rb-tab-h) !important;
+  min-height: var(--rb-tab-h) !important;
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #ai-fab.ai-fab,
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) .ai-fab {
+  display: inline-flex !important;
+  position: absolute !important;
+  right: var(--rb-tab-inset-x) !important;
+  bottom: var(--rb-tab-bottom) !important;
+  left: auto !important;
+  top: auto !important;
+  z-index: 13;
+  width: var(--rb-tab-h) !important;
+  height: var(--rb-tab-h) !important;
+  min-width: var(--rb-tab-h) !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.82) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: #1C1D21 !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+  backdrop-filter: blur(28px) saturate(180%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 10px 28px rgba(20, 22, 28, 0.12), 0 1px 3px rgba(20, 22, 28, 0.06) !important;
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #ai-fab.ai-fab[hidden] {
+  display: inline-flex !important;
+}
+body.home-page.ai-sheet-open .ai-fab,
+body.home-page.ai-sheet-expanding .ai-fab,
+body.home-page.ai-sheet-closing .ai-fab,
+html.kb-up body.home-page .ai-fab,
+body.home-page.keyboard-open .ai-fab {
+  display: none !important;
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #ai-fab:active {
+  transform: scale(0.96) !important;
+}
+
+/* 접힌 기록 탭에서는 입력줄을 숨긴다. 아래 여백은 탭(+버튼) 높이만 */
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock.home-ai-dock {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  inset: auto !important;
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home {
+  padding-bottom: calc(var(--rb-tab-clear) + 16px) !important;
+}
+body.home-page.has-daylog-banner:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home {
+  padding-bottom: calc(var(--rb-tab-clear) + 52px) !important;
+}
+body.home-page.home-cal-open:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home,
+body.home-page.home-cal-dock-hide:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home {
+  padding-bottom: calc(var(--rb-tab-clear) + 16px) !important;
+}
+
+/* 시트: [입력 카드] [둥근 X], 키보드는 바로 아래 */
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-bar {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  gap: 8px !important;
+  left: 14px !important;
+  right: 14px !important;
+  width: auto !important;
+  padding: 10px 0 calc(10px + var(--safe-bottom, 0px)) 0 !important;
+  background: transparent !important;
+  background-image: linear-gradient(to top, rgba(255, 255, 255, 0.88) 30%, rgba(255, 255, 255, 0)) !important;
+  transform: none !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-composer,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-composer,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-composer {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock #ai-dock-panel-close.ai-dock-close-x,
+body.home-page.ai-sheet-expanding #home-ai-dock #ai-dock-panel-close.ai-dock-close-x,
+body.home-page.ai-sheet-closing #home-ai-dock #ai-dock-panel-close.ai-dock-close-x {
+  display: inline-flex !important;
+  position: relative !important;
+  flex: 0 0 50px !important;
+  width: 50px !important;
+  height: 50px !important;
+  min-width: 50px !important;
+  margin: 0 0 2px !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: #1C1D21 !important;
+  border: 1px solid rgba(255, 255, 255, 0.86) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 4px 14px rgba(20, 22, 28, 0.10) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+}
+body.home-page.ai-sheet-expanding:not(.ai-sheet-in) #home-ai-dock #ai-dock-panel-close,
+body.home-page.ai-sheet-closing #home-ai-dock #ai-dock-panel-close {
+  opacity: 0;
+  transform: scale(0.6);
+}
+body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock #ai-dock-panel-close,
+body.home-page.ai-sheet-open #home-ai-dock #ai-dock-panel-close {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 머리: 도움말 글자 대신 i 아이콘, X 와 같은 크기, 한 줄로 */
+#home-ai-dock .ai-dock-panel-head {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  min-width: 0;
+}
+#home-ai-dock .ai-dock-panel-head > strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#home-ai-dock .ai-dock-panel-actions {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  flex: 0 0 auto !important;
+  gap: 8px !important;
+  white-space: nowrap !important;
+}
+#home-ai-dock #agent-help.ai-dock-help-i {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  flex: 0 0 36px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: #1C1D21 !important;
+  border: 1px solid rgba(255, 255, 255, 0.86) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 4px 14px rgba(20, 22, 28, 0.10) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  font: inherit !important;
+  white-space: nowrap !important;
+}
+
+/* 카메라·기록·보내기: 같은 36px */
+#home-ai-dock #ai-photo.ai-dock-icon,
+#home-ai-dock #ai-dock-history.ai-dock-history,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-icon,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-history,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-send,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-send.is-empty,
+#home-ai-dock #agent-send.ai-dock-send,
+#home-ai-dock #agent-send.ai-dock-send.is-empty {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  flex: 0 0 36px !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+#home-ai-dock #ai-photo.ai-dock-icon,
+#home-ai-dock #ai-dock-history.ai-dock-history {
+  background: transparent !important;
+  color: #5E6470 !important;
+}
+#home-ai-dock #agent-send.ai-dock-send.is-empty {
+  background: rgba(28, 29, 33, 0.10) !important;
+  color: #9AA0A8 !important;
+}
+#home-ai-dock #agent-send.ai-dock-send:not(.is-empty) {
+  background: #1C1D21 !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(20, 22, 28, 0.22) !important;
+}
+
+/* 시트 흰 원·잔상 제거 */
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock::before,
+body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock::before,
+body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock::before {
+  background: #fff !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  opacity: 1;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-panel,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-panel {
+  background: #fff !important;
+  box-shadow: none !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel::before,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-panel::before,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-panel::before,
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel::after,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-panel::after,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-panel::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* 진행 토스트: 탭+채팅 버튼 바로 위, 같은 너비의 작은 유리 알약 */
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) .phone-frame > .daylog-banner {
+  left: var(--rb-tab-inset-x) !important;
+  right: var(--rb-tab-inset-x) !important;
+  bottom: calc(var(--rb-tab-clear) + 8px) !important;
+  min-height: 0 !important;
+  padding: 8px 10px 8px 14px !important;
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: #1C1D21 !important;
+  border: 1px solid rgba(255, 255, 255, 0.86) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 8px 24px rgba(20, 22, 28, 0.12) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(160%) !important;
+  backdrop-filter: blur(24px) saturate(160%) !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 8px !important;
+  overflow: hidden !important;
+}
+body.home-page:not(.ai-sheet-open) .phone-frame > .daylog-banner .daylog-banner-main {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  align-items: center !important;
+}
+body.home-page:not(.ai-sheet-open) .phone-frame > .daylog-banner .daylog-banner-title {
+  -webkit-line-clamp: 1 !important;
+  white-space: nowrap;
+  display: block !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.home-page:not(.ai-sheet-open) .phone-frame > .daylog-banner .daylog-banner-body { display: none !important; }
+body.home-page:not(.ai-sheet-open) .phone-frame > .daylog-banner .daylog-banner-actions {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  margin: 0 !important;
+  order: 0 !important;
+  align-self: center !important;
+}
+body.home-page:not(.ai-sheet-open) .phone-frame > .daylog-banner .daylog-banner-action {
+  padding: 5px 10px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) .phone-frame > .bridge-pending {
+  left: var(--rb-tab-inset-x) !important;
+  right: var(--rb-tab-inset-x) !important;
+  bottom: calc(var(--rb-tab-clear) + 8px) !important;
+  transform: none !important;
+  width: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.home-page #ai-fab,
+  #home-ai-dock .ai-dock-composer,
+  #home-ai-dock #ai-dock-panel-close {
+    transition: none !important;
+  }
+}

@@ -11386,7 +11386,8 @@ function renderHomeDayReport() {
 function setupHomeChatSheetOpen() {
   const open = () => {
     if (activeView !== 'home') return;
-    if (!document.body.classList.contains('ai-sheet-open')) setAiDockPanel(true);
+    if (document.body.classList.contains('ai-sheet-open') || document.body.classList.contains('ai-sheet-expanding') || document.body.classList.contains('ai-sheet-in') || document.body.classList.contains('ai-sheet-closing')) return;
+    setAiDockPanel(true);
   };
   agentInputEl?.addEventListener('focus', open);
   document.getElementById('ai-dock-form')?.addEventListener('pointerdown', event => {
@@ -11968,7 +11969,7 @@ function syncHomeAiChrome(view = activeView) {
   if (onHome) {
     if (dock) dock.hidden = false;
     document.body.classList.add('has-ai-dock');
-    if (fab && !sheetOpen) { fab.hidden = true; fab.setAttribute('aria-expanded', 'false'); }
+    if (fab && !sheetOpen) { fab.hidden = false; fab.setAttribute('aria-expanded', 'false'); }
     if (history) history.hidden = false;
   } else if (!sheetOpen) {
     if (dock) dock.hidden = true;
@@ -11994,8 +11995,7 @@ function setAiDockPanel(open) {
     dock.parentElement?.insertBefore(backdrop, dock);
   }
   clearTimeout(panel._closeTimer);
-  // 입력 알약이 제자리에서 시트로 자라고, X 는 튕기며 나타난다.
-  // transform/opacity 만 쓰고, 곡선은 iOS Liquid Glass 스프링.
+  // 홈의 둥근 채팅 버튼이 입력 알약으로 자라고, X 는 옆에 튕기며 나타난다.
   const motion = 480;
   const ease = 'cubic-bezier(0.32, 0.72, 0, 1)';
   const homeMotion = activeView === 'home' && !reduceMotion();
@@ -12003,11 +12003,44 @@ function setAiDockPanel(open) {
     const m = /translate3d\(\s*[^,]+,\s*([\-\d.]+)px/i.exec(dock.style.transform || '');
     return m ? parseFloat(m[1]) : 0;
   };
+  const composerEl = () => dock.querySelector('.ai-dock-composer');
+  const rememberChatFabRect = () => {
+    if (fab && !fab.hidden && fab.offsetWidth) dock._fabRect = fab.getBoundingClientRect();
+    return dock._fabRect || null;
+  };
+  const clearComposerMorph = () => {
+    const composer = composerEl();
+    if (!composer) return;
+    composer.style.transform = '';
+    composer.style.transition = '';
+    composer.style.borderRadius = '';
+    composer.style.overflow = '';
+    composer.style.transformOrigin = '';
+  };
   const clearDockMotion = () => {
     dock.style.transform = '';
     dock.style.transition = '';
     backdrop.style.opacity = '';
     backdrop.style.transition = '';
+    clearComposerMorph();
+  };
+  const flipComposer = (fromRect, invert) => {
+    const composer = composerEl();
+    if (!composer || !fromRect) return false;
+    const last = composer.getBoundingClientRect();
+    if (!last.width || !last.height) return false;
+    const sx = fromRect.width / last.width;
+    const sy = fromRect.height / last.height;
+    const dx = (fromRect.left + fromRect.width / 2) - (last.left + last.width / 2);
+    const dy = (fromRect.top + fromRect.height / 2) - (last.top + last.height / 2);
+    composer.style.transition = 'none';
+    composer.style.transformOrigin = 'center center';
+    composer.style.overflow = 'hidden';
+    if (invert) {
+      composer.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`;
+      composer.style.borderRadius = '50%';
+    }
+    return { composer, dx, dy, sx, sy };
   };
   if (open) {
     dock.hidden = false;
@@ -12024,6 +12057,7 @@ function setAiDockPanel(open) {
       document.body.classList.add('ai-sheet-open');
     };
     if (homeMotion) {
+      const fabRect = rememberChatFabRect();
       document.body.classList.remove('ai-sheet-open', 'ai-sheet-closing', 'ai-sheet-in');
       document.body.classList.add('ai-sheet-expanding');
       backdrop.classList.remove('is-open');
@@ -12032,15 +12066,25 @@ function setAiDockPanel(open) {
       backdrop.style.transition = 'none';
       backdrop.style.opacity = '0';
       void dock.offsetWidth;
+      const flipped = flipComposer(fabRect, true);
       requestAnimationFrame(() => {
         backdrop.style.transition = 'opacity 0.3s ease';
         backdrop.style.opacity = '1';
+        if (flipped) {
+          flipped.composer.style.transition = `transform ${motion}ms ${ease}, border-radius ${motion}ms ${ease}`;
+          flipped.composer.style.transform = 'translate3d(0, 0, 0) scale(1, 1)';
+          flipped.composer.style.borderRadius = '';
+        }
         document.body.classList.add('ai-sheet-in');
+        try { agentInputEl?.focus({ preventScroll: true }); } catch { try { agentInputEl?.focus(); } catch {} }
       });
       panel._closeTimer = setTimeout(finishOpen, motion + 20);
     } else {
       backdrop.classList.add('is-open');
       finishOpen();
+      if (activeView === 'home') {
+        try { agentInputEl?.focus({ preventScroll: true }); } catch { try { agentInputEl?.focus(); } catch {} }
+      }
     }
     if (globalThis.RebuildersBridge?.getQueue().length) processBridgeQueue({ fresh: true });
     renderAgentEmpty();
@@ -12080,12 +12124,26 @@ function setAiDockPanel(open) {
           backdrop.style.opacity = '0';
         });
       } else {
+        const composer = composerEl();
+        const last = composer?.getBoundingClientRect();
+        const fabRect = dock._fabRect;
         dock.style.transition = 'none';
         dock.style.transform = '';
         void dock.offsetWidth;
         requestAnimationFrame(() => {
           backdrop.style.transition = 'opacity 0.3s ease';
           backdrop.style.opacity = '0';
+          if (composer && last && fabRect && last.width) {
+            const sx = fabRect.width / last.width;
+            const sy = fabRect.height / last.height;
+            const dx = (fabRect.left + fabRect.width / 2) - (last.left + last.width / 2);
+            const dy = (fabRect.top + fabRect.height / 2) - (last.top + last.height / 2);
+            composer.style.transition = `transform ${motion}ms ${ease}, border-radius ${motion}ms ${ease}`;
+            composer.style.transformOrigin = 'center center';
+            composer.style.overflow = 'hidden';
+            composer.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`;
+            composer.style.borderRadius = '50%';
+          }
         });
       }
       panel._closeTimer = setTimeout(finishClose, motion + 20);
@@ -12108,7 +12166,9 @@ function refreshAiDockToggle() {
   const history = document.getElementById('ai-dock-history');
   if (history) { history.hidden = activeView !== 'home'; history.dataset.count = String(count); }
   const fab = document.getElementById('ai-fab');
-  if (fab && !document.body.classList.contains('ai-sheet-open')) fab.hidden = activeView === 'home';
+  if (fab && !document.body.classList.contains('ai-sheet-open') && !document.body.classList.contains('ai-sheet-expanding') && !document.body.classList.contains('ai-sheet-closing')) {
+    fab.hidden = false;
+  }
 }
 document.getElementById('ai-dock-toggle')?.addEventListener('click', () => setAiDockPanel(true));
 document.getElementById('ai-fab')?.addEventListener('click', () => setAiDockPanel(true));
