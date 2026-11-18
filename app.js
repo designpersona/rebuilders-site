@@ -11881,8 +11881,10 @@ if (!VOICE_ENABLED) document.getElementById('agent-voice')?.setAttribute('hidden
    iOS 한글 입력(조합 중)은 input 이벤트가 늦을 수 있어 여러 이벤트에서 확인 */
 function refreshAiDockInputSize() {
   if (!agentInputEl || agentInputEl.tagName !== 'TEXTAREA') return;
-  agentInputEl.style.height = '0px';
-  agentInputEl.style.height = `${Math.min(132, Math.max(28, agentInputEl.scrollHeight))}px`;
+  const line = parseFloat(getComputedStyle(agentInputEl).lineHeight) || 23;
+  const max = Math.round(line * 5);
+  agentInputEl.style.height = 'auto';
+  agentInputEl.style.height = `${Math.min(max, Math.max(Math.round(line), agentInputEl.scrollHeight))}px`;
 }
 
 function refreshAiDockSend() {
@@ -12242,7 +12244,8 @@ const PAGE_SWIPE_DISABLED = true;
   const setBar = (g, transition) => {
     const b = bar(); if (!b || !g) return;
     b.style.transition = transition;
-    b.style.transform = `translateX(${g.left}px) scaleX(${g.width / 100})`;
+    b.style.width = `${g.width}px`;
+    b.style.transform = `translate3d(${g.left}px, 0, 0)`;
   };
   const trackBar = (fromView, toView, p) => {
     const a = tabGeom(tabFor(fromView)); const b = tabGeom(tabFor(toView));
@@ -13950,12 +13953,10 @@ function movePageTabIndicator(instant = false) {
   if (!tab || !tab.offsetWidth) { bar.style.opacity = '0'; return; }
   if (instant) bar.classList.add('no-anim');
   bar.style.opacity = '1';
-  // 밑줄: 아이콘 왼쪽 끝 ~ 글자 오른쪽 끝 (글자 위치는 그대로, 밑줄만 왼쪽으로 늘어남)
-  const icon = tab.querySelector('.page-tab-icon');
-  const iconLeft = icon && icon.offsetWidth ? Math.min(0, icon.offsetLeft) : 0;
-  const left = tab.offsetLeft + iconLeft;
-  const width = tab.offsetWidth - iconLeft;
-  bar.style.transform = `translateX(${left}px) scaleX(${width / 100})`;
+  const left = tab.offsetLeft;
+  const width = tab.offsetWidth;
+  bar.style.width = `${width}px`;
+  bar.style.transform = `translate3d(${left}px, 0, 0)`;
   // 좁은 화면에서 탭 줄이 가로로 넘치면 고른 탭이 보이게 살짝 굴림
   if (nav.scrollWidth > nav.clientWidth + 1) {
     const pad = 16;

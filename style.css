@@ -15838,3 +15838,453 @@ body.home-page.ai-sheet-open #home-ai-dock #ai-dock-panel-close {
     transform: none !important;
   }
 }
+
+
+/* =====================================================================
+   v74 채팅 한 장 입력칸 + 토스형 아래 탭.
+   입력은 가로로 넓은 유리 카드 하나(위 글상자, 아래 카메라·기록·보내기).
+   닫기(X)는 시트 머리 오른쪽. 제안 칩은 입력칸 바로 위, 왼쪽 정렬.
+   아래 탭은 양쪽 여백을 둔 둥근 유리 알약, 고른 칸은 캡슐이 스프링으로 미끄러짐.
+   ===================================================================== */
+:root {
+  --rb-tab-inset-x: 16px;
+  --rb-tab-lift: 10px;
+  --rb-tab-h: 58px;
+  --rb-tab-bottom: calc(var(--rb-tab-lift) + var(--safe-bottom, 0px));
+  --rb-tab-clear: calc(var(--rb-tab-bottom) + var(--rb-tab-h) + 8px);
+  --rb-composer-gap: 8px;
+}
+
+/* ----- 토스형 떠 있는 탭 알약 ----- */
+#page-tabs.page-tabs.bottom-tabs {
+  position: absolute !important;
+  left: var(--rb-tab-inset-x) !important;
+  right: var(--rb-tab-inset-x) !important;
+  bottom: var(--rb-tab-bottom) !important;
+  top: auto !important;
+  z-index: 12;
+  order: 99;
+  flex: none !important;
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0 !important;
+  height: var(--rb-tab-h) !important;
+  min-height: var(--rb-tab-h) !important;
+  padding: 4px !important;
+  border: 1px solid rgba(255, 255, 255, 0.82) !important;
+  border-radius: 22px !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+  backdrop-filter: blur(28px) saturate(180%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 10px 28px rgba(20, 22, 28, 0.12), 0 1px 3px rgba(20, 22, 28, 0.06) !important;
+  overflow: hidden !important;
+}
+#page-tabs.bottom-tabs .page-tab-indicator {
+  display: block !important;
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  height: auto !important;
+  width: 20%;
+  border-radius: 18px !important;
+  background: rgba(28, 29, 33, 0.08) !important;
+  transform-origin: 0 0;
+  pointer-events: none;
+  z-index: 0;
+  transition: transform 480ms cubic-bezier(0.22, 1.18, 0.36, 1), width 480ms cubic-bezier(0.22, 1.18, 0.36, 1), opacity 0.2s ease;
+}
+#page-tabs.bottom-tabs .page-tab-indicator.no-anim { transition: none !important; }
+#page-tabs.bottom-tabs .nav-item.page-tab {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0 !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  padding: 2px 2px 3px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px;
+  color: #8A8F99 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+#page-tabs.bottom-tabs .nav-item.page-tab.active { color: #1C1D21 !important; }
+#page-tabs.bottom-tabs .page-tab-ico { width: 22px; height: 22px; display: block; flex: none; }
+#page-tabs.bottom-tabs .page-tab-label {
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: hidden !important;
+  clip: auto !important;
+  clip-path: none !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  font: 600 9px/1.15 var(--font) !important;
+  letter-spacing: -0.04em;
+  color: inherit !important;
+}
+body.keyboard-open #page-tabs.bottom-tabs,
+html.kb-up #page-tabs.bottom-tabs,
+body.home-page.ai-sheet-open #page-tabs,
+body.home-page.ai-sheet-expanding #page-tabs,
+body.home-page.ai-sheet-closing #page-tabs {
+  display: none !important;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #page-tabs.page-tabs.bottom-tabs { background: rgba(255, 255, 255, 0.94) !important; }
+}
+
+/* 페이지 내용이 떠 있는 탭·입력칸 뒤로 지나가게 아래 여백 */
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home {
+  padding-bottom: calc(var(--rb-tab-clear) + 118px) !important;
+}
+body.home-page.has-daylog-banner:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home {
+  padding-bottom: calc(var(--rb-tab-clear) + 118px + var(--rb-banner-h, 72px)) !important;
+}
+body.home-page.home-cal-open:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home,
+body.home-page.home-cal-dock-hide:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home {
+  padding-bottom: calc(var(--rb-tab-clear) + 16px) !important;
+}
+#view-stats,
+#view-profile,
+#view-search {
+  padding-bottom: calc(var(--rb-tab-clear) + 16px) !important;
+}
+body.foodex-page #view-search { padding-bottom: 0 !important; }
+#view-search[data-hub-mode="foodex"] .foodex-library-scroll {
+  padding-bottom: calc(var(--rb-tab-clear) + 72px) !important;
+}
+
+/* 식도감 검색줄은 모양은 그대로, 떠 있는 탭 위에만 앉힘 */
+body.foodex-page #foodex-search-bar.foodex-search-dock {
+  position: absolute !important;
+  left: 14px !important;
+  right: 14px !important;
+  bottom: var(--rb-tab-clear) !important;
+  top: auto !important;
+  width: auto !important;
+  background: transparent !important;
+  padding: 0 0 8px !important;
+  z-index: 11;
+}
+
+/* ----- 기록 탭: 가로로 넓은 유리 입력 카드 ----- */
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock.home-ai-dock {
+  position: absolute !important;
+  inset: auto 14px var(--rb-tab-clear) 14px !important;
+  top: auto !important;
+  bottom: var(--rb-tab-clear) !important;
+  left: 14px !important;
+  right: 14px !important;
+  width: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  z-index: 11;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  transform: none !important;
+  pointer-events: none;
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock.home-ai-dock::before {
+  content: none !important;
+  display: none !important;
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock .ai-dock-bar,
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock .ai-dock-composer {
+  pointer-events: auto;
+}
+html.kb-up body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock.home-ai-dock,
+body.home-page.keyboard-open:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock.home-ai-dock {
+  position: absolute !important;
+  left: 14px !important;
+  right: 14px !important;
+  bottom: 8px !important;
+  top: auto !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+#home-ai-dock .ai-dock-bar {
+  display: block !important;
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  gap: 0 !important;
+}
+#home-ai-dock .ai-dock-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 12px 10px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+  backdrop-filter: blur(28px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.86) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 10px 28px rgba(20, 22, 28, 0.10), 0 1px 3px rgba(20, 22, 28, 0.06) !important;
+}
+#home-ai-dock .ai-dock-capsule {
+  display: block !important;
+  flex: none !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 4px 4px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+#home-ai-dock .ai-dock-capsule:focus-within {
+  background: transparent !important;
+  border: 0 !important;
+}
+#home-ai-dock .ai-dock-lead { display: none !important; }
+#home-ai-dock #agent-input.ai-dock-input {
+  display: block;
+  width: 100%;
+  min-height: 24px;
+  max-height: calc(1.35em * 5);
+  padding: 2px 2px 6px !important;
+  margin: 0;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--rb-ink, #1C1D21) !important;
+  font: 400 17px/1.35 var(--font) !important;
+  resize: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+#home-ai-dock #agent-input.ai-dock-input::placeholder {
+  color: #A3A8B3 !important;
+  font-weight: 400 !important;
+  opacity: 1;
+  white-space: nowrap;
+}
+#home-ai-dock #agent-input.ai-dock-input:placeholder-shown {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#home-ai-dock .ai-dock-composer-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+}
+#home-ai-dock .ai-dock-composer-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+#home-ai-dock .ai-dock-composer-tools .ai-dock-icon,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-history,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-send,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-send.is-empty {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  flex: 0 0 36px !important;
+  border-radius: 50% !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  padding: 0 !important;
+}
+#home-ai-dock .ai-dock-composer-tools .ai-dock-icon,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-history {
+  background: transparent !important;
+  color: #5E6470 !important;
+}
+#home-ai-dock .ai-dock-composer-tools .ai-dock-send.is-empty {
+  background: rgba(28, 29, 33, 0.10) !important;
+  color: #9AA0A8 !important;
+}
+#home-ai-dock .ai-dock-composer-tools .ai-dock-send:not(.is-empty) {
+  background: #1C1D21 !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(20, 22, 28, 0.22) !important;
+}
+#home-ai-dock .ai-dock-composer-tools svg { width: 18px; height: 18px; }
+
+/* 시트: 입력 카드는 떠 있고, X 는 머리 오른쪽 유리 원 */
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-bar {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  z-index: 2;
+  width: auto !important;
+  margin: 0 !important;
+  padding: 0 0 calc(10px + var(--safe-bottom, 0px)) 0 !important;
+  background: transparent !important;
+  background-image: linear-gradient(to top, rgba(255, 255, 255, 0.82) 35%, rgba(255, 255, 255, 0)) !important;
+}
+html.kb-up body.home-page.ai-sheet-open #home-ai-dock .ai-dock-bar,
+body.home-page.keyboard-open.ai-sheet-open #home-ai-dock .ai-dock-bar,
+html.kb-up body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-bar,
+body.home-page.keyboard-open.ai-sheet-expanding #home-ai-dock .ai-dock-bar {
+  padding-bottom: 8px !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-log,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-log,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-log {
+  padding-bottom: calc(136px + var(--safe-bottom, 0px)) !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel-head,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-panel-head,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-panel-head {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 16px 12px !important;
+  position: relative;
+  z-index: 2;
+}
+#home-ai-dock .ai-dock-panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+#home-ai-dock #ai-dock-panel-close.ai-dock-close-x {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: var(--rb-ink, #1C1D21) !important;
+  border: 1px solid rgba(255, 255, 255, 0.86) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 4px 14px rgba(20, 22, 28, 0.10) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  padding: 0 !important;
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock #ai-dock-panel-close {
+  display: none !important;
+}
+
+/* 제안 칩: 입력칸 바로 위, 왼쪽 정렬 */
+#home-ai-dock .ai-dock-log:has(.agent-empty) {
+  display: flex !important;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+#home-ai-dock .agent-empty {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 16px 12px;
+}
+#home-ai-dock .agent-empty-lead {
+  flex: none;
+  margin: 0 0 2px;
+  text-align: left;
+}
+#home-ai-dock .agent-example {
+  align-self: flex-start;
+  display: inline-flex;
+  max-width: 100%;
+}
+
+/* 시트 열림: 입력 카드는 탭 높이만큼만 내려가고, 시트는 그 둘레로 자람 */
+body.home-page.ai-sheet-expanding:not(.ai-sheet-in) #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-closing:not(.ai-sheet-drag-close) #home-ai-dock .ai-dock-bar {
+  transform: translate3d(0, calc(-1 * (var(--rb-tab-h) + 8px)), 0);
+}
+body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-bar {
+  transform: translate3d(0, 0, 0);
+}
+
+/* 누름 스프링: 카드·안쪽 버튼·탭·칩 */
+#home-ai-dock .ai-dock-composer,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-icon,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-history,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-send,
+#home-ai-dock #ai-dock-panel-close,
+#home-ai-dock .agent-example,
+#home-ai-dock .agent-confirm,
+#page-tabs.bottom-tabs .nav-item.page-tab {
+  transition: transform 420ms cubic-bezier(0.22, 1.18, 0.36, 1), background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+#home-ai-dock .ai-dock-composer-tools .ai-dock-icon:active,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-history:active,
+#home-ai-dock .ai-dock-composer-tools .ai-dock-send:active,
+#home-ai-dock #ai-dock-panel-close:active,
+#home-ai-dock .agent-example:active,
+#home-ai-dock .agent-confirm:active,
+#page-tabs.bottom-tabs .nav-item.page-tab:active {
+  transform: scale(0.96) !important;
+  scale: none !important;
+  transition-duration: 0.12s !important;
+  transition-timing-function: ease-out !important;
+}
+
+/* 배너·토스트는 떠 있는 탭+입력칸 위에 */
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) .phone-frame > .daylog-banner,
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) .phone-frame > .bridge-pending {
+  bottom: calc(var(--rb-tab-clear) + 110px + 12px) !important;
+}
+.toast-host {
+  bottom: calc(var(--rb-tab-clear) + 16px) !important;
+}
+body.home-page:not(.ai-sheet-open) .toast-host,
+body.has-ai-dock .toast-host {
+  bottom: calc(var(--rb-tab-clear) + 118px + 8px) !important;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #home-ai-dock .ai-dock-composer { background: rgba(255, 255, 255, 0.94) !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #page-tabs.bottom-tabs .page-tab-indicator,
+  #home-ai-dock .ai-dock-composer,
+  #home-ai-dock .ai-dock-composer-tools .ai-dock-icon,
+  #home-ai-dock .ai-dock-composer-tools .ai-dock-history,
+  #home-ai-dock .ai-dock-composer-tools .ai-dock-send,
+  #home-ai-dock #ai-dock-panel-close,
+  #page-tabs.bottom-tabs .nav-item.page-tab {
+    transition: none !important;
+  }
+  #home-ai-dock .ai-dock-composer:active,
+  #home-ai-dock .ai-dock-composer-tools .ai-dock-icon:active,
+  #home-ai-dock .ai-dock-composer-tools .ai-dock-history:active,
+  #home-ai-dock .ai-dock-composer-tools .ai-dock-send:active,
+  #home-ai-dock #ai-dock-panel-close:active,
+  #page-tabs.bottom-tabs .nav-item.page-tab:active {
+    transform: none !important;
+  }
+}
+
+html.kb-up body.foodex-page #foodex-search-bar.foodex-search-dock,
+body.keyboard-open.foodex-page #foodex-search-bar.foodex-search-dock {
+  bottom: 8px !important;
+}
