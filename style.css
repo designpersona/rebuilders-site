@@ -15403,3 +15403,55 @@ html.kb-up body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock,
 body.home-page.keyboard-open.ai-sheet-expanding #home-ai-dock.home-ai-dock {
   padding-bottom: 8px !important;
 }
+
+
+/* =====================================================================
+   v70 기록 탭: 셰브론 숨김, 고른 날은 요일(수요일)로 표시.
+   채팅 시트 모션은 음식 추가 시트와 같다
+   (transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1), 높이 애니메이션 없음).
+   ===================================================================== */
+#home-cal-chevron,
+body.home-page #home-cal-chevron,
+body:not(.home-page) #home-cal-chevron {
+  display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* 날짜 헤더는 고른 날의 요일. '오늘로' 알약은 오늘이 아닐 때만 */
+body #view-home#view-home .date-header .date-display .date-text {
+  display: inline !important;
+  font: 700 15px/1.2 var(--font) !important;
+  color: var(--rb-ink) !important;
+  margin: 0 !important;
+}
+body #view-home#view-home .date-header .date-display {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+/* 음식 추가 시트(.modal-sheet / .food-pick-detail)와 같은 열림·닫힘 */
+body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock,
+body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock,
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock,
+body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock.home-ai-dock {
+  transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock { transform: translate3d(0, 100%, 0) !important; }
+body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock.home-ai-dock,
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock { transform: translate3d(0, 0, 0) !important; }
+body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock { transform: translate3d(0, 100%, 0) !important; }
+.ai-sheet-backdrop {
+  transition: opacity 0.25s ease !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock,
+  body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock,
+  body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock,
+  .ai-sheet-backdrop { transition: none !important; }
+}
