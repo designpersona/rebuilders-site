@@ -16745,3 +16745,177 @@ body.home-page.ai-sheet-closing.ai-sheet-drag-close #home-ai-dock.home-ai-dock {
   overflow: hidden !important;
   pointer-events: none !important;
 }
+
+
+/* =====================================================================
+   v78 모든 탭의 하단을 기록 탭과 같게: 왼쪽 유리 탭 알약 + 오른쪽 같은 높이
+   유리 기록 버튼(검정·떠 있는 원 없음). 채팅 열고 닫는 모션도 같다.
+   아이콘은 X 앱처럼 24px 격자, 선 두께 2, 둥근 끝, 고른 탭은 채워진 모양.
+   ===================================================================== */
+
+/* 탭 아이콘: 고르지 않으면 선, 고르면 채움 */
+#page-tabs.bottom-tabs .page-tab-ico { width: 24px; height: 24px; display: block; flex: none; }
+#page-tabs.bottom-tabs .page-tab .ico-fill { display: none; }
+#page-tabs.bottom-tabs .page-tab .ico-line { display: inline; }
+#page-tabs.bottom-tabs .page-tab.active .ico-line { display: none; }
+#page-tabs.bottom-tabs .page-tab.active .ico-fill { display: inline; }
+
+.nav-btn svg, .meal-page-back svg { width: 20px; height: 20px; }
+.add-btn svg, .add-btn-sm svg, #collection-create svg, .meal-page-add svg { width: 16px; height: 16px; }
+#ai-fab svg { width: 22px; height: 22px; display: block; }
+#home-ai-dock #ai-photo svg,
+#home-ai-dock #ai-dock-history svg,
+#home-ai-dock #agent-send svg,
+#foodex-search-bar svg { width: 18px; height: 18px; }
+#home-ai-dock #ai-dock-panel-close svg,
+#home-ai-dock #agent-help svg,
+.modal-x-btn svg { width: 20px; height: 20px; }
+
+/* 모든 메인 탭: 알약은 왼쪽, 유리 기록 버튼은 오른쪽 같은 줄 */
+body:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) #page-tabs.page-tabs.bottom-tabs {
+  left: var(--rb-tab-inset-x) !important;
+  right: calc(var(--rb-tab-inset-x) + var(--rb-tab-h) + 8px) !important;
+  height: var(--rb-tab-h) !important;
+  min-height: var(--rb-tab-h) !important;
+}
+body:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) #ai-fab.ai-fab,
+body:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) .ai-fab,
+body.foodex-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) #ai-fab.ai-fab,
+body.foodex-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) .ai-fab {
+  display: inline-flex !important;
+  position: absolute !important;
+  right: var(--rb-tab-inset-x) !important;
+  bottom: var(--rb-tab-bottom) !important;
+  left: auto !important;
+  top: auto !important;
+  z-index: 13;
+  width: var(--rb-tab-h) !important;
+  height: var(--rb-tab-h) !important;
+  min-width: var(--rb-tab-h) !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.82) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: #1C1D21 !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+  backdrop-filter: blur(28px) saturate(180%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 10px 28px rgba(20, 22, 28, 0.12), 0 1px 3px rgba(20, 22, 28, 0.06) !important;
+}
+body:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) #ai-fab:active {
+  transform: scale(0.96) !important;
+}
+
+/* 시트·키보드·상세가 열리면 기록 버튼과 탭을 숨김 (모든 탭) */
+body.ai-sheet-open #page-tabs,
+body.ai-sheet-expanding #page-tabs,
+body.ai-sheet-closing #page-tabs,
+body.keyboard-open #page-tabs.bottom-tabs,
+html.kb-up #page-tabs.bottom-tabs {
+  display: none !important;
+}
+body.ai-sheet-open .ai-fab,
+body.ai-sheet-expanding .ai-fab,
+body.ai-sheet-closing .ai-fab,
+html.kb-up .ai-fab,
+body.keyboard-open .ai-fab,
+body.meal-page-open .ai-fab,
+body.food-dex-open .ai-fab {
+  display: none !important;
+}
+
+/* 다른 탭에서도 시트를 기록 탭과 같은 전체 화면·모션으로 */
+body.ai-sheet-open #home-ai-dock.home-ai-dock,
+body.ai-sheet-expanding #home-ai-dock.home-ai-dock,
+body.ai-sheet-closing #home-ai-dock.home-ai-dock {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 400;
+  height: 100% !important;
+  max-height: none !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  overflow: visible !important;
+  padding: calc(var(--safe-top, 0px) + 8px) 0 var(--safe-bottom, 0px) !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+body.ai-sheet-open #home-ai-dock.home-ai-dock::before,
+body.ai-sheet-expanding #home-ai-dock.home-ai-dock::before,
+body.ai-sheet-closing #home-ai-dock.home-ai-dock::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #fff !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 1;
+}
+body.ai-sheet-open #home-ai-dock .ai-dock-bar,
+body.ai-sheet-expanding #home-ai-dock .ai-dock-bar,
+body.ai-sheet-closing #home-ai-dock .ai-dock-bar {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  gap: 8px !important;
+  position: absolute;
+  left: 14px !important;
+  right: 14px !important;
+  bottom: 0;
+  z-index: 2;
+  width: auto !important;
+  padding: 10px 0 calc(10px + var(--safe-bottom, 0px)) 0 !important;
+  background: transparent !important;
+  background-image: linear-gradient(to top, rgba(255, 255, 255, 0.88) 30%, rgba(255, 255, 255, 0)) !important;
+}
+body.ai-sheet-open #home-ai-dock .ai-dock-panel,
+body.ai-sheet-expanding #home-ai-dock .ai-dock-panel,
+body.ai-sheet-closing #home-ai-dock .ai-dock-panel {
+  background: #fff !important;
+  box-shadow: none !important;
+  position: relative;
+  z-index: 1;
+}
+body.ai-sheet-closing #home-ai-dock .ai-dock-panel,
+body.ai-sheet-closing #home-ai-dock .ai-dock-panel-head,
+body.ai-sheet-closing #home-ai-dock .ai-dock-log,
+body.ai-sheet-closing #home-ai-dock .ai-dock-bar,
+body.ai-sheet-closing #home-ai-dock .ai-dock-composer,
+body.ai-sheet-closing #home-ai-dock #ai-dock-panel-close {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+/* 모든 탭 스크롤이 탭 줄(+안전 영역) 아래에서 끝나게 */
+body:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-stats,
+body:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-profile,
+body:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-search {
+  padding-bottom: calc(var(--rb-tab-clear) + 16px) !important;
+}
+body.foodex-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-search {
+  padding-bottom: 0 !important;
+}
+body.foodex-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-search[data-hub-mode="foodex"] .foodex-library-scroll,
+#view-search[data-hub-mode="foodex"] .foodex-library-scroll {
+  padding-bottom: calc(var(--rb-tab-clear) + 72px) !important;
+}
+body.foodex-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #foodex-search-bar.foodex-search-dock {
+  bottom: var(--rb-tab-clear) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body:not(.ai-sheet-open) #ai-fab { transition: none !important; }
+}

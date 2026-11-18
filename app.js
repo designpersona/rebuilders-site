@@ -1880,7 +1880,7 @@ function applyExtendedStaticCopy() {
   set('#collection-add-demo', '오늘 식단에 기록', 'Log today');
   const collectionCreate = document.getElementById('collection-create');
   if (collectionCreate) {
-    collectionCreate.innerHTML = '<svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1V13M1 7H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>';
+    collectionCreate.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     collectionCreate.setAttribute('aria-label', en ? 'Create collection' : '새 컬렉션 만들기');
     collectionCreate.title = en ? 'Create collection' : '새 컬렉션 만들기';
   }
@@ -2763,7 +2763,7 @@ document.addEventListener('pointerdown', event => {
 });
 
 function dragHandleSvg() {
-  return '<svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="3" r="1.4"/><circle cx="9" cy="3" r="1.4"/><circle cx="3" cy="8" r="1.4"/><circle cx="9" cy="8" r="1.4"/><circle cx="3" cy="13" r="1.4"/><circle cx="9" cy="13" r="1.4"/></svg>';
+  return '<svg width="12" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="5" r="1.7"/><circle cx="15" cy="5" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="19" r="1.7"/><circle cx="15" cy="19" r="1.7"/></svg>';
 }
 
 function createFoodItemEl(food, dragCtx, onEdit, onDelete) {
@@ -4184,7 +4184,7 @@ function sheetFoodSubline(food) {
   const kcal = isNutritionMissing(food) ? (ACTIVE_LOCALE === 'en' ? 'No nutrition info' : '영양정보 없음') : `${Math.round(Number(food.cal) || 0)}kcal`;
   return serving ? `${serving} | ${kcal}` : kcal;
 }
-const TRAY_CHECK_SVG = '<svg class="tray-check" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 7.2l2.6 2.6L11 4.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const TRAY_CHECK_SVG = '<svg class="tray-check" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12.2 9.3 16.5 19 7.3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 function syncTrayButton(btn, key) {
   const on = trayIndex(key) >= 0;
   btn.classList.toggle('is-added', on);
@@ -4350,8 +4350,8 @@ function openSheetFoodDetail(name, data) {
     <div class="fpd-grabber" id="fpd-grabber" aria-hidden="true"></div>
     <div class="fpd-head">
       <div class="fpd-title">${brand ? `<span class="fpd-brand">${escapeHtml(brand)}</span>` : ''}<strong class="fpd-name">${escapeHtml(displayFoodName({ name, ...data }))}</strong></div>
-      <button type="button" class="fpd-icon" id="fpd-edit-icon" aria-label="${en ? 'Edit' : '수정'}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="1.8"/></svg></button>
-      <button type="button" class="fpd-icon fpd-fav${fav ? ' is-on' : ''}" id="fpd-fav" aria-pressed="${fav}" aria-label="${en ? 'Favorite' : '즐겨찾기'}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.8l2.5 5.1 5.6.8-4 3.9 1 5.6-5.1-2.7-5 2.7 1-5.6-4-3.9 5.5-.8z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></button>
+      <button type="button" class="fpd-icon" id="fpd-edit-icon" aria-label="${en ? 'Edit' : '수정'}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20h4L19.5 8.5a2.3 2.3 0 0 0-3.25-3.25L4.75 16.75 4 20Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13.4 6.6l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button type="button" class="fpd-icon fpd-fav${fav ? ' is-on' : ''}" id="fpd-fav" aria-pressed="${fav}" aria-label="${en ? 'Favorite' : '즐겨찾기'}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.6 14.4 8.5l5.4.8-3.9 3.8.9 5.4L12 16.2 7.2 18.5l.9-5.4-3.9-3.8 5.4-.8L12 3.6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
     </div>
     <p class="fpd-serving-line" id="fpd-serving-line"></p>
     ${canScale ? `<label class="fpd-amount"><span>${en ? 'Amount' : '먹은 양'}</span><input id="fpd-amount" type="number" inputmode="decimal" min="0" step="0.1" value="${escapeHtml(String(base.amount))}" /><small>${escapeHtml(base.unit)}</small></label>` : ''}
@@ -6317,7 +6317,7 @@ function foodCategoryIcon(key) {
     drink: '<path d="M5 6H15L14 17H6L5 6Z"/><path d="M8 3H14L12 8"/>',
     other: '<rect x="4" y="4" width="5" height="5"/><rect x="11" y="4" width="5" height="5"/><rect x="4" y="11" width="5" height="5"/><rect x="11" y="11" width="5" height="5"/>',
   };
-  return `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[key] || paths.other}</svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(2 2)">${paths[key] || paths.other}</g></svg>`;
 }
 
 function foodIndexIcon(name, categoryKey) {
@@ -6638,11 +6638,12 @@ function setActiveView(view) {
   activeMealPageContext = null;
   document.getElementById('view-meal-detail').hidden = true;
   document.body.classList.remove('meal-page-open');
+  const prevView = activeView;
   activeView = view;
   try { syncDaylogBannerDate(); } catch {}
   document.body.classList.toggle('foodex-page', view === 'foodex'); // 식도감 아래 검색창
-  // 기록 탭을 떠나면 채팅 시트는 닫고, 기록 탭에서는 입력줄을 처음부터 보여 줌
-  if (view !== 'home' && document.body.classList.contains('ai-sheet-open')) setAiDockPanel(false);
+  // 탭을 바꾸면 채팅 시트를 닫아, 아래 탭·기록 버튼이 다시 보이게 한다
+  if (view !== prevView && document.body.classList.contains('ai-sheet-open')) setAiDockPanel(false);
   if (view !== 'home' && typeof closeHomeCal === 'function') closeHomeCal({ animate: false });
   syncHomeAiChrome(view);
   if (view !== 'home') {
@@ -7417,7 +7418,7 @@ function setCollectionEvolutionExpanded(card, expanded) {
   if (toggle) {
     toggle.setAttribute('aria-expanded', String(expanded));
     toggle.setAttribute('aria-label', expanded ? t('collectionCollapse') : t('collectionExpand'));
-    toggle.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.75L8 9.75L11.5 6.75" /></svg>';
+    toggle.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   }
 }
 
@@ -11999,7 +12000,7 @@ function setAiDockPanel(open) {
   // 홈의 둥근 채팅 버튼이 입력 알약으로 자라고, X 는 옆에 튕기며 나타난다.
   const motion = 480;
   const ease = 'cubic-bezier(0.32, 0.72, 0, 1)';
-  const homeMotion = activeView === 'home' && !reduceMotion();
+  const homeMotion = !reduceMotion();
   const dockOffsetY = () => {
     const m = /translate3d\(\s*[^,]+,\s*([\-\d.]+)px/i.exec(dock.style.transform || '');
     return m ? parseFloat(m[1]) : 0;
@@ -14625,7 +14626,7 @@ updateTopHead();
           <span class="ai-model-dot ${dotClass(m)}" aria-hidden="true"></span>
           <span class="ai-model-name">${esc(label(m))}${id === firstOn ? `<span class="ai-model-chip">${en() ? '1st' : '1순위'}</span>` : ''}</span>
           <span class="ai-model-short ${dotClass(m)}">${esc(shortText(m))}</span>
-          <svg class="ai-model-caret" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3.5 5.25 7 8.75l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="ai-model-caret" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <label class="ai-switch"><input type="checkbox" ${isOn ? 'checked' : ''} aria-label="${esc(`${label(m)} ${en() ? 'on' : '사용'}`)}"><span></span></label>
         <div class="ai-model-more" id="ai-more-${esc(id)}"><div class="ai-model-more-in">
