@@ -16919,3 +16919,31 @@ body.foodex-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expand
 @media (prefers-reduced-motion: reduce) {
   body:not(.ai-sheet-open) #ai-fab { transition: none !important; }
 }
+
+
+/* =====================================================================
+   v79 아이폰 모서리와 맞추는 하단 여백.
+   탭 알약과 기록 버튼의 좌우 여백과 아래 여백을 같게 한다.
+   아래는 safe-area-inset-bottom 을 쓰고, 홈 인디케이터가 없으면 최소 16px.
+   알약과 버튼 사이는 8px.
+   ===================================================================== */
+:root {
+  --rb-tab-gap: 8px;
+  --rb-chrome-inset: max(16px, var(--safe-bottom, 0px));
+  --rb-tab-inset-x: var(--rb-chrome-inset);
+  --rb-tab-lift: 0px;
+  --rb-tab-bottom: var(--rb-chrome-inset);
+}
+
+body:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) #page-tabs.page-tabs.bottom-tabs {
+  left: var(--rb-tab-inset-x) !important;
+  right: calc(var(--rb-tab-inset-x) + var(--rb-tab-h) + var(--rb-tab-gap)) !important;
+  bottom: var(--rb-tab-bottom) !important;
+}
+body:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) #ai-fab.ai-fab,
+body:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) .ai-fab,
+body.foodex-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) #ai-fab.ai-fab,
+body.foodex-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding):not(.meal-page-open):not(.food-dex-open) .ai-fab {
+  right: var(--rb-tab-inset-x) !important;
+  bottom: var(--rb-tab-bottom) !important;
+}
