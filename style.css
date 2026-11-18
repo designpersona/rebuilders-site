@@ -15185,8 +15185,8 @@ body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock {
 }
 body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock { transform: translate3d(0, 100%, 0) !important; }
 body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock.home-ai-dock { transform: translate3d(0, 0, 0) !important; }
-body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock { transform: translate3d(0, 0, 0) !important; }
-body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock { transform: translate3d(0, 100%, 0) !important; }
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock { transform: none; }
+body.home-page.ai-sheet-closing:not(.ai-sheet-drag-close) #home-ai-dock.home-ai-dock { transform: translate3d(0, 100%, 0) !important; }
 body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel,
 body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-panel,
 body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-panel {
@@ -15445,8 +15445,8 @@ body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock.home-ai-dock {
 }
 body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock { transform: translate3d(0, 100%, 0) !important; }
 body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock.home-ai-dock,
-body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock { transform: translate3d(0, 0, 0) !important; }
-body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock { transform: translate3d(0, 100%, 0) !important; }
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock { transform: none; }
+body.home-page.ai-sheet-closing:not(.ai-sheet-drag-close) #home-ai-dock.home-ai-dock { transform: translate3d(0, 100%, 0) !important; }
 .ai-sheet-backdrop {
   transition: opacity 0.25s ease !important;
 }
@@ -15488,4 +15488,353 @@ body.home-cal-open.home-scrolled #home-cal-slot {
   z-index: 8;
   background: var(--bg, #F4F5F7);
   box-shadow: 0 10px 18px -12px rgba(17, 18, 22, 0.28);
+}
+
+
+/* =====================================================================
+   v73 채팅 Liquid Glass: 기록 탭 입력줄·전체 화면 시트만.
+   반투명 알약 + 옆의 동그란 유리 버튼, 내용은 그 뒤로 비친다.
+   열릴 때는 알약이 제자리에서 시트로 자라고 X 가 튕기며 나타난다.
+   누를 때는 0.96 으로 줄었다가 스프링으로 돌아온다. 식도감 검색줄은 그대로.
+   ===================================================================== */
+:root {
+  --lg-glass: rgba(255, 255, 255, 0.62);
+  --lg-glass-strong: rgba(255, 255, 255, 0.78);
+  --lg-line: rgba(255, 255, 255, 0.82);
+  --lg-inset: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --lg-shadow: var(--lg-inset), 0 8px 28px rgba(20, 22, 28, 0.10), 0 1px 3px rgba(20, 22, 28, 0.06);
+  --lg-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --lg-spring-over: cubic-bezier(0.22, 1.18, 0.36, 1);
+  --lg-dur: 480ms;
+}
+
+/* 접힌 입력줄: 탭 위에 띄워 기록이 알약 뒤로 지나가게 */
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock.home-ai-dock {
+  position: absolute !important;
+  inset: auto 0 calc(44px + var(--safe-bottom, 0px)) 0 !important;
+  top: auto !important;
+  bottom: calc(44px + var(--safe-bottom, 0px)) !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  z-index: 8;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 8px 14px 10px !important;
+  transform: none !important;
+  pointer-events: none;
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock.home-ai-dock::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(244, 245, 247, 0.7), rgba(244, 245, 247, 0));
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock .ai-dock-bar,
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock .ai-dock-panel {
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+}
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home {
+  padding-bottom: 84px !important;
+}
+body.home-page.home-cal-open:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home,
+body.home-page.home-cal-dock-hide:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #view-home {
+  padding-bottom: 24px !important;
+}
+html.kb-up body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock.home-ai-dock,
+body.home-page.keyboard-open:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock.home-ai-dock {
+  position: absolute !important;
+  bottom: 0 !important;
+  top: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  padding: 8px 14px 8px !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* 유리 재질: 알약·동그란 버튼 */
+#home-ai-dock .ai-dock-capsule {
+  background: var(--lg-glass) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+  backdrop-filter: blur(28px) saturate(180%) !important;
+  border: 1px solid var(--lg-line) !important;
+  box-shadow: var(--lg-shadow) !important;
+  border-radius: 999px !important;
+}
+#home-ai-dock .ai-dock-capsule:focus-within {
+  background: var(--lg-glass-strong) !important;
+  border-color: rgba(255, 255, 255, 0.95) !important;
+}
+#home-ai-dock .ai-dock-history,
+#home-ai-dock .ai-dock-icon#ai-photo,
+#home-ai-dock #ai-dock-panel-close.ai-dock-close-x,
+#home-ai-dock .ai-dock-send.is-empty {
+  width: 50px !important;
+  height: 50px !important;
+  min-width: 50px !important;
+  flex: 0 0 50px !important;
+  border-radius: 50% !important;
+  background: var(--lg-glass) !important;
+  color: var(--rb-ink, #1C1D21) !important;
+  border: 1px solid var(--lg-line) !important;
+  box-shadow: var(--lg-shadow) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+  backdrop-filter: blur(28px) saturate(180%) !important;
+  padding: 0 !important;
+}
+#home-ai-dock .ai-dock-send:not(.is-empty) {
+  width: 50px !important;
+  height: 50px !important;
+  min-width: 50px !important;
+  flex: 0 0 50px !important;
+  border-radius: 50% !important;
+  background: #1C1D21 !important;
+  color: #fff !important;
+  border: 0 !important;
+  box-shadow: 0 8px 20px rgba(20, 22, 28, 0.22) !important;
+}
+#home-ai-dock .ai-dock-bar {
+  background: transparent !important;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 접힌 상태에서는 닫기(X)를 숨김 */
+body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expanding) #home-ai-dock #ai-dock-panel-close {
+  display: none !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock #ai-dock-panel-close,
+body.home-page.ai-sheet-expanding #home-ai-dock #ai-dock-panel-close,
+body.home-page.ai-sheet-closing #home-ai-dock #ai-dock-panel-close,
+body:not(.home-page) #home-ai-dock #ai-dock-panel-close {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 전체 화면 시트: 흰 면은 페이드, 입력줄은 떠서 대화가 뒤로 비침 */
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock,
+body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock,
+body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock {
+  background: transparent !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock::before,
+body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock::before,
+body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  pointer-events: none;
+  z-index: 0;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-panel,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-panel {
+  background: transparent !important;
+  position: relative;
+  z-index: 1;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  margin: 0 !important;
+  padding: 10px 14px calc(10px + var(--safe-bottom, 0px)) !important;
+  background: transparent !important;
+  background-image: linear-gradient(to top, rgba(255, 255, 255, 0.72) 40%, rgba(255, 255, 255, 0)) !important;
+}
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-log,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-log,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-log {
+  padding-bottom: calc(78px + var(--safe-bottom, 0px)) !important;
+}
+html.kb-up body.home-page.ai-sheet-open #home-ai-dock .ai-dock-bar,
+body.home-page.keyboard-open.ai-sheet-open #home-ai-dock .ai-dock-bar,
+html.kb-up body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-bar,
+body.home-page.keyboard-open.ai-sheet-expanding #home-ai-dock .ai-dock-bar {
+  padding-bottom: 10px !important;
+}
+
+/* 열림·닫힘: 시트 전체를 밀어 올리지 않고, 알약·패널·X 만 transform/opacity */
+body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock,
+body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock.home-ai-dock,
+body.home-page.ai-sheet-closing:not(.ai-sheet-drag-close) #home-ai-dock.home-ai-dock {
+  transform: none !important;
+  transition: none !important;
+}
+body.home-page.ai-sheet-drag-close #home-ai-dock.home-ai-dock {
+  will-change: transform;
+}
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock {
+  transform: none;
+}
+body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock::before,
+body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock::before,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-panel-head,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-log,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-panel-head,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-log,
+body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-expanding #home-ai-dock #ai-dock-panel-close,
+body.home-page.ai-sheet-closing #home-ai-dock #ai-dock-panel-close {
+  transition: transform var(--lg-dur) var(--lg-spring), opacity var(--lg-dur) var(--lg-spring);
+  will-change: transform, opacity;
+}
+body.home-page.ai-sheet-expanding:not(.ai-sheet-in) #home-ai-dock.home-ai-dock::before,
+body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock::before {
+  opacity: 0;
+}
+body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock.home-ai-dock::before,
+body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock::before {
+  opacity: 1;
+}
+body.home-page.ai-sheet-expanding:not(.ai-sheet-in) #home-ai-dock .ai-dock-panel-head,
+body.home-page.ai-sheet-expanding:not(.ai-sheet-in) #home-ai-dock .ai-dock-log,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-panel-head,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-log {
+  opacity: 0;
+  transform: translate3d(0, 16px, 0);
+}
+body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock .ai-dock-panel-head,
+body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock .ai-dock-log,
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-panel-head,
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-log {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+/* 탭 높이(44px)만큼 알약이 내려가며 시트 바닥에 앉는다 */
+body.home-page.ai-sheet-expanding:not(.ai-sheet-in) #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-bar {
+  transform: translate3d(0, -44px, 0);
+}
+body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock .ai-dock-bar,
+body.home-page.ai-sheet-open #home-ai-dock .ai-dock-bar {
+  transform: translate3d(0, 0, 0);
+}
+/* X 팝 인: 0.6 → 1 + fade, 살짝 오버슈트 */
+body.home-page.ai-sheet-expanding #home-ai-dock #ai-dock-panel-close,
+body.home-page.ai-sheet-closing #home-ai-dock #ai-dock-panel-close {
+  transition: transform var(--lg-dur) var(--lg-spring-over), opacity 280ms var(--lg-spring);
+}
+body.home-page.ai-sheet-expanding:not(.ai-sheet-in) #home-ai-dock #ai-dock-panel-close,
+body.home-page.ai-sheet-closing #home-ai-dock #ai-dock-panel-close {
+  opacity: 0;
+  transform: scale(0.6);
+}
+body.home-page.ai-sheet-expanding.ai-sheet-in #home-ai-dock #ai-dock-panel-close,
+body.home-page.ai-sheet-open #home-ai-dock #ai-dock-panel-close {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 제안 칩(빈 대화 예시)도 유리 알약 */
+#home-ai-dock .agent-empty {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+#home-ai-dock .agent-empty-lead { flex: 1 0 100%; }
+#home-ai-dock .agent-example,
+#home-ai-dock .agent-confirm {
+  display: inline-flex;
+  align-items: center;
+  background: var(--lg-glass) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  border: 1px solid var(--lg-line) !important;
+  box-shadow: var(--lg-shadow) !important;
+  border-radius: 999px !important;
+  color: var(--rb-ink, #1C1D21) !important;
+}
+
+/* 누름: 살짝 줄었다가 스프링으로 복귀 */
+#home-ai-dock .ai-dock-capsule,
+#home-ai-dock .ai-dock-send,
+#home-ai-dock .ai-dock-history,
+#home-ai-dock .ai-dock-icon,
+#home-ai-dock #ai-dock-panel-close,
+#home-ai-dock .agent-example,
+#home-ai-dock .agent-confirm {
+  transition: transform 420ms var(--lg-spring-over), background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+#home-ai-dock .ai-dock-capsule:active:not(:focus-within),
+#home-ai-dock .ai-dock-send:active,
+#home-ai-dock .ai-dock-history:active,
+#home-ai-dock .ai-dock-icon:active,
+#home-ai-dock #ai-dock-panel-close:active,
+#home-ai-dock .agent-example:active,
+#home-ai-dock .agent-confirm:active {
+  transform: scale(0.96) !important;
+  scale: none !important;
+  transition-duration: 0.12s !important;
+  transition-timing-function: ease-out !important;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #home-ai-dock .ai-dock-capsule,
+  #home-ai-dock .ai-dock-history,
+  #home-ai-dock .ai-dock-icon#ai-photo,
+  #home-ai-dock #ai-dock-panel-close.ai-dock-close-x,
+  #home-ai-dock .ai-dock-send.is-empty,
+  #home-ai-dock .agent-example,
+  #home-ai-dock .agent-confirm {
+    background: rgba(255, 255, 255, 0.88) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock,
+  body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock,
+  body.home-page.ai-sheet-open #home-ai-dock.home-ai-dock,
+  body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock::before,
+  body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock::before,
+  body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-panel-head,
+  body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-log,
+  body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-panel-head,
+  body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-log,
+  body.home-page.ai-sheet-expanding #home-ai-dock .ai-dock-bar,
+  body.home-page.ai-sheet-closing #home-ai-dock .ai-dock-bar,
+  body.home-page.ai-sheet-expanding #home-ai-dock #ai-dock-panel-close,
+  body.home-page.ai-sheet-closing #home-ai-dock #ai-dock-panel-close,
+  #home-ai-dock .ai-dock-capsule,
+  #home-ai-dock .ai-dock-send,
+  #home-ai-dock .ai-dock-history,
+  #home-ai-dock .ai-dock-icon,
+  #home-ai-dock #ai-dock-panel-close,
+  #home-ai-dock .agent-example,
+  #home-ai-dock .agent-confirm,
+  .ai-sheet-backdrop {
+    transition: none !important;
+    animation: none !important;
+  }
+  #home-ai-dock .ai-dock-capsule:active:not(:focus-within),
+  #home-ai-dock .ai-dock-send:active,
+  #home-ai-dock .ai-dock-history:active,
+  #home-ai-dock .ai-dock-icon:active,
+  #home-ai-dock #ai-dock-panel-close:active,
+  #home-ai-dock .agent-example:active,
+  #home-ai-dock .agent-confirm:active {
+    transform: none !important;
+  }
 }

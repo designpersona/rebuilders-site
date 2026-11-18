@@ -11992,10 +11992,15 @@ function setAiDockPanel(open) {
     dock.parentElement?.insertBefore(backdrop, dock);
   }
   clearTimeout(panel._closeTimer);
-  // 음식 추가 시트와 같다: transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1). 높이 애니메이션은 쓰지 않는다.
-  const motion = 340;
-  const ease = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+  // 입력 알약이 제자리에서 시트로 자라고, X 는 튕기며 나타난다.
+  // transform/opacity 만 쓰고, 곡선은 iOS Liquid Glass 스프링.
+  const motion = 480;
+  const ease = 'cubic-bezier(0.32, 0.72, 0, 1)';
   const homeMotion = activeView === 'home' && !reduceMotion();
+  const dockOffsetY = () => {
+    const m = /translate3d\(\s*[^,]+,\s*([\-\d.]+)px/i.exec(dock.style.transform || '');
+    return m ? parseFloat(m[1]) : 0;
+  };
   const clearDockMotion = () => {
     dock.style.transform = '';
     dock.style.transition = '';
@@ -12021,14 +12026,12 @@ function setAiDockPanel(open) {
       document.body.classList.add('ai-sheet-expanding');
       backdrop.classList.remove('is-open');
       dock.style.transition = 'none';
-      dock.style.transform = 'translate3d(0, 100%, 0)';
+      dock.style.transform = '';
       backdrop.style.transition = 'none';
       backdrop.style.opacity = '0';
       void dock.offsetWidth;
       requestAnimationFrame(() => {
-        dock.style.transition = `transform ${motion}ms ${ease}`;
-        dock.style.transform = 'translate3d(0, 0, 0)';
-        backdrop.style.transition = 'opacity 0.25s ease';
+        backdrop.style.transition = 'opacity 0.3s ease';
         backdrop.style.opacity = '1';
         document.body.classList.add('ai-sheet-in');
       });
@@ -12048,7 +12051,7 @@ function setAiDockPanel(open) {
       panel.classList.remove('is-open');
       dock.classList.remove('is-open');
       backdrop.classList.remove('is-open');
-      document.body.classList.remove('ai-sheet-open', 'ai-sheet-closing', 'ai-sheet-expanding', 'ai-sheet-in');
+      document.body.classList.remove('ai-sheet-open', 'ai-sheet-closing', 'ai-sheet-expanding', 'ai-sheet-in', 'ai-sheet-drag-close');
       panel.hidden = true;
       backdrop.hidden = true;
       if (activeView !== 'home') dock.hidden = true;
@@ -12056,19 +12059,33 @@ function setAiDockPanel(open) {
       syncHomeAiChrome();
     };
     if (homeMotion && (document.body.classList.contains('ai-sheet-open') || document.body.classList.contains('ai-sheet-expanding') || document.body.classList.contains('ai-sheet-in'))) {
+      const fromY = dockOffsetY();
       document.body.classList.add('ai-sheet-closing');
       document.body.classList.remove('ai-sheet-open', 'ai-sheet-expanding', 'ai-sheet-in');
-      dock.style.transition = 'none';
-      dock.style.transform = 'translate3d(0, 0, 0)';
       backdrop.style.transition = 'none';
-      backdrop.style.opacity = '1';
-      void dock.offsetWidth;
-      requestAnimationFrame(() => {
-        dock.style.transition = `transform ${motion}ms ${ease}`;
-        dock.style.transform = 'translate3d(0, 100%, 0)';
-        backdrop.style.transition = 'opacity 0.25s ease';
-        backdrop.style.opacity = '0';
-      });
+      backdrop.style.opacity = backdrop.style.opacity || '1';
+      if (fromY > 8) {
+        // 끌어 닫던 중이리면 그 자리에서 아래로 이어서 보낸다.
+        document.body.classList.add('ai-sheet-drag-close');
+        const h = dock.getBoundingClientRect().height || window.innerHeight || 1;
+        dock.style.transition = 'none';
+        dock.style.transform = `translate3d(0, ${fromY}px, 0)`;
+        void dock.offsetWidth;
+        requestAnimationFrame(() => {
+          dock.style.transition = `transform ${motion}ms ${ease}`;
+          dock.style.transform = `translate3d(0, ${Math.ceil(h)}px, 0)`;
+          backdrop.style.transition = 'opacity 0.3s ease';
+          backdrop.style.opacity = '0';
+        });
+      } else {
+        dock.style.transition = 'none';
+        dock.style.transform = '';
+        void dock.offsetWidth;
+        requestAnimationFrame(() => {
+          backdrop.style.transition = 'opacity 0.3s ease';
+          backdrop.style.opacity = '0';
+        });
+      }
       panel._closeTimer = setTimeout(finishClose, motion + 20);
       syncHomeAiChrome();
     } else {
