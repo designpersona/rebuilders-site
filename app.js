@@ -1242,7 +1242,6 @@ function dayDataFromMeals(mealsData) {
    앱 상태
    ============================ */
 const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
-const DAYS_LONG = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
 let currentDate = new Date(); // 오늘 날짜로 시작
 let currentMeal = null;
 let mealTimes = defaultMealTimes();
@@ -1572,11 +1571,6 @@ function formatHomeDate(d) {
   return `${month}.${day} (${DAYS[d.getDay()]})`;
 }
 
-function formatHomeWeekday(d) {
-  if (ACTIVE_LOCALE === 'en') return new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d);
-  return DAYS_LONG[d.getDay()] || DAYS[d.getDay()];
-}
-
 function isToday(d) {
   const t = new Date();
   return d.getFullYear() === t.getFullYear() &&
@@ -1585,24 +1579,24 @@ function isToday(d) {
 }
 
 function updateDateDisplay() {
-  const dateText = document.getElementById('current-date');
-  if (dateText) dateText.textContent = formatHomeWeekday(currentDate);
+  document.getElementById('current-date').textContent = formatHomeDate(currentDate);
   const badge = document.getElementById('date-badge') || document.querySelector('.date-badge');
   const goToday = document.getElementById('go-today');
   const today = isToday(currentDate);
-  // 고른 날의 요일(수요일)을 보여 준다. '오늘'은 '오늘로' 버튼과 겹치므로 쓰지 않는다.
+  // 오늘이 아니면 어제/내일만 작게, 그 밖의 날은 비움
+  const dayDiff = Math.round((new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()) - new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())) / 86400000);
+  // 오늘이면 '오늘'(그냥 표시), 다른 날이면 '오늘로'(누르면 오늘로)
+  void dayDiff;
   if (badge) {
-    badge.textContent = ACTIVE_LOCALE === 'en' ? 'Go to today' : '오늘로';
-    badge.hidden = today;
+    badge.textContent = today ? (ACTIVE_LOCALE === 'en' ? 'Today' : '오늘') : (ACTIVE_LOCALE === 'en' ? 'Go to today' : '오늘로');
+    badge.hidden = false;
     badge.classList.toggle('is-relative', !today);
     badge.classList.toggle('is-go-today', !today);
   }
   document.getElementById('date-display')?.classList.toggle('is-today', today);
   renderDateStrip();
   try { syncAgentLogDate(); } catch { /* 대화창이 아직 없으면 무시 */ }
-  document.getElementById('date-display')?.setAttribute('aria-label', today
-    ? formatHomeWeekday(currentDate)
-    : `${formatHomeWeekday(currentDate)}. ${ACTIVE_LOCALE === 'en' ? 'Tap to go to today' : '눌러서 오늘로'}`);
+  document.getElementById('date-display')?.setAttribute('aria-label', `${formatHomeDate(currentDate)}. ${ACTIVE_LOCALE === 'en' ? 'Tap to go to today' : '눌러서 오늘로'}`);
   if (goToday) goToday.hidden = today;
   // 홈 건강 카드·체중을 선택한 날짜로
   updateProfileUI();
@@ -14275,7 +14269,7 @@ function fillDateChip(b, d, week, dow, itemW, todayKey) {
     inner = b.firstElementChild;
   }
   inner.querySelector('.date-chip-num').textContent = num;
-  inner.querySelector('.date-chip-dow').textContent = key === todayKey && ACTIVE_LOCALE !== 'en' ? '오늘' : dowLabel;
+  inner.querySelector('.date-chip-dow').textContent = dowLabel;
 }
 
 function renderDateStrip(force = false) {

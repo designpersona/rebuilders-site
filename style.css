@@ -15436,20 +15436,6 @@ body:not(.home-page) #home-cal-chevron {
   pointer-events: none !important;
 }
 
-/* 날짜 헤더는 고른 날의 요일. '오늘로' 알약은 오늘이 아닐 때만 */
-body #view-home#view-home .date-header .date-display .date-text {
-  display: inline !important;
-  font: 700 15px/1.2 var(--font) !important;
-  color: var(--rb-ink) !important;
-  margin: 0 !important;
-}
-body #view-home#view-home .date-header .date-display {
-  display: inline-flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  gap: 8px !important;
-}
-
 /* 음식 추가 시트(.modal-sheet / .food-pick-detail)와 같은 열림·닫힘 */
 body.home-page.ai-sheet-expanding #home-ai-dock.home-ai-dock,
 body.home-page.ai-sheet-closing #home-ai-dock.home-ai-dock,
