@@ -16589,7 +16589,7 @@ body.home-page:not(.ai-sheet-open):not(.ai-sheet-closing):not(.ai-sheet-expandin
 /* =====================================================================
    v76 기록 탭: 탭은 아이콘만, 입력은 한 줄 유리 알약(길어지면 위로 자람),
    닫기는 내용을 바로 숨기고 시트를 아래로 밀며 페이드. 달력 요약 줄 제거.
-   게이지 카드를 가로로 밀면 같은 높이의 한마디(평가+팁), 점은 카드 아래.
+   v77: 게이지 카드 스와이프(한마디 페이지·점)는 빼고, 게이지는 v75와 같은 크기로 되돌림.
    ===================================================================== */
 
 /* 1. 탭 글자 숨김, 유리 알약과 슬라이드 하이라이트는 그대로 */
@@ -16744,79 +16744,4 @@ body.home-page.ai-sheet-closing.ai-sheet-drag-close #home-ai-dock.home-ai-dock {
   padding: 0 !important;
   overflow: hidden !important;
   pointer-events: none !important;
-}
-
-/* 5. 게이지 카드를 가로로 밀기. 같은 높이, 점은 카드 아래. 끼니 목록은 항상 보임. */
-#view-home .home-day-pager {
-  position: relative;
-  margin: 12px 0 0 !important;
-  overflow: hidden;
-}
-#view-home .home-day-pager-track {
-  display: flex;
-  align-items: stretch;
-  will-change: transform;
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-}
-#view-home .home-day-pager .home-day-page {
-  flex: 0 0 100%;
-  width: 100%;
-  min-width: 100%;
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0 !important;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-#view-home .home-day-pager .day-summary.home-day-page {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-  width: 100%;
-}
-#view-home .home-gauge-verdict {
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 22px 20px !important;
-  box-sizing: border-box;
-}
-#view-home .home-gauge-verdict-body {
-  width: 100%;
-}
-#view-home .home-gauge-verdict .home-report-eval {
-  margin: 0 0 8px;
-  font: 600 17px/1.35 var(--font);
-  color: var(--rb-ink, #1C1D21);
-  letter-spacing: -0.03em;
-}
-#view-home .home-gauge-verdict .home-report-tip {
-  margin: 0;
-  font: 400 14px/1.45 var(--font);
-  color: var(--rb-label, #5E6470);
-}
-#view-home .home-gauge-verdict .home-report-empty {
-  padding: 0;
-}
-#view-home .home-day-dots {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-  margin: 8px 0 2px;
-}
-#view-home .home-day-dot {
-  width: 5px;
-  height: 5px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: #D5D7DD;
-  cursor: pointer;
-}
-#view-home .home-day-dot.is-active {
-  background: var(--rb-ink, #1C1D21);
-  width: 6px;
-  height: 6px;
 }
